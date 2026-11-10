@@ -1,0 +1,103 @@
+name: "SaaS Budget Model"
+periods:
+  start_year: 2024
+  years: 4
+  type: "quarterly"
+
+assumptions:
+  metadata:
+    industry: "SaaS"
+    currency: "USD"
+    budget_cycle: "FY2024"
+
+  drivers:
+    # ARR Drivers
+    starting_arr:
+      value: [10000000, 11500000, 13225000, 15208750]
+      description: "Beginning ARR each quarter"
+      unit: "$"
+    new_arr:
+      value: [1200000, 1380000, 1587000, 1825050]
+      description: "New logo ARR booked"
+      unit: "$"
+    expansion_arr:
+      value: [300000, 345000, 396750, 456263]
+      description: "Expansion ARR from existing customers"
+      unit: "$"
+    churned_arr:
+      value: [-250000, -287500, -330625, -380219]
+      description: "Churned ARR (negative)"
+      unit: "$"
+
+    # Headcount by department
+    engineering_headcount:
+      value: [50, 55, 60, 65]
+      description: "Engineering FTEs"
+      unit: "FTE"
+    engineering_cost_per_head:
+      value: 180000
+      description: "Fully loaded cost per engineer"
+      unit: "$"
+
+    sales_headcount:
+      value: [30, 35, 40, 45]
+      description: "Sales FTEs"
+      unit: "FTE"
+    sales_cost_per_head:
+      value: 150000
+      description: "Fully loaded cost per sales rep"
+      unit: "$"
+
+    marketing_headcount:
+      value: [15, 17, 19, 21]
+      description: "Marketing FTEs"
+      unit: "FTE"
+    marketing_cost_per_head:
+      value: 130000
+      description: "Fully loaded cost per marketing FTE"
+      unit: "$"
+
+    gna_headcount:
+      value: [20, 22, 24, 26]
+      description: "G&A FTEs"
+      unit: "FTE"
+    gna_cost_per_head:
+      value: 120000
+      description: "Fully loaded cost per G&A FTE"
+      unit: "$"
+
+    rd_headcount:
+      value: [25, 28, 31, 34]
+      description: "R&D FTEs (separate from engineering)"
+      unit: "FTE"
+    rd_cost_per_head:
+      value: 170000
+      description: "Fully loaded cost per R&D FTE"
+      unit: "$"
+
+    # Other assumptions
+    tax_rate:
+      value: 0.21
+      unit: "%"
+    sbc_pct_of_payroll:
+      value: 0.15
+      description: "SBC as % of total payroll"
+      unit: "%"
+
+  scenarios:
+    base: {}
+    hiring_acceleration:
+      engineering_headcount: [50, 60, 70, 80]
+      sales_headcount: [30, 40, 50, 60]
+    hiring_freeze:
+      engineering_headcount: [50, 50, 50, 50]
+      sales_headcount: [30, 30, 30, 30]
+      marketing_headcount: [15, 15, 15, 15]
+
+statements:
+  - type: "income_statement"
+    line_items: []
+  - type: "balance_sheet"
+    line_items: []
+  - type: "cash_flow"
+    line_items: []

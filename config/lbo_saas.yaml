@@ -1,0 +1,168 @@
+name: "SaaS LBO Model"
+periods:
+  start_year: 2024
+  years: 5
+  type: "annual"
+
+assumptions:
+  metadata:
+    industry: "SaaS"
+    currency: "USD"
+    deal_date: "2024-01-15"
+
+  drivers:
+    # Operating (same as three-statement)
+    revenue:
+      value: 10000000
+      description: "Starting revenue"
+      unit: "$"
+    revenue_growth:
+      value: [0.30, 0.25, 0.20, 0.15, 0.10]
+      description: "YoY revenue growth (conservative for LBO)"
+      unit: "%"
+    cogs_pct:
+      value: 0.22
+      description: "COGS % of revenue"
+      unit: "%"
+    rd_pct:
+      value: 0.18
+      description: "R&D % of revenue"
+      unit: "%"
+    sm_pct:
+      value: 0.35
+      description: "S&M % of revenue (optimized post-buyout)"
+      unit: "%"
+    gna_pct:
+      value: 0.10
+      description: "G&A % of revenue"
+      unit: "%"
+    tax_rate:
+      value: 0.21
+      description: "Tax rate"
+      unit: "%"
+    ar_days:
+      value: 45
+      unit: "days"
+    ap_days:
+      value: 60
+      unit: "days"
+    deferred_rev_pct:
+      value: 0.30
+      unit: "%"
+    capex:
+      value: -400000
+      description: "Reduced CapEx post-buyout"
+      unit: "$"
+    depreciation_rate:
+      value: 0.20
+      unit: "%"
+    sbc:
+      value: [600000, 700000, 800000, 900000, 1000000]
+      description: "Reduced SBC post-buyout"
+      unit: "$"
+
+    # LBO Transaction assumptions
+    entry_multiple:
+      value: 12.0
+      description: "Entry EV/EBITDA multiple"
+      unit: "x"
+    entry_ebitda:
+      value: 3500000
+      description: "LTM EBITDA at entry"
+      unit: "$"
+    equity_contribution:
+      value: 0.35
+      description: "Equity as % of purchase price (35% equity, 65% debt)"
+      unit: "%"
+
+    # Debt structure
+    tla_pct:
+      value: 0.25
+      description: "Term Loan A % of debt"
+      unit: "%"
+    tla_rate:
+      value: 0.07
+      description: "TLA interest rate (SOFR + 3.5%)"
+      unit: "%"
+    tla_amort:
+      value: 0.05
+      description: "TLA annual amortization"
+      unit: "%"
+
+    tlb_pct:
+      value: 0.30
+      description: "Term Loan B % of debt"
+      unit: "%"
+    tlb_rate:
+      value: 0.085
+      description: "TLB interest rate (SOFR + 5%)"
+      unit: "%"
+    tlb_amort:
+      value: 0.01
+      description: "TLB annual amortization (bullet)"
+      unit: "%"
+
+    revolver_pct:
+      value: 0.15
+      description: "Revolver commitment % of debt"
+      unit: "%"
+    revolver_rate:
+      value: 0.075
+      description: "Revolver rate"
+      unit: "%"
+
+    sub_pct:
+      value: 0.10
+      description: "Subordinated debt %"
+      unit: "%"
+    sub_rate:
+      value: 0.11
+      description: "Sub debt rate (PIK option)"
+      unit: "%"
+
+    mezz_pct:
+      value: 0.05
+      description: "Mezzanine % (with warrants)"
+      unit: "%"
+    mezz_rate:
+      value: 0.13
+      description: "Mezz rate (cash + PIK)"
+      unit: "%"
+
+    # Cash sweep
+    sweep_pct:
+      value: 0.75
+      description: "% of excess cash to debt paydown"
+      unit: "%"
+
+    # Exit
+    exit_multiple:
+      value: 13.0
+      description: "Exit EV/EBITDA multiple (expansion)"
+      unit: "x"
+    hold_years:
+      value: 5
+      description: "Investment hold period"
+      unit: "years"
+
+  scenarios:
+    base: {}
+    aggressive:
+      entry_multiple: 10.0
+      exit_multiple: 15.0
+      sweep_pct: 1.0
+      revenue_growth: [0.35, 0.30, 0.25, 0.20, 0.15]
+    conservative:
+      entry_multiple: 14.0
+      exit_multiple: 11.0
+      sweep_pct: 0.50
+      revenue_growth: [0.20, 0.15, 0.10, 0.08, 0.05]
+      equity_contribution: 0.45
+
+statements:
+  - type: "income_statement"
+    line_items: []
+  - type: "balance_sheet"
+    line_items: []
+  - type: "cash_flow"
+    line_items: []

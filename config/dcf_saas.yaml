@@ -1,0 +1,117 @@
+name: "SaaS DCF Valuation Model"
+periods:
+  start_year: 2024
+  years: 5
+  type: "annual"
+
+assumptions:
+  metadata:
+    industry: "SaaS"
+    currency: "USD"
+    valuation_date: "2024-01-15"
+
+  drivers:
+    # Operating assumptions (same as three-statement)
+    revenue:
+      value: 10000000
+      description: "Starting revenue"
+      unit: "$"
+    revenue_growth:
+      value: [0.35, 0.30, 0.25, 0.20, 0.15]
+      description: "YoY revenue growth"
+      unit: "%"
+    cogs_pct:
+      value: 0.22
+      description: "COGS % of revenue"
+      unit: "%"
+    rd_pct:
+      value: 0.20
+      description: "R&D % of revenue"
+      unit: "%"
+    sm_pct:
+      value: 0.40
+      description: "S&M % of revenue"
+      unit: "%"
+    gna_pct:
+      value: 0.12
+      description: "G&A % of revenue"
+      unit: "%"
+    tax_rate:
+      value: 0.21
+      description: "Tax rate"
+      unit: "%"
+    ar_days:
+      value: 45
+      description: "AR days"
+      unit: "days"
+    ap_days:
+      value: 60
+      description: "AP days"
+      unit: "days"
+    deferred_rev_pct:
+      value: 0.30
+      description: "Deferred revenue %"
+      unit: "%"
+    capex:
+      value: -500000
+      description: "Annual CapEx"
+      unit: "$"
+    depreciation_rate:
+      value: 0.20
+      description: "Depreciation rate"
+      unit: "%"
+    sbc:
+      value: [800000, 1000000, 1200000, 1400000, 1600000]
+      description: "Stock-based compensation"
+      unit: "$"
+
+    # DCF-specific assumptions
+    risk_free_rate:
+      value: 0.045
+      description: "10-year Treasury yield"
+      unit: "%"
+    equity_risk_premium:
+      value: 0.055
+      description: "Market risk premium"
+      unit: "%"
+    beta:
+      value: 1.3
+      description: "Levered beta (high growth SaaS)"
+      unit: "x"
+    cost_of_debt:
+      value: 0.06
+      description: "Pre-tax cost of debt"
+      unit: "%"
+    target_debt_ratio:
+      value: 0.10
+      description: "Target D/(D+E) - SaaS typically low leverage"
+      unit: "%"
+    terminal_growth:
+      value: 0.03
+      description: "Terminal growth rate (GDP + inflation)"
+      unit: "%"
+    exit_multiple:
+      value: 15.0
+      description: "Exit EV/EBITDA multiple"
+      unit: "x"
+
+  scenarios:
+    base: {}
+    bear:
+      revenue_growth: [0.20, 0.15, 0.10, 0.08, 0.05]
+      terminal_growth: 0.02
+      exit_multiple: 10.0
+      beta: 1.5
+    bull:
+      revenue_growth: [0.45, 0.40, 0.35, 0.30, 0.25]
+      terminal_growth: 0.04
+      exit_multiple: 20.0
+      beta: 1.1
+
+statements:
+  - type: "income_statement"
+    line_items: []
+  - type: "balance_sheet"
+    line_items: []
+  - type: "cash_flow"
+    line_items: []

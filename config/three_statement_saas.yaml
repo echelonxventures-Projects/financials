@@ -1,0 +1,109 @@
+name: "SaaS Three-Statement Model"
+periods:
+  start_year: 2024
+  years: 5
+  type: "annual"
+
+assumptions:
+  metadata:
+    industry: "SaaS"
+    currency: "USD"
+    last_updated: "2024-01-15"
+
+  drivers:
+    revenue:
+      value: 10000000
+      description: "Starting ARR-based revenue"
+      unit: "$"
+    revenue_growth:
+      value: [0.35, 0.30, 0.25, 0.20, 0.15]
+      description: "YoY revenue growth rate (decelerating)"
+      unit: "%"
+    cogs_pct:
+      value: 0.22
+      description: "COGS as % of revenue (hosting, support)"
+      unit: "%"
+    rd_pct:
+      value: 0.20
+      description: "R&D as % of revenue"
+      unit: "%"
+    sm_pct:
+      value: 0.40
+      description: "Sales & Marketing as % of revenue"
+      unit: "%"
+    gna_pct:
+      value: 0.12
+      description: "G&A as % of revenue"
+      unit: "%"
+    tax_rate:
+      value: 0.21
+      description: "Effective tax rate"
+      unit: "%"
+    ar_days:
+      value: 45
+      description: "Accounts receivable days"
+      unit: "days"
+    ap_days:
+      value: 60
+      description: "Accounts payable days"
+      unit: "days"
+    deferred_rev_pct:
+      value: 0.30
+      description: "Deferred revenue as % of revenue"
+      unit: "%"
+    prepaid_pct:
+      value: 0.02
+      description: "Prepaid expenses as % of revenue"
+      unit: "%"
+    accrued_pct:
+      value: 0.05
+      description: "Accrued expenses as % of revenue"
+      unit: "%"
+    capex:
+      value: -500000
+      description: "Annual capital expenditures"
+      unit: "$"
+    depreciation_rate:
+      value: 0.20
+      description: "Depreciation rate on PP&E"
+      unit: "%"
+    interest_expense:
+      value: 0
+      description: "Interest expense (no debt initially)"
+      unit: "$"
+    sbc:
+      value: [800000, 1000000, 1200000, 1400000, 1600000]
+      description: "Stock-based compensation"
+      unit: "$"
+    dividends:
+      value: 0
+      description: "Dividends paid"
+      unit: "$"
+    equity_issuance:
+      value: [5000000, 0, 0, 0, 0]
+      description: "Equity financing (Series A in year 1)"
+      unit: "$"
+    beginning_cash:
+      value: 500000
+      description: "Starting cash balance"
+      unit: "$"
+
+  scenarios:
+    base: {}
+    upside:
+      revenue_growth: [0.45, 0.40, 0.35, 0.30, 0.25]
+      sm_pct: 0.35
+      rd_pct: 0.18
+    downside:
+      revenue_growth: [0.20, 0.15, 0.10, 0.08, 0.05]
+      sm_pct: 0.45
+      rd_pct: 0.22
+      cogs_pct: 0.25
+
+statements:
+  - type: "income_statement"
+    line_items: []
+  - type: "balance_sheet"
+    line_items: []
+  - type: "cash_flow"
+    line_items: []
