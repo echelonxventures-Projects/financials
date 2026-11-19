@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- macOS (launchd) agent. Install:
+       python3 -m venv ~/.financial-model && ~/.financial-model/bin/pip install 'financial-model[api,charts]'
+       edit the paths below (replace YOU), then:
+       cp com.financial-model.api.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.financial-model.api.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.financial-model.api</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOU/.financial-model/bin/financial-model</string>
+    <string>serve</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>FIN_API_HOST</key><string>127.0.0.1</string>
+    <key>FIN_API_PORT</key><string>8000</string>
+  </dict>
+  <key>WorkingDirectory</key><string>/Users/YOU/.financial-model</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/financial-model.log</string>
+  <key>StandardErrorPath</key><string>/tmp/financial-model.log</string>
+</dict>
+</plist>

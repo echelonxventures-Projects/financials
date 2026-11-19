@@ -1,0 +1,2 @@
+# For PaaS buildpacks (Heroku, Render, Railway, Dokku, Scalingo...): installs this checkout with every extra.
+.[all]

@@ -1,0 +1,34 @@
+# Linux (systemd) service. Install:
+#   sudo useradd --system --create-home --home-dir /opt/financial-model financial-model
+#   sudo -u financial-model python3 -m venv /opt/financial-model/venv
+#   sudo -u financial-model /opt/financial-model/venv/bin/pip install 'financial-model[api,charts]'
+#   sudo cp financial-model.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#   sudo systemctl enable --now financial-model
+# Settings: /etc/financial-model/financial.yaml (see config/financial.example.yaml) or FIN_* below.
+[Unit]
+Description=Financial Model API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=financial-model
+Group=financial-model
+WorkingDirectory=/opt/financial-model
+Environment=FIN_CONFIG_PATH=/etc/financial-model/financial.yaml
+Environment=FIN_API_HOST=127.0.0.1
+Environment=FIN_API_PORT=8000
+# Keep secrets out of the unit file: FIN_API_KEY=... in this root-only file.
+EnvironmentFile=-/etc/financial-model/secrets.env
+ExecStart=/opt/financial-model/venv/bin/financial-model serve
+Restart=on-failure
+RestartSec=3
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/financial-model
+
+[Install]
+WantedBy=multi-user.target

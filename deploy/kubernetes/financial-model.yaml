@@ -1,0 +1,56 @@
+# Kubernetes (any distribution: EKS, GKE, AKS, k3s, OpenShift, kind...).
+#   kubectl create secret generic financial-model --from-literal=api-key=change-me
+#   kubectl apply -f deploy/kubernetes/financial-model.yaml
+# Build/push the image from the repo root with any OCI builder and set `image:` below.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: financial-model
+  labels: {app: financial-model}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: financial-model}
+  template:
+    metadata:
+      labels: {app: financial-model}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: api
+          image: financial-model:0.3.0
+          ports:
+            - containerPort: 8000
+          env:
+            - name: FIN_API_KEY
+              valueFrom:
+                secretKeyRef: {name: financial-model, key: api-key}
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: financial-model
+spec:
+  selector: {app: financial-model}
+  ports:
+    - port: 80
+      targetPort: 8000

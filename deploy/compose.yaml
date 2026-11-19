@@ -1,0 +1,19 @@
+# Works with `docker compose`, `podman compose` / podman-compose, and `nerdctl compose`.
+#   FIN_API_KEY=change-me docker compose -f deploy/compose.yaml up -d --build
+services:
+  api:
+    build: ..
+    image: financial-model:latest
+    ports:
+      - "8000:8000"
+    environment:
+      FIN_API_KEY: ${FIN_API_KEY:-}
+      FIN_API_CORS_ORIGINS: ${FIN_API_CORS_ORIGINS:-}
+      FIN_LOGGING_LEVEL: ${FIN_LOGGING_LEVEL:-INFO}
+    # Optional settings file:
+    # volumes:
+    #   - ./financial.yaml:/app/financial.yaml:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
