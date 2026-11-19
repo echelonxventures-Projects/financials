@@ -1,4 +1,5 @@
 name: "SaaS LBO Model"
+model_type: "lbo"
 periods:
   start_year: 2024
   years: 5
@@ -8,7 +9,7 @@ assumptions:
   metadata:
     industry: "SaaS"
     currency: "USD"
-    deal_date: "2024-01-15"
+    deal_date: "2024-01-01"
 
   drivers:
     # Operating (same as three-statement)
@@ -29,13 +30,17 @@ assumptions:
       description: "R&D % of revenue"
       unit: "%"
     sm_pct:
-      value: 0.35
+      value: 0.30
       description: "S&M % of revenue (optimized post-buyout)"
       unit: "%"
     gna_pct:
-      value: 0.10
+      value: 0.08
       description: "G&A % of revenue"
       unit: "%"
+    sbc:
+      value: [300000, 300000, 300000, 300000, 300000]
+      description: "Reduced SBC post-buyout"
+      unit: "$"
     tax_rate:
       value: 0.21
       description: "Tax rate"
@@ -49,6 +54,10 @@ assumptions:
     deferred_rev_pct:
       value: 0.30
       unit: "%"
+    ppe_gross:
+      value: 1000000
+      description: "Opening gross PP&E"
+      unit: "$"
     capex:
       value: -400000
       description: "Reduced CapEx post-buyout"
@@ -56,29 +65,41 @@ assumptions:
     depreciation_rate:
       value: 0.20
       unit: "%"
-    sbc:
-      value: [600000, 700000, 800000, 900000, 1000000]
-      description: "Reduced SBC post-buyout"
+    beginning_cash:
+      value: 500000
+      description: "Cash left on the balance sheet at close"
+      unit: "$"
+    long_term_debt:
+      value: 1000000
+      description: "Target's existing debt (refinanced at close)"
+      unit: "$"
+    min_cash:
+      value: 250000
+      description: "Minimum operating cash (excess above this is swept)"
       unit: "$"
 
-    # LBO Transaction assumptions
+    # LBO transaction assumptions
     entry_multiple:
       value: 12.0
       description: "Entry EV/EBITDA multiple"
       unit: "x"
     entry_ebitda:
-      value: 3500000
-      description: "LTM EBITDA at entry"
+      value: 0
+      description: "LTM EBITDA at entry (0 = use the model's first-year EBITDA)"
       unit: "$"
     equity_contribution:
-      value: 0.35
-      description: "Equity as % of purchase price (35% equity, 65% debt)"
+      value: 0.40
+      description: "Sponsor equity as % of total uses"
+      unit: "%"
+    fees_pct:
+      value: 0.02
+      description: "Transaction fees as % of EV"
       unit: "%"
 
-    # Debt structure
+    # Debt structure (tranche percentages are normalised across the funded tranches)
     tla_pct:
-      value: 0.25
-      description: "Term Loan A % of debt"
+      value: 0.30
+      description: "Term Loan A % of funded debt"
       unit: "%"
     tla_rate:
       value: 0.07
@@ -86,12 +107,11 @@ assumptions:
       unit: "%"
     tla_amort:
       value: 0.05
-      description: "TLA annual amortization"
+      description: "TLA annual amortization (% of original principal)"
       unit: "%"
-
     tlb_pct:
-      value: 0.30
-      description: "Term Loan B % of debt"
+      value: 0.40
+      description: "Term Loan B % of funded debt"
       unit: "%"
     tlb_rate:
       value: 0.085
@@ -99,40 +119,35 @@ assumptions:
       unit: "%"
     tlb_amort:
       value: 0.01
-      description: "TLB annual amortization (bullet)"
+      description: "TLB annual amortization (1% - effectively bullet)"
       unit: "%"
-
     revolver_pct:
       value: 0.15
-      description: "Revolver commitment % of debt"
+      description: "Revolver commitment % of funded debt (undrawn at close)"
       unit: "%"
     revolver_rate:
       value: 0.075
       description: "Revolver rate"
       unit: "%"
-
     sub_pct:
-      value: 0.10
-      description: "Subordinated debt %"
+      value: 0.20
+      description: "Subordinated notes % of funded debt (bullet)"
       unit: "%"
     sub_rate:
       value: 0.11
-      description: "Sub debt rate (PIK option)"
+      description: "Sub debt rate"
       unit: "%"
-
     mezz_pct:
-      value: 0.05
-      description: "Mezzanine % (with warrants)"
+      value: 0.10
+      description: "Mezzanine % of funded debt (bullet)"
       unit: "%"
     mezz_rate:
       value: 0.13
-      description: "Mezz rate (cash + PIK)"
+      description: "Mezz rate"
       unit: "%"
-
-    # Cash sweep
     sweep_pct:
       value: 0.75
-      description: "% of excess cash to debt paydown"
+      description: "% of excess cash swept to Term Loan A, then B"
       unit: "%"
 
     # Exit
@@ -157,12 +172,6 @@ assumptions:
       exit_multiple: 11.0
       sweep_pct: 0.50
       revenue_growth: [0.20, 0.15, 0.10, 0.08, 0.05]
-      equity_contribution: 0.45
+      equity_contribution: 0.50
 
-statements:
-  - type: "income_statement"
-    line_items: []
-  - type: "balance_sheet"
-    line_items: []
-  - type: "cash_flow"
-    line_items: []
+statements: []

@@ -1,27 +1,59 @@
 """
 DCF Valuation Model.
-Extends three-statement with WACC, terminal value, sensitivity analysis.
+Extends the three-statement model with WACC (CAPM), terminal value
+(Gordon growth and exit multiple), an EV-to-equity bridge and sensitivity tables.
 """
 
-from dataclasses import dataclass, field
-from typing import Any
-import pandas as pd
-import numpy as np
+from __future__ import annotations
 
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from financial_model.core.assumptions import Assumptions
+from financial_model.core.line_item import Driver
+from financial_model.core.model import ModelResult
+from financial_model.core.period import PeriodIndex
 from financial_model.models.three_statement import ThreeStatementModel
-from financial_model.core.period import Period, PeriodIndex, PeriodType
-from financial_model.core.assumptions import Assumptions, Driver
-from financial_model.core.line_item import LineItem, LineItemType, CalculationRule
+
+WORKING_CAPITAL_LINES = [
+    "Change in Accounts Receivable",
+    "Change in Inventory",
+    "Change in Prepaid Expenses",
+    "Change in Accounts Payable",
+    "Change in Accrued Expenses",
+    "Change in Deferred Revenue",
+    "Change in Deferred Taxes",
+]
+DEBT_LINES = [
+    "Long-Term Debt",
+    "Current Portion of Long-Term Debt",
+    "Revolver",
+    "Term Loan A",
+    "Term Loan B",
+    "Subordinated Debt",
+    "Mezzanine Debt",
+]
+
+
+def _row(df: pd.DataFrame, line: str, idx: int, default: float = 0.0) -> float:
+    if line not in df.index:
+        return default
+    val = df.loc[line].iloc[idx]
+    return default if pd.isna(val) else float(val)
 
 
 class DCFModel(ThreeStatementModel):
     """
     DCF valuation model with:
     - WACC calculation (CAPM)
+    - Unlevered free cash flow (NOPAT + D&A - capex - change in NWC)
     - Terminal value (Gordon Growth & Exit Multiple)
-    - Sensitivity tables
-    - Enterprise/Equity value bridge
+    - Enterprise/Equity value bridge and sensitivity tables
     """
+
+    model_type = "dcf"
 
     def __init__(
         self,
@@ -52,97 +84,129 @@ class DCFModel(ThreeStatementModel):
 
     def _add_dcf_assumptions(self) -> None:
         """Add DCF-specific drivers to assumptions."""
-        dcf_drivers = {
-            "risk_free_rate": Driver("risk_free_rate", self.risk_free_rate, "Risk-free rate", "%"),
-            "equity_risk_premium": Driver("equity_risk_premium", self.equity_risk_premium, "Equity risk premium", "%"),
-            "beta": Driver("beta", self.beta, "Levered beta", "x"),
-            "cost_of_debt": Driver("cost_of_debt", self.cost_of_debt, "Pre-tax cost of debt", "%"),
-            "tax_rate": Driver("tax_rate", self.tax_rate, "Tax rate", "%"),
-            "target_debt_ratio": Driver("target_debt_ratio", self.target_debt_ratio, "Target D/(D+E)", "%"),
-            "terminal_growth": Driver("terminal_growth", self.terminal_growth, "Terminal growth rate", "%"),
-            "exit_multiple": Driver("exit_multiple", self.exit_multiple, "Exit EV/EBITDA multiple", "x"),
-        }
-        for name, driver in dcf_drivers.items():
+        dcf_drivers = [
+            Driver("risk_free_rate", self.risk_free_rate, "Risk-free rate", "%"),
+            Driver("equity_risk_premium", self.equity_risk_premium, "Equity risk premium", "%"),
+            Driver("beta", self.beta, "Levered beta", "x"),
+            Driver("cost_of_debt", self.cost_of_debt, "Pre-tax cost of debt", "%"),
+            Driver("tax_rate", self.tax_rate, "Tax rate", "%"),
+            Driver("target_debt_ratio", self.target_debt_ratio, "Target D/(D+E)", "%"),
+            Driver("terminal_growth", self.terminal_growth, "Terminal growth rate", "%"),
+            Driver("exit_multiple", self.exit_multiple, "Exit EV/EBITDA multiple", "x"),
+        ]
+        for driver in dcf_drivers:
             self.assumptions.set_driver(driver)
 
-    def calculate_dcf(self, result: Any = None) -> dict[str, Any]:
-        """Run DCF valuation on model result."""
+    # ------------------------------------------------------------------ #
+    # Valuation
+    # ------------------------------------------------------------------ #
+    def wacc(self, drivers: dict[str, Driver] | None = None) -> dict[str, float]:
+        drivers = drivers or self.assumptions.effective_drivers()
+
+        def dv(name: str) -> float:
+            d = drivers.get(name)
+            return d.get_value(0) if d else 0.0
+
+        cost_of_equity = dv("risk_free_rate") + dv("beta") * dv("equity_risk_premium")
+        after_tax_cod = dv("cost_of_debt") * (1 - dv("tax_rate"))
+        debt_ratio = dv("target_debt_ratio")
+        return {
+            "cost_of_equity": cost_of_equity,
+            "after_tax_cod": after_tax_cod,
+            "wacc": cost_of_equity * (1 - debt_ratio) + after_tax_cod * debt_ratio,
+        }
+
+    def free_cash_flows(self, result: ModelResult, tax_rate: float) -> list[dict[str, float]]:
+        """Unlevered FCF per period: EBIT*(1-t) + D&A - capex + change in NWC."""
+        is_data, bs_data, cf_data = result.income_statement, result.balance_sheet, result.cash_flow
+        drivers = result.drivers
+        rows = []
+        for i in range(len(result.periods)):
+            ebit = _row(is_data, "Operating Income", i)
+            dna = abs(_row(is_data, "Depreciation & Amortization", i))
+            if dna == 0:
+                dna = abs(_row(cf_data, "Depreciation & Amortization", i))
+            if "Capital Expenditures" in cf_data.index:
+                capex = abs(_row(cf_data, "Capital Expenditures", i))
+            elif "Capital Expenditures" in bs_data.index:
+                capex = abs(_row(bs_data, "Capital Expenditures", i))
+            else:
+                capex = abs(drivers["capex"].get_value(i)) if "capex" in drivers else 0.0
+            nwc_change = sum(_row(cf_data, line, i) for line in WORKING_CAPITAL_LINES)
+            nopat = ebit * (1 - tax_rate)
+            rows.append(
+                {
+                    "ebit": ebit,
+                    "nopat": nopat,
+                    "dna": dna,
+                    "capex": capex,
+                    "nwc_change": nwc_change,
+                    "fcf": nopat + dna - capex + nwc_change,
+                }
+            )
+        return rows
+
+    def calculate_dcf(self, result: ModelResult | None = None) -> dict[str, Any]:
+        """Run DCF valuation on a model result (valuation date = start of the first period)."""
         if result is None:
             result = self.calculate()
 
-        is_data = result.income_statement
-        bs_data = result.balance_sheet
-        periods = result.periods
+        drivers = result.drivers or self.assumptions.effective_drivers()
 
-        # Get assumptions
-        rf = self.assumptions.get_value("risk_free_rate", 0)
-        erp = self.assumptions.get_value("equity_risk_premium", 0)
-        beta = self.assumptions.get_value("beta", 0)
-        cod = self.assumptions.get_value("cost_of_debt", 0)
-        tax = self.assumptions.get_value("tax_rate", 0)
-        debt_ratio = self.assumptions.get_value("target_debt_ratio", 0)
-        tg = self.assumptions.get_value("terminal_growth", 0)
-        exit_mult = self.assumptions.get_value("exit_multiple", 0)
+        def dv(name: str, idx: int = 0) -> float:
+            d = drivers.get(name)
+            return d.get_value(idx) if d else 0.0
 
-        # WACC
-        cost_of_equity = rf + beta * erp
-        after_tax_cod = cod * (1 - tax)
-        wacc = cost_of_equity * (1 - debt_ratio) + after_tax_cod * debt_ratio
+        tax = dv("tax_rate")
+        tg = dv("terminal_growth")
+        exit_mult = dv("exit_multiple")
+        rates = self.wacc(drivers)
+        wacc = rates["wacc"]
 
-        # Free Cash Flow projection
-        fcf = []
-        for i in range(len(periods)):
-            ebit = is_data.loc["Operating Income"].iloc[i] if "Operating Income" in is_data.index else 0
-            nopat = ebit * (1 - tax)
-            dna = is_data.loc["Depreciation & Amortization"].iloc[i] if "Depreciation & Amortization" in is_data.index else 0
-            capex = abs(bs_data.loc["Capital Expenditures"].iloc[i]) if "Capital Expenditures" in bs_data.index else 0
-            # Simplified WC change
-            wc_change = 0
-            fcf_val = nopat + dna - capex - wc_change
-            fcf.append(fcf_val)
+        fcf_rows = self.free_cash_flows(result, tax)
+        fcf = [r["fcf"] for r in fcf_rows]
+        n = len(fcf)
+        discount_factors = [1 / (1 + wacc) ** (i + 1) for i in range(n)]
+        pv_fcf = [fcf[i] * discount_factors[i] for i in range(n)]
 
-        # Discount factors
-        discount_factors = [1 / (1 + wacc) ** (i + 1) for i in range(len(periods))]
-        pv_fcf = [fcf[i] * discount_factors[i] for i in range(len(periods))]
+        terminal_fcf = fcf[-1] * (1 + tg) if n else 0.0
+        terminal_value_gordon = terminal_fcf / (wacc - tg) if wacc > tg else 0.0
+        pv_terminal_gordon = terminal_value_gordon * (discount_factors[-1] if n else 0.0)
 
-        # Terminal Value (Gordon Growth)
-        terminal_fcf = fcf[-1] * (1 + tg)
-        terminal_value_gordon = terminal_fcf / (wacc - tg) if wacc > tg else 0
-        pv_terminal_gordon = terminal_value_gordon * discount_factors[-1]
+        terminal_ebitda = (fcf_rows[-1]["ebit"] + fcf_rows[-1]["dna"]) if n else 0.0
+        terminal_value_multiple = terminal_ebitda * exit_mult
+        pv_terminal_multiple = terminal_value_multiple * (discount_factors[-1] if n else 0.0)
 
-        # Terminal Value (Exit Multiple)
-        ebitda = is_data.loc["Operating Income"].iloc[-1] + (is_data.loc["Depreciation & Amortization"].iloc[-1]
-                                                                 if "Depreciation & Amortization" in is_data.index else 0)
-        terminal_value_multiple = ebitda * exit_mult
-        pv_terminal_multiple = terminal_value_multiple * discount_factors[-1]
-
-        # Enterprise Value
         ev_gordon = sum(pv_fcf) + pv_terminal_gordon
         ev_multiple = sum(pv_fcf) + pv_terminal_multiple
 
-        # Net Debt
-        cash = bs_data.loc["Cash & Cash Equivalents"].iloc[-1] if "Cash & Cash Equivalents" in bs_data.index else 0
-        # Sum all debt items
-        debt_items = ["Long-Term Debt", "Revolver", "Term Loan A", "Term Loan B", "Subordinated Debt", "Mezzanine Debt"]
-        total_debt = sum(bs_data.loc[d].iloc[-1] for d in debt_items if d in bs_data.index and pd.notna(bs_data.loc[d].iloc[-1]))
-        net_debt = total_debt - cash
+        # Net debt at the valuation date (opening balances)
+        bs_data = result.balance_sheet
+        opening_cash = (
+            dv("beginning_cash") if "beginning_cash" in drivers else _row(bs_data, "Cash & Cash Equivalents", 0)
+        )
+        opening_debt = 0.0
+        for line in DEBT_LINES:
+            if line in bs_data.index:
+                opening_debt += self.opening_balance(line, drivers) if line in self.OPENING_LINES else 0.0
+        net_debt = opening_debt - opening_cash
 
-        # Equity Value
         equity_gordon = ev_gordon - net_debt
         equity_multiple = ev_multiple - net_debt
 
-        # Shares
-        shares = 1_000_000  # Default
-        price_gordon = equity_gordon / shares if shares > 0 else 0
-        price_multiple = equity_multiple / shares if shares > 0 else 0
+        shares = dv("shares_outstanding") or 1_000_000
+        price_gordon = equity_gordon / shares if shares > 0 else 0.0
+        price_multiple = equity_multiple / shares if shares > 0 else 0.0
 
         return {
             "wacc": wacc,
-            "cost_of_equity": cost_of_equity,
-            "after_tax_cod": after_tax_cod,
+            "cost_of_equity": rates["cost_of_equity"],
+            "after_tax_cod": rates["after_tax_cod"],
             "fcf": fcf,
+            "fcf_detail": fcf_rows,
             "discount_factors": discount_factors,
             "pv_fcf": pv_fcf,
+            "terminal_ebitda": terminal_ebitda,
             "terminal_value_gordon": terminal_value_gordon,
             "pv_terminal_gordon": pv_terminal_gordon,
             "terminal_value_multiple": terminal_value_multiple,
@@ -152,49 +216,86 @@ class DCFModel(ThreeStatementModel):
             "net_debt": net_debt,
             "equity_gordon": equity_gordon,
             "equity_multiple": equity_multiple,
+            "shares_outstanding": shares,
             "price_gordon": price_gordon,
             "price_multiple": price_multiple,
+            "implied_terminal_multiple": (terminal_value_gordon / terminal_ebitda) if terminal_ebitda else 0.0,
             "assumptions": {
-                "risk_free_rate": rf,
-                "equity_risk_premium": erp,
-                "beta": beta,
-                "cost_of_debt": cod,
+                "risk_free_rate": dv("risk_free_rate"),
+                "equity_risk_premium": dv("equity_risk_premium"),
+                "beta": dv("beta"),
+                "cost_of_debt": dv("cost_of_debt"),
                 "tax_rate": tax,
-                "target_debt_ratio": debt_ratio,
+                "target_debt_ratio": dv("target_debt_ratio"),
                 "terminal_growth": tg,
                 "exit_multiple": exit_mult,
-            }
+            },
+            "periods": [p.label for p in result.periods],
         }
 
     def sensitivity_analysis(
         self,
-        result: Any = None,
+        result: ModelResult | None = None,
         wacc_range: tuple[float, float] = (0.07, 0.13),
         growth_range: tuple[float, float] = (0.01, 0.04),
         steps: int = 5,
     ) -> pd.DataFrame:
-        """Generate sensitivity table: equity value vs WACC and terminal growth."""
+        """Equity value (Gordon growth) for a grid of WACC (columns) x terminal growth (rows)."""
         if result is None:
             result = self.calculate()
 
         base_dcf = self.calculate_dcf(result)
-        base_wacc = base_dcf["wacc"]
-        base_growth = self.assumptions.get_value("terminal_growth", 0)
-
+        fcf = base_dcf["fcf"]
         wacc_vals = np.linspace(wacc_range[0], wacc_range[1], steps)
         growth_vals = np.linspace(growth_range[0], growth_range[1], steps)
 
-        table = pd.DataFrame(index=[f"{g:.1%}" for g in growth_vals], columns=[f"{w:.1%}" for w in wacc_vals])
-
+        table = pd.DataFrame(
+            index=[f"{g:.1%}" for g in growth_vals], columns=[f"{w:.1%}" for w in wacc_vals], dtype=float
+        )
         for i, g in enumerate(growth_vals):
             for j, w in enumerate(wacc_vals):
-                # Quick approximation using Gordon growth
-                fcf = base_dcf["fcf"]
                 pv_fcf = sum(fcf[k] / (1 + w) ** (k + 1) for k in range(len(fcf)))
-                tv = fcf[-1] * (1 + g) / (w - g) if w > g else 0
-                pv_tv = tv / (1 + w) ** len(fcf)
-                ev = pv_fcf + pv_tv
-                equity = ev - base_dcf["net_debt"]
-                table.iloc[i, j] = equity
-
+                tv = fcf[-1] * (1 + g) / (w - g) if (fcf and w > g) else 0.0
+                pv_tv = tv / (1 + w) ** len(fcf) if fcf else 0.0
+                table.iloc[i, j] = pv_fcf + pv_tv - base_dcf["net_debt"]
+        table.index.name = "Terminal growth \\ WACC"
         return table
+
+    # ------------------------------------------------------------------ #
+    # Outputs
+    # ------------------------------------------------------------------ #
+    def analysis_tables(self, result: ModelResult) -> dict[str, Any]:
+        """Valuation summary, discounted FCF build and the WACC x growth sensitivity grid."""
+        dcf = self.calculate_dcf(result)
+        summary = {
+            k: dcf[k]
+            for k in (
+                "wacc",
+                "cost_of_equity",
+                "after_tax_cod",
+                "terminal_ebitda",
+                "terminal_value_gordon",
+                "pv_terminal_gordon",
+                "terminal_value_multiple",
+                "pv_terminal_multiple",
+                "ev_gordon",
+                "ev_multiple",
+                "net_debt",
+                "equity_gordon",
+                "equity_multiple",
+                "shares_outstanding",
+                "price_gordon",
+                "price_multiple",
+                "implied_terminal_multiple",
+            )
+        }
+        summary.update({f"assumption_{k}": v for k, v in dcf["assumptions"].items()})
+        fcf = pd.DataFrame(dcf["fcf_detail"], index=dcf["periods"])
+        fcf["discount_factor"] = dcf["discount_factors"]
+        fcf["pv_fcf"] = dcf["pv_fcf"]
+        fcf.index.name = "Period"
+        return {
+            "DCF Valuation": summary,
+            "Free Cash Flow": fcf,
+            "Sensitivity": self.sensitivity_analysis(result),
+        }

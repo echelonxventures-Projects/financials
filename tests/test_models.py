@@ -2,17 +2,12 @@
 Model-specific tests: three-statement, DCF, LBO.
 """
 
-import pytest
-import pandas as pd
-import numpy as np
-from hypothesis import given, strategies as st, settings
-
-from financial_model.models.three_statement import ThreeStatementModel
-from financial_model.models.dcf import DCFModel
-from financial_model.models.lbo import LBOModel
-from financial_model.models.budget import BudgetModel
 from financial_model.core.period import Period, PeriodIndex, PeriodType
 from financial_model.data.synthetic import generate_saas_company
+from financial_model.models.budget import BudgetModel
+from financial_model.models.dcf import DCFModel
+from financial_model.models.lbo import LBOModel
+from financial_model.models.three_statement import ThreeStatementModel
 
 
 class TestThreeStatementModel:
@@ -43,8 +38,7 @@ class TestThreeStatementModel:
 
         # Override growth assumption
         model.assumptions.set_driver(
-            model.assumptions.drivers["revenue_growth"] if "revenue_growth" in model.assumptions.drivers
-            else None
+            model.assumptions.drivers["revenue_growth"] if "revenue_growth" in model.assumptions.drivers else None
         )
 
         result = model.calculate()
@@ -72,9 +66,18 @@ class TestThreeStatementModel:
         result = model.calculate()
 
         ni = result.income_statement.loc["Net Income"].iloc[0] if "Net Income" in result.income_statement.index else 0
-        re = result.balance_sheet.loc["Retained Earnings"].iloc[0] if "Retained Earnings" in result.balance_sheet.index else 0
-        # First year RE should equal NI (no dividends)
-        assert abs(ni - re) < 1.0
+        re = (
+            result.balance_sheet.loc["Retained Earnings"].iloc[0]
+            if "Retained Earnings" in result.balance_sheet.index
+            else 0
+        )
+        # First year RE = opening RE (balances the opening balance sheet) + NI (no dividends)
+        opening_re = model.opening_retained_earnings(result.drivers)
+        assert abs(opening_re + ni - re) < 1.0
+        # and the following year rolls forward by that year's NI
+        ni_1 = result.income_statement.loc["Net Income"].iloc[1]
+        re_1 = result.balance_sheet.loc["Retained Earnings"].iloc[1]
+        assert abs(re + ni_1 - re_1) < 1.0
 
 
 class TestDCFModel:
@@ -195,6 +198,7 @@ class TestIntegration:
 
         # Load back
         from financial_model.core.model import FinancialModel
+
         loaded = FinancialModel.from_yaml(str(config_path))
         assert loaded.name == "YAML Test"
 

@@ -1,9 +1,13 @@
 name: "SaaS Three-Statement Model"
+model_type: "three-statement"
 periods:
   start_year: 2024
   years: 5
   type: "annual"
 
+# Drivers overlay the model defaults; anything omitted keeps its default.
+# Percentages and cash magnitudes can be entered as positive numbers - the model
+# applies the sign convention (expenses and outflows negative).
 assumptions:
   metadata:
     industry: "SaaS"
@@ -35,6 +39,10 @@ assumptions:
       value: 0.12
       description: "G&A as % of revenue"
       unit: "%"
+    sbc:
+      value: [800000, 1000000, 1200000, 1400000, 1600000]
+      description: "Stock-based compensation"
+      unit: "$"
     tax_rate:
       value: 0.21
       description: "Effective tax rate"
@@ -59,21 +67,21 @@ assumptions:
       value: 0.05
       description: "Accrued expenses as % of revenue"
       unit: "%"
+    ppe_gross:
+      value: 1000000
+      description: "Opening gross PP&E"
+      unit: "$"
     capex:
       value: -500000
       description: "Annual capital expenditures"
       unit: "$"
     depreciation_rate:
       value: 0.20
-      description: "Depreciation rate on PP&E"
+      description: "Depreciation rate on gross PP&E"
       unit: "%"
     interest_expense:
       value: 0
       description: "Interest expense (no debt initially)"
-      unit: "$"
-    sbc:
-      value: [800000, 1000000, 1200000, 1400000, 1600000]
-      description: "Stock-based compensation"
       unit: "$"
     dividends:
       value: 0
@@ -85,8 +93,20 @@ assumptions:
       unit: "$"
     beginning_cash:
       value: 500000
-      description: "Starting cash balance"
+      description: "Opening cash balance"
       unit: "$"
+    apic:
+      value: 5000000
+      description: "Opening paid-in capital"
+      unit: "$"
+    min_cash:
+      value: 250000
+      description: "Minimum cash before the revolver is drawn"
+      unit: "$"
+    shares_outstanding:
+      value: 1000000
+      description: "Diluted shares outstanding"
+      unit: "#"
 
   scenarios:
     base: {}
@@ -100,10 +120,5 @@ assumptions:
       rd_pct: 0.22
       cogs_pct: 0.25
 
-statements:
-  - type: "income_statement"
-    line_items: []
-  - type: "balance_sheet"
-    line_items: []
-  - type: "cash_flow"
-    line_items: []
+# Optional: add or override line items here (see README "Add Custom Line Items")
+statements: []

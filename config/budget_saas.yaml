@@ -1,8 +1,9 @@
 name: "SaaS Budget Model"
+model_type: "budget"
 periods:
   start_year: 2024
-  years: 4
-  type: "quarterly"
+  years: 1          # one fiscal year ...
+  type: "quarterly" # ... modelled as four quarters
 
 assumptions:
   metadata:
@@ -11,7 +12,7 @@ assumptions:
     budget_cycle: "FY2024"
 
   drivers:
-    # ARR Drivers
+    # ARR drivers (one value per quarter)
     starting_arr:
       value: [10000000, 11500000, 13225000, 15208750]
       description: "Beginning ARR each quarter"
@@ -29,60 +30,55 @@ assumptions:
       description: "Churned ARR (negative)"
       unit: "$"
 
-    # Headcount by department
+    # Headcount by department (cost per head is annual; divide by 4 for a quarterly P&L)
     engineering_headcount:
       value: [50, 55, 60, 65]
       description: "Engineering FTEs"
       unit: "FTE"
     engineering_cost_per_head:
-      value: 180000
-      description: "Fully loaded cost per engineer"
+      value: 45000
+      description: "Fully loaded quarterly cost per engineer"
       unit: "$"
-
     sales_headcount:
       value: [30, 35, 40, 45]
       description: "Sales FTEs"
       unit: "FTE"
     sales_cost_per_head:
-      value: 150000
-      description: "Fully loaded cost per sales rep"
+      value: 37500
+      description: "Fully loaded quarterly cost per sales rep"
       unit: "$"
-
     marketing_headcount:
       value: [15, 17, 19, 21]
       description: "Marketing FTEs"
       unit: "FTE"
     marketing_cost_per_head:
-      value: 130000
-      description: "Fully loaded cost per marketing FTE"
+      value: 32500
+      description: "Fully loaded quarterly cost per marketing FTE"
       unit: "$"
-
     gna_headcount:
       value: [20, 22, 24, 26]
       description: "G&A FTEs"
       unit: "FTE"
     gna_cost_per_head:
-      value: 120000
-      description: "Fully loaded cost per G&A FTE"
+      value: 30000
+      description: "Fully loaded quarterly cost per G&A FTE"
       unit: "$"
-
     rd_headcount:
       value: [25, 28, 31, 34]
       description: "R&D FTEs (separate from engineering)"
       unit: "FTE"
     rd_cost_per_head:
-      value: 170000
-      description: "Fully loaded cost per R&D FTE"
+      value: 42500
+      description: "Fully loaded quarterly cost per R&D FTE"
       unit: "$"
 
-    # Other assumptions
     tax_rate:
       value: 0.21
       unit: "%"
-    sbc_pct_of_payroll:
-      value: 0.15
-      description: "SBC as % of total payroll"
-      unit: "%"
+    beginning_cash:
+      value: 2000000
+      description: "Opening cash"
+      unit: "$"
 
   scenarios:
     base: {}
@@ -94,10 +90,4 @@ assumptions:
       sales_headcount: [30, 30, 30, 30]
       marketing_headcount: [15, 15, 15, 15]
 
-statements:
-  - type: "income_statement"
-    line_items: []
-  - type: "balance_sheet"
-    line_items: []
-  - type: "cash_flow"
-    line_items: []
+statements: []

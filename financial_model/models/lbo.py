@@ -1,17 +1,65 @@
 """
 LBO Model.
-Leveraged buyout with debt schedule, waterfall, IRR/MOIC.
+
+Transaction mechanics
+---------------------
+* Purchase price (enterprise value) = ``entry_multiple`` x ``entry_ebitda``. When
+  ``entry_ebitda`` is 0 the model's own first-year EBITDA is used.
+* Uses = enterprise value + transaction fees (``fees_pct``) + refinancing of the
+  target's existing term debt. Sources = new debt + sponsor equity, split by
+  ``equity_contribution``. Funded debt is allocated across Term Loan A / B,
+  subordinated and mezzanine notes in proportion to their ``*_pct`` drivers; the
+  revolver is an undrawn commitment (``revolver_pct`` of funded debt) that the
+  balance sheet plug draws on only if cash would fall below ``min_cash``.
+* The opening balance sheet is re-cut at close: old debt and paid-in capital are
+  removed, sponsor equity goes to APIC, retained earnings restart at zero and
+  goodwill is the plug.
+* Each year: interest accrues on opening balances, Term Loans A/B amortise
+  (``tla_amort`` / ``tlb_amort`` of the original principal) and ``sweep_pct`` of
+  cash above ``min_cash`` prepays Term Loan A then B.
+* Exit after ``hold_years`` (capped at the projection length) at
+  ``exit_multiple`` x EBITDA; equity = EV - net debt.
 """
 
-from dataclasses import dataclass
-from typing import Any
-import pandas as pd
-import numpy as np
+from __future__ import annotations
 
-from financial_model.models.three_statement import ThreeStatementModel
-from financial_model.core.period import Period, PeriodIndex, PeriodType
-from financial_model.core.assumptions import Assumptions, Driver
-from financial_model.core.line_item import LineItem, LineItemType, CalculationRule
+from typing import Any
+
+import pandas as pd
+
+from financial_model.core.assumptions import Assumptions
+from financial_model.core.line_item import (
+    CalculationRule,
+    Driver,
+    LineItem,
+    LineItemType,
+    lookup_value,
+    previous_value,
+)
+from financial_model.core.model import ModelResult
+from financial_model.core.period import PeriodIndex
+from financial_model.models.three_statement import BS, CF, IS, ThreeStatementModel, _dv
+
+TRANCHES: dict[str, str] = {
+    "Term Loan A": "tla",
+    "Term Loan B": "tlb",
+    "Subordinated Debt": "sub",
+    "Mezzanine Debt": "mezz",
+}
+AMORTIZING = ("Term Loan A", "Term Loan B")
+INTEREST_LINES = {
+    "Term Loan A": "TLA Interest",
+    "Term Loan B": "TLB Interest",
+    "Subordinated Debt": "Sub Interest",
+    "Mezzanine Debt": "Mezz Interest",
+}
+
+
+def _row(df: pd.DataFrame, line: str, idx: int, default: float = 0.0) -> float:
+    if line not in df.index:
+        return default
+    val = df.loc[line].iloc[idx]
+    return default if pd.isna(val) else float(val)
 
 
 class LBOModel(ThreeStatementModel):
@@ -19,10 +67,11 @@ class LBOModel(ThreeStatementModel):
     LBO model with:
     - Sources & Uses
     - Debt tranches (Term Loan A/B, Revolver, Subordinated, Mezz)
-    - Cash sweep (50/25/25 or custom)
-    - IRR and MOIC calculation
-    - Sponsor returns waterfall
+    - Mandatory amortisation and cash sweep
+    - IRR and MOIC
     """
+
+    model_type = "lbo"
 
     def __init__(
         self,
@@ -30,7 +79,7 @@ class LBOModel(ThreeStatementModel):
         periods: PeriodIndex | None = None,
         assumptions: Assumptions | None = None,
         entry_multiple: float = 10.0,
-        entry_ebitda: float = 50_000_000,
+        entry_ebitda: float | None = None,
         equity_contribution: float = 0.40,
         tla_pct: float = 0.30,
         tla_rate: float = 0.065,
@@ -47,6 +96,7 @@ class LBOModel(ThreeStatementModel):
         sweep_pct: float = 0.50,
         exit_multiple: float = 11.0,
         hold_years: int = 5,
+        fees_pct: float = 0.02,
     ):
         super().__init__(name=name, periods=periods, assumptions=assumptions)
         self.entry_multiple = entry_multiple
@@ -67,231 +117,424 @@ class LBOModel(ThreeStatementModel):
         self.sweep_pct = sweep_pct
         self.exit_multiple = exit_multiple
         self.hold_years = hold_years
+        self.fees_pct = fees_pct
+        self._ebitda0_cache: float | None = None
         self._add_lbo_assumptions()
         self._add_lbo_line_items()
 
+    # ------------------------------------------------------------------ #
+    # Assumptions
+    # ------------------------------------------------------------------ #
     def _add_lbo_assumptions(self) -> None:
-        lbo_drivers = {
-            "entry_multiple": Driver("entry_multiple", self.entry_multiple, "Entry EV/EBITDA", "x"),
-            "entry_ebitda": Driver("entry_ebitda", self.entry_ebitda, "LTM EBITDA at entry", "$"),
-            "equity_contribution": Driver("equity_contribution", self.equity_contribution, "Equity % of purchase", "%"),
-            "tla_pct": Driver("tla_pct", self.tla_pct, "Term Loan A %", "%"),
-            "tla_rate": Driver("tla_rate", self.tla_rate, "TLA interest rate", "%"),
-            "tla_amort": Driver("tla_amort", self.tla_amort, "TLA annual amortization", "%"),
-            "tlb_pct": Driver("tlb_pct", self.tlb_pct, "Term Loan B %", "%"),
-            "tlb_rate": Driver("tlb_rate", self.tlb_rate, "TLB interest rate", "%"),
-            "tlb_amort": Driver("tlb_amort", self.tlb_amort, "TLB annual amortization", "%"),
-            "revolver_pct": Driver("revolver_pct", self.revolver_pct, "Revolver %", "%"),
-            "revolver_rate": Driver("revolver_rate", self.revolver_rate, "Revolver rate", "%"),
-            "sub_pct": Driver("sub_pct", self.sub_pct, "Subordinated debt %", "%"),
-            "sub_rate": Driver("sub_rate", self.sub_rate, "Sub debt rate", "%"),
-            "mezz_pct": Driver("mezz_pct", self.mezz_pct, "Mezzanine %", "%"),
-            "mezz_rate": Driver("mezz_rate", self.mezz_rate, "Mezz rate", "%"),
-            "sweep_pct": Driver("sweep_pct", self.sweep_pct, "Cash sweep %", "%"),
-            "exit_multiple": Driver("exit_multiple", self.exit_multiple, "Exit EV/EBITDA", "x"),
-            "hold_years": Driver("hold_years", self.hold_years, "Hold period", "years"),
-        }
-        for name, driver in lbo_drivers.items():
+        lbo_drivers = [
+            Driver("entry_multiple", self.entry_multiple, "Entry EV/EBITDA", "x"),
+            Driver(
+                "entry_ebitda", self.entry_ebitda or 0.0, "LTM EBITDA at entry (0 = model's first-year EBITDA)", "$"
+            ),
+            Driver("equity_contribution", self.equity_contribution, "Sponsor equity % of total uses", "%"),
+            Driver("fees_pct", self.fees_pct, "Transaction fees % of EV", "%"),
+            Driver("tla_pct", self.tla_pct, "Term Loan A % of funded debt", "%"),
+            Driver("tla_rate", self.tla_rate, "TLA interest rate", "%"),
+            Driver("tla_amort", self.tla_amort, "TLA annual amortisation % of original principal", "%"),
+            Driver("tlb_pct", self.tlb_pct, "Term Loan B % of funded debt", "%"),
+            Driver("tlb_rate", self.tlb_rate, "TLB interest rate", "%"),
+            Driver("tlb_amort", self.tlb_amort, "TLB annual amortisation % of original principal", "%"),
+            Driver("revolver_pct", self.revolver_pct, "Revolver commitment % of funded debt (undrawn at close)", "%"),
+            Driver("revolver_rate", self.revolver_rate, "Revolver rate", "%"),
+            Driver("sub_pct", self.sub_pct, "Subordinated debt % of funded debt", "%"),
+            Driver("sub_rate", self.sub_rate, "Sub debt rate", "%"),
+            Driver("mezz_pct", self.mezz_pct, "Mezzanine % of funded debt", "%"),
+            Driver("mezz_rate", self.mezz_rate, "Mezz rate", "%"),
+            Driver("sweep_pct", self.sweep_pct, "Cash sweep % of excess cash", "%"),
+            Driver("exit_multiple", self.exit_multiple, "Exit EV/EBITDA", "x"),
+            Driver("hold_years", self.hold_years, "Hold period", "years"),
+        ]
+        for driver in lbo_drivers:
             self.assumptions.set_driver(driver)
 
+    # ------------------------------------------------------------------ #
+    # Deal maths
+    # ------------------------------------------------------------------ #
+    def _driver_implied_ebitda(self, drivers: dict[str, Driver]) -> float:
+        """First-year EBITDA implied by the standard driver set (used before any statements exist)."""
+        revenue = _dv(drivers, "revenue", 0)
+        margin = 1 - sum(abs(_dv(drivers, name, 0)) for name in ("cogs_pct", "rd_pct", "sm_pct", "gna_pct"))
+        return revenue * margin - abs(_dv(drivers, "sbc", 0))
+
+    def entry_ebitda_value(self, drivers: dict[str, Driver], df: pd.DataFrame | None = None) -> float:
+        """EBITDA used for the entry valuation (driver, else first-year model EBITDA)."""
+        explicit = _dv(drivers, "entry_ebitda", 0)
+        if explicit > 0:
+            return explicit
+        if df is not None:
+            ebit = lookup_value(df, "Operating Income", 0, statement=IS)
+            dna = abs(lookup_value(df, "Depreciation & Amortization", 0, statement=IS))
+            if ebit != 0 or dna != 0:
+                self._ebitda0_cache = ebit + dna
+        if self._ebitda0_cache is not None:
+            return self._ebitda0_cache
+        return self._driver_implied_ebitda(drivers)
+
+    def deal(self, drivers: dict[str, Driver], df: pd.DataFrame | None = None) -> dict[str, Any]:
+        """Sources & uses and opening tranche balances."""
+        ebitda0 = self.entry_ebitda_value(drivers, df)
+        if ebitda0 <= 0:
+            raise ValueError(
+                f"LBO entry EBITDA must be positive (got {ebitda0:,.0f}). Set the 'entry_ebitda' driver "
+                "or use operating assumptions that are profitable in the first projected year."
+            )
+        entry_ev = _dv(drivers, "entry_multiple", 0) * ebitda0
+        fees = entry_ev * abs(_dv(drivers, "fees_pct", 0))
+        refinanced = _dv(drivers, "long_term_debt", 0) + _dv(drivers, "current_debt", 0)
+        total_uses = entry_ev + fees + refinanced
+        equity_pct = min(max(_dv(drivers, "equity_contribution", 0), 0.0), 1.0)
+        equity = total_uses * equity_pct
+        debt = total_uses - equity
+
+        weights = {name: abs(_dv(drivers, f"{key}_pct", 0)) for name, key in TRANCHES.items()}
+        weight_sum = sum(weights.values())
+        inits = {name: (debt * w / weight_sum if weight_sum > 0 else 0.0) for name, w in weights.items()}
+        revolver_commitment = debt * abs(_dv(drivers, "revolver_pct", 0))
+
+        opening_assets = (
+            _dv(drivers, "beginning_cash", 0) + _dv(drivers, "ppe_gross", 0) + _dv(drivers, "intangibles", 0)
+        )
+        goodwill = total_uses + _dv(drivers, "dlt", 0) - opening_assets
+
+        return {
+            "ebitda0": ebitda0,
+            "entry_ev": entry_ev,
+            "fees": fees,
+            "refinanced_debt": refinanced,
+            "total_uses": total_uses,
+            "equity": equity,
+            "debt": debt,
+            "tranches": inits,
+            "revolver_commitment": revolver_commitment,
+            "goodwill": goodwill,
+        }
+
+    # Opening balance sheet is re-cut at close -------------------------- #
+    def opening_balance(self, line: str, drivers: dict[str, Driver], df: pd.DataFrame | None = None) -> float:
+        if line in ("Long-Term Debt", "Current Portion of Long-Term Debt", "Common Stock"):
+            return 0.0
+        if line in TRANCHES:
+            return self.deal(drivers, df)["tranches"][line]
+        if line == "Additional Paid-In Capital":
+            return self.deal(drivers, df)["equity"]
+        if line == "Goodwill":
+            return self.deal(drivers, df)["goodwill"]
+        return super().opening_balance(line, drivers)
+
+    def opening_retained_earnings(self, drivers: dict[str, Driver]) -> float:  # noqa: ARG002
+        return 0.0
+
+    def _delta(self, df: pd.DataFrame, line: str, idx: int, drivers: dict[str, Driver], statement: str = BS) -> float:
+        current = lookup_value(df, line, idx, statement=statement)
+        prev = previous_value(df, line, idx, opening=self.opening_balance(line, drivers, df), statement=statement)
+        return current - prev
+
+    # ------------------------------------------------------------------ #
+    # Debt schedule
+    # ------------------------------------------------------------------ #
+    def _opening_tranche(self, df: pd.DataFrame, name: str, idx: int, drivers: dict[str, Driver]) -> float:
+        return previous_value(df, name, idx, opening=self.opening_balance(name, drivers, df), statement=BS)
+
+    def debt_schedule_for_period(self, df: pd.DataFrame, idx: int, drivers: dict[str, Driver]) -> dict[str, Any]:
+        """Interest, mandatory amortisation, sweep and closing balance for every tranche in period ``idx``."""
+        deal = self.deal(drivers, df)
+        schedule: dict[str, Any] = {}
+        mandatory_total = 0.0
+        for name, key in TRANCHES.items():
+            opening = self._opening_tranche(df, name, idx, drivers)
+            amort = 0.0
+            if name in AMORTIZING:
+                amort = min(opening, deal["tranches"][name] * abs(_dv(drivers, f"{key}_amort", idx)))
+            schedule[name] = {
+                "opening": opening,
+                "interest": opening * abs(_dv(drivers, f"{key}_rate", idx)),
+                "amort": amort,
+                "sweep": 0.0,
+                "closing": opening - amort,
+            }
+            mandatory_total += amort
+
+        # Cash available for the sweep: prior cash + flows before optional debt service
+        prior_cash = previous_value(
+            df, "Cash & Cash Equivalents", idx, opening=_dv(drivers, "beginning_cash", 0), statement=BS
+        )
+        ni = lookup_value(df, "Net Income", idx, statement=IS)
+        dna = abs(lookup_value(df, "Depreciation & Amortization", idx, statement=IS))
+        sbc = abs(lookup_value(df, "Stock-Based Compensation", idx, statement=IS))
+        wc = (
+            -self._delta(df, "Accounts Receivable", idx, drivers)
+            - self._delta(df, "Inventory", idx, drivers)
+            - self._delta(df, "Prepaid Expenses", idx, drivers)
+            + self._delta(df, "Accounts Payable", idx, drivers)
+            + self._delta(df, "Accrued Expenses", idx, drivers)
+            + self._delta(df, "Deferred Revenue", idx, drivers)
+            - (
+                _dv(drivers, "intangibles", idx)
+                - (_dv(drivers, "intangibles", idx - 1) if idx > 0 else _dv(drivers, "intangibles", 0))
+            )
+            + (_dv(drivers, "dlt", idx) - (_dv(drivers, "dlt", idx - 1) if idx > 0 else _dv(drivers, "dlt", 0)))
+        )
+        investing = -abs(_dv(drivers, "capex", idx)) - abs(_dv(drivers, "acquisitions", idx))
+        other_financing = _dv(drivers, "equity_issuance", idx) - abs(_dv(drivers, "dividends", idx))
+        cash_before_sweep = prior_cash + ni + dna + sbc + wc + investing + other_financing - mandatory_total
+        excess = max(0.0, cash_before_sweep - _dv(drivers, "min_cash", idx))
+        sweep_available = excess * min(max(_dv(drivers, "sweep_pct", idx), 0.0), 1.0)
+
+        for name in AMORTIZING:
+            tranche = schedule[name]
+            sweep = min(sweep_available, max(0.0, tranche["closing"]))
+            tranche["sweep"] = sweep
+            tranche["closing"] -= sweep
+            sweep_available -= sweep
+
+        schedule["_cash_before_sweep"] = cash_before_sweep
+        schedule["_mandatory_total"] = mandatory_total
+        schedule["_sweep_total"] = sum(schedule[n]["sweep"] for n in TRANCHES)
+        return schedule
+
+    # ------------------------------------------------------------------ #
+    # Line items
+    # ------------------------------------------------------------------ #
     def _add_lbo_line_items(self) -> None:
-        """Add LBO-specific line items to statements."""
-        # Compute initial debt amounts from sources/uses
-        entry_ev = self.assumptions.get_value("entry_multiple", 0) * self.assumptions.get_value("entry_ebitda", 0)
-        equity_pct = self.assumptions.get_value("equity_contribution", 0)
-        debt_amt = entry_ev * (1 - equity_pct)
+        """Add LBO-specific line items to the three statements."""
 
-        tla_init = debt_amt * self.assumptions.get_value("tla_pct", 0)
-        tlb_init = debt_amt * self.assumptions.get_value("tlb_pct", 0)
-        sub_init = debt_amt * self.assumptions.get_value("sub_pct", 0)
-        mezz_init = debt_amt * self.assumptions.get_value("mezz_pct", 0)
+        def tranche_balance(name: str) -> Any:
+            return lambda df, idx, drivers: self.debt_schedule_for_period(df, idx, drivers)[name]["closing"]
 
-        import pandas as pd
+        def tranche_interest(name: str, key: str) -> Any:
+            return lambda df, idx, drivers: (
+                -self._opening_tranche(df, name, idx, drivers) * abs(_dv(drivers, f"{key}_rate", idx))
+            )
 
-        def _get_prev_balance(df, line_name, idx, default=0):
-            """Helper to get previous period balance from MultiIndex or simple index."""
-            if idx == 0:
-                return default
-            try:
-                if isinstance(df.index, pd.MultiIndex):
-                    for stmt in df.index.get_level_values(0).unique():
-                        try:
-                            val = df.loc[(stmt, line_name)].iloc[idx - 1]
-                            if pd.notna(val):
-                                return val
-                        except KeyError:
-                            continue
-                else:
-                    if line_name in df.index:
-                        return df.loc[line_name].iloc[idx - 1]
-            except (KeyError, IndexError):
-                pass
-            return default
+        order = 165
+        for name, key in TRANCHES.items():
+            self.add_balance_sheet_item(
+                LineItem(
+                    name,
+                    LineItemType.CALCULATED,
+                    BS,
+                    order=order,
+                    unit="$",
+                    calculation_rule=CalculationRule.CUSTOM,
+                    custom_formula=tranche_balance(name),
+                    description=f"{name} balance (opening - amortisation - sweep)",
+                )
+            )
+            order += 1
+            self.add_income_statement_item(
+                LineItem(
+                    INTEREST_LINES[name],
+                    LineItemType.CALCULATED,
+                    IS,
+                    order=62 + list(TRANCHES).index(name),
+                    unit="$",
+                    calculation_rule=CalculationRule.CUSTOM,
+                    custom_formula=tranche_interest(name, key),
+                    description=f"{name} interest on opening balance",
+                )
+            )
 
-        def _get_current_balance(df, line_name, idx, default=0):
-            """Helper to get current period balance from MultiIndex or simple index."""
-            try:
-                if isinstance(df.index, pd.MultiIndex):
-                    for stmt in df.index.get_level_values(0).unique():
-                        try:
-                            val = df.loc[(stmt, line_name)].iloc[idx]
-                            if pd.notna(val):
-                                return val
-                        except KeyError:
-                            continue
-                else:
-                    if line_name in df.index:
-                        return df.loc[line_name].iloc[idx]
-            except (KeyError, IndexError):
-                pass
-            return default
+        self.add_income_statement_item(
+            LineItem(
+                "Revolver Interest",
+                LineItemType.CALCULATED,
+                IS,
+                order=66,
+                unit="$",
+                calculation_rule=CalculationRule.CUSTOM,
+                custom_formula=lambda df, idx, drivers: (
+                    -previous_value(df, "Revolver", idx, opening=0.0, statement=BS)
+                    * abs(_dv(drivers, "revolver_rate", idx))
+                ),
+                description="Revolver interest on opening balance",
+            )
+        )
+        # Total interest now sums the tranche lines (replaces the input-driven line)
+        self.add_income_statement_item(
+            LineItem(
+                "Interest Expense",
+                LineItemType.CALCULATED,
+                IS,
+                order=67,
+                unit="$",
+                calculation_rule=CalculationRule.SUM_CHILDREN,
+                children=[*INTEREST_LINES.values(), "Revolver Interest"],
+                is_total=True,
+                description="Total interest expense",
+            )
+        )
 
-        # Add debt tranches to BS
-        debt_items = [
-            LineItem("Term Loan A", LineItemType.CALCULATED, "balance_sheet", order=165, unit="$",
-                     calculation_rule=CalculationRule.CUSTOM,
-                     custom_formula=lambda df, idx, tla_init=tla_init: max(0, _get_prev_balance(df, "Term Loan A", idx)
-                                                        - _get_current_balance(df, "TLA Principal Payment", idx)
-                                                        - _get_current_balance(df, "TLA Sweep Payment", idx))
-                                                    if _get_current_balance(df, "Term Loan A", idx) != 0 or idx > 0
-                                                    else tla_init,
-                     description="Term Loan A balance"),
-            LineItem("Term Loan B", LineItemType.CALCULATED, "balance_sheet", order=166, unit="$",
-                     calculation_rule=CalculationRule.CUSTOM,
-                     custom_formula=lambda df, idx, tlb_init=tlb_init: max(0, _get_prev_balance(df, "Term Loan B", idx)
-                                                        - _get_current_balance(df, "TLB Principal Payment", idx)
-                                                        - _get_current_balance(df, "TLB Sweep Payment", idx))
-                                                    if _get_current_balance(df, "Term Loan B", idx) != 0 or idx > 0
-                                                    else tlb_init,
-                     description="Term Loan B balance"),
-            LineItem("Subordinated Debt", LineItemType.CALCULATED, "balance_sheet", order=167, unit="$",
-                     calculation_rule=CalculationRule.CUSTOM,
-                     custom_formula=lambda df, idx, sub_init=sub_init: _get_prev_balance(df, "Subordinated Debt", idx)
-                                                    if _get_current_balance(df, "Subordinated Debt", idx) != 0 or idx > 0
-                                                    else sub_init,
-                     description="Sub debt balance"),
-            LineItem("Mezzanine Debt", LineItemType.CALCULATED, "balance_sheet", order=168, unit="$",
-                     calculation_rule=CalculationRule.CUSTOM,
-                     custom_formula=lambda df, idx, mezz_init=mezz_init: _get_prev_balance(df, "Mezzanine Debt", idx)
-                                                    if _get_current_balance(df, "Mezzanine Debt", idx) != 0 or idx > 0
-                                                    else mezz_init,
-                     description="Mezzanine balance"),
-        ]
-        for item in debt_items:
-            self.add_balance_sheet_item(item)
+        total_liabilities = self.balance_sheet.get_line_item("Total Liabilities")
+        if total_liabilities is not None:
+            for name in TRANCHES:
+                if name not in total_liabilities.children:
+                    total_liabilities.children.append(name)
 
-        # Add interest expense breakdown to IS
-        interest_items = [
-            LineItem("TLA Interest", LineItemType.CALCULATED, "income_statement", order=62, unit="$",
-                     calculation_rule=CalculationRule.CUSTOM,
-                     custom_formula=lambda df, idx: (df.loc["Term Loan A"].iloc[idx-1] if idx > 0 else 0)
-                                                    * df.assumptions.get_value("tla_rate", idx)
-                                                    if hasattr(df, 'assumptions') else 0,
-                     description="TLA interest"),
-            LineItem("TLB Interest", LineItemType.CALCULATED, "income_statement", order=63, unit="$",
-                     calculation_rule=CalculationRule.CUSTOM,
-                     custom_formula=lambda df, idx: (df.loc["Term Loan B"].iloc[idx-1] if idx > 0 else 0)
-                                                    * df.assumptions.get_value("tlb_rate", idx)
-                                                    if hasattr(df, 'assumptions') else 0,
-                     description="TLB interest"),
-            LineItem("Revolver Interest", LineItemType.CALCULATED, "income_statement", order=64, unit="$",
-                     calculation_rule=CalculationRule.CUSTOM,
-                     custom_formula=lambda df, idx: (df.loc["Revolver"].iloc[idx-1] if idx > 0 else 0)
-                                                    * df.assumptions.get_value("revolver_rate", idx)
-                                                    if hasattr(df, 'assumptions') else 0,
-                     description="Revolver interest"),
-            LineItem("Sub Interest", LineItemType.CALCULATED, "income_statement", order=65, unit="$",
-                     calculation_rule=CalculationRule.CUSTOM,
-                     custom_formula=lambda df, idx: (df.loc["Subordinated Debt"].iloc[idx-1] if idx > 0 else 0)
-                                                    * df.assumptions.get_value("sub_rate", idx)
-                                                    if hasattr(df, 'assumptions') else 0,
-                     description="Sub debt interest"),
-            LineItem("Mezz Interest", LineItemType.CALCULATED, "income_statement", order=66, unit="$",
-                     calculation_rule=CalculationRule.CUSTOM,
-                     custom_formula=lambda df, idx: (df.loc["Mezzanine Debt"].iloc[idx-1] if idx > 0 else 0)
-                                                    * df.assumptions.get_value("mezz_rate", idx)
-                                                    if hasattr(df, 'assumptions') else 0,
-                     description="Mezz interest"),
-        ]
-        for item in interest_items:
-            self.add_income_statement_item(item)
+        def mandatory_amort(df: pd.DataFrame, idx: int, drivers: dict[str, Driver]) -> float:
+            return -self.debt_schedule_for_period(df, idx, drivers)["_mandatory_total"]
 
-    def sources_uses(self) -> pd.DataFrame:
-        """Calculate Sources & Uses table."""
-        entry_ev = self.assumptions.get_value("entry_multiple", 0) * self.assumptions.get_value("entry_ebitda", 0)
-        equity_pct = self.assumptions.get_value("equity_contribution", 0)
-        equity_amt = entry_ev * equity_pct
-        debt_amt = entry_ev * (1 - equity_pct)
+        def sweep_repayment(df: pd.DataFrame, idx: int, drivers: dict[str, Driver]) -> float:
+            # Residual of the balance-sheet movement so the cash flow ties exactly
+            total_change = sum(self._delta(df, name, idx, drivers) for name in TRANCHES)
+            return total_change + self.debt_schedule_for_period(df, idx, drivers)["_mandatory_total"]
 
-        tla = debt_amt * self.assumptions.get_value("tla_pct", 0)
-        tlb = debt_amt * self.assumptions.get_value("tlb_pct", 0)
-        revolver = debt_amt * self.assumptions.get_value("revolver_pct", 0)
-        sub = debt_amt * self.assumptions.get_value("sub_pct", 0)
-        mezz = debt_amt * self.assumptions.get_value("mezz_pct", 0)
+        self.add_cash_flow_item(
+            LineItem(
+                "Mandatory Debt Amortization",
+                LineItemType.CALCULATED,
+                CF,
+                order=102,
+                unit="$",
+                calculation_rule=CalculationRule.CUSTOM,
+                custom_formula=mandatory_amort,
+                description="Scheduled Term Loan A/B amortisation",
+            )
+        )
+        self.add_cash_flow_item(
+            LineItem(
+                "Cash Sweep Repayment",
+                LineItemType.CALCULATED,
+                CF,
+                order=103,
+                unit="$",
+                calculation_rule=CalculationRule.CUSTOM,
+                custom_formula=sweep_repayment,
+                description="Optional prepayment from excess cash",
+            )
+        )
+        financing = self.cash_flow.get_line_item("Financing Cash Flow")
+        if financing is not None:
+            for name in ("Mandatory Debt Amortization", "Cash Sweep Repayment"):
+                if name not in financing.children:
+                    financing.children.append(name)
 
-        fees = entry_ev * 0.02  # 2% fees
+    # ------------------------------------------------------------------ #
+    # Outputs
+    # ------------------------------------------------------------------ #
+    def _drivers_for(self, result: ModelResult | None) -> dict[str, Driver]:
+        if result is not None and result.drivers:
+            return result.drivers
+        return self.assumptions.effective_drivers()
 
-        sources = pd.DataFrame({
-            "Source": ["Term Loan A", "Term Loan B", "Revolver", "Subordinated Debt", "Mezzanine", "Sponsor Equity"],
-            "Amount": [tla, tlb, revolver, sub, mezz, equity_amt],
-            "% of Total": [tla/entry_ev, tlb/entry_ev, revolver/entry_ev, sub/entry_ev, mezz/entry_ev, equity_amt/entry_ev],
-        })
+    def sources_uses(self, result: ModelResult | None = None) -> dict[str, Any]:
+        """Sources & Uses tables (runs the model first if entry EBITDA must be derived)."""
+        drivers = self._drivers_for(result)
+        if _dv(drivers, "entry_ebitda", 0) <= 0 and result is None and self._ebitda0_cache is None:
+            result = self.calculate()
+            drivers = result.drivers
+        df = None
+        if result is not None:
+            df = self._combine(result.income_statement, result.balance_sheet, result.cash_flow)
+        deal = self.deal(drivers, df)
+        total = deal["total_uses"] or 1.0
 
-        uses = pd.DataFrame({
-            "Use": ["Enterprise Value", "Transaction Fees", "Refinancing Existing Debt"],
-            "Amount": [entry_ev, fees, 0],
-            "% of Total": [entry_ev/(entry_ev+fees), fees/(entry_ev+fees), 0],
-        })
+        sources = pd.DataFrame(
+            {
+                "Source": [*TRANCHES.keys(), "Revolver (undrawn)", "Sponsor Equity"],
+                "Amount": [*(deal["tranches"][n] for n in TRANCHES), 0.0, deal["equity"]],
+                "Commitment": [*(deal["tranches"][n] for n in TRANCHES), deal["revolver_commitment"], deal["equity"]],
+            }
+        )
+        sources["% of Total"] = sources["Amount"] / total
+        uses = pd.DataFrame(
+            {
+                "Use": ["Enterprise Value", "Transaction Fees", "Refinancing Existing Debt"],
+                "Amount": [deal["entry_ev"], deal["fees"], deal["refinanced_debt"]],
+            }
+        )
+        uses["% of Total"] = uses["Amount"] / total
 
-        return {"sources": sources, "uses": uses, "entry_ev": entry_ev, "equity_amt": equity_amt}
+        return {
+            "sources": sources,
+            "uses": uses,
+            "entry_ev": deal["entry_ev"],
+            "entry_ebitda": deal["ebitda0"],
+            "fees": deal["fees"],
+            "total_uses": deal["total_uses"],
+            "equity_amt": deal["equity"],
+            "debt_amt": deal["debt"],
+            "goodwill": deal["goodwill"],
+        }
 
-    def calculate_returns(self, result: Any = None) -> dict[str, Any]:
-        """Calculate IRR, MOIC, and sponsor returns."""
+    def debt_schedule(self, result: ModelResult | None = None) -> pd.DataFrame:
+        """Per-period tranche balances, interest and repayments as a table."""
+        result = result or self.calculate()
+        bs, is_, cf = result.balance_sheet, result.income_statement, result.cash_flow
+        rows = []
+        for i, period in enumerate(result.periods):
+            row: dict[str, Any] = {"period": period.label}
+            for name in TRANCHES:
+                row[f"{name}"] = _row(bs, name, i)
+                row[f"{INTEREST_LINES[name]}"] = _row(is_, INTEREST_LINES[name], i)
+            row["Revolver"] = _row(bs, "Revolver", i)
+            row["Mandatory Debt Amortization"] = _row(cf, "Mandatory Debt Amortization", i)
+            row["Cash Sweep Repayment"] = _row(cf, "Cash Sweep Repayment", i)
+            row["Total Debt"] = sum(_row(bs, n, i) for n in TRANCHES) + _row(bs, "Revolver", i)
+            row["Cash"] = _row(bs, "Cash & Cash Equivalents", i)
+            rows.append(row)
+        return pd.DataFrame(rows).set_index("period")
+
+    def calculate_returns(self, result: ModelResult | None = None) -> dict[str, Any]:
+        """Calculate sponsor IRR, MOIC and the exit bridge."""
         if result is None:
             result = self.calculate()
 
         bs_data = result.balance_sheet
         is_data = result.income_statement
-        periods = result.periods
-
-        su = self.sources_uses()
+        drivers = self._drivers_for(result)
+        su = self.sources_uses(result)
         equity_invested = su["equity_amt"]
 
-        # Exit EBITDA (last projected year)
-        exit_ebitda = is_data.loc["Operating Income"].iloc[-1]
-        if "Depreciation & Amortization" in is_data.index:
-            exit_ebitda += is_data.loc["Depreciation & Amortization"].iloc[-1]
+        n_periods = len(result.periods)
+        hold_years = int(_dv(drivers, "hold_years", 0)) or n_periods
+        exit_idx = max(0, min(hold_years, n_periods) - 1)
+        years_held = exit_idx + 1
 
-        exit_mult = self.assumptions.get_value("exit_multiple", 0)
+        exit_ebitda = _row(is_data, "Operating Income", exit_idx) + abs(
+            _row(is_data, "Depreciation & Amortization", exit_idx)
+        )
+        exit_mult = _dv(drivers, "exit_multiple", exit_idx)
         exit_ev = exit_ebitda * exit_mult
 
-        # Net debt at exit
-        cash = bs_data.loc["Cash & Cash Equivalents"].iloc[-1] if "Cash & Cash Equivalents" in bs_data.index else 0
-        tla = bs_data.loc["Term Loan A"].iloc[-1] if "Term Loan A" in bs_data.index else 0
-        tlb = bs_data.loc["Term Loan B"].iloc[-1] if "Term Loan B" in bs_data.index else 0
-        revolver = bs_data.loc["Revolver"].iloc[-1] if "Revolver" in bs_data.index else 0
-        sub = bs_data.loc["Subordinated Debt"].iloc[-1] if "Subordinated Debt" in bs_data.index else 0
-        mezz = bs_data.loc["Mezzanine Debt"].iloc[-1] if "Mezzanine Debt" in bs_data.index else 0
-
-        net_debt = tla + tlb + revolver + sub + mezz - cash
+        cash = _row(bs_data, "Cash & Cash Equivalents", exit_idx)
+        debt = sum(_row(bs_data, n, exit_idx) for n in TRANCHES) + _row(bs_data, "Revolver", exit_idx)
+        debt += _row(bs_data, "Long-Term Debt", exit_idx) + _row(bs_data, "Current Portion of Long-Term Debt", exit_idx)
+        net_debt = debt - cash
         equity_value = exit_ev - net_debt
 
-        # MOIC
-        moic = equity_value / equity_invested if equity_invested > 0 else 0
-
-        # IRR (approximate)
-        hold_years = int(self.assumptions.get_value("hold_years", 0))
-        irr = moic ** (1 / hold_years) - 1 if hold_years > 0 and moic > 0 else 0
+        moic = equity_value / equity_invested if equity_invested > 0 else 0.0
+        irr = moic ** (1 / years_held) - 1 if moic > 0 and years_held > 0 else -1.0 if equity_invested > 0 else 0.0
 
         return {
+            "entry_ebitda": su["entry_ebitda"],
             "entry_ev": su["entry_ev"],
+            "total_uses": su["total_uses"],
             "equity_invested": equity_invested,
+            "debt_raised": su["debt_amt"],
+            "exit_period": result.periods[exit_idx].label,
             "exit_ebitda": exit_ebitda,
             "exit_multiple": exit_mult,
             "exit_ev": exit_ev,
+            "debt_at_exit": debt,
+            "cash_at_exit": cash,
             "net_debt_at_exit": net_debt,
             "equity_value_at_exit": equity_value,
             "moic": moic,
             "irr": irr,
-            "hold_years": hold_years,
+            "hold_years": years_held,
+        }
+
+    def analysis_tables(self, result: ModelResult) -> dict[str, Any]:
+        """Sponsor returns, sources & uses and the tranche-level debt schedule."""
+        su = self.sources_uses(result)
+        return {
+            "LBO Returns": self.calculate_returns(result),
+            "Sources": su["sources"].set_index("Source"),
+            "Uses": su["uses"].set_index("Use"),
+            "Debt Schedule": self.debt_schedule(result),
         }

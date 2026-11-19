@@ -2,17 +2,15 @@
 Core engine tests: period, line items, statements, balancing.
 """
 
-import pytest
 import pandas as pd
-import numpy as np
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
-from financial_model.core.period import Period, PeriodIndex, PeriodType
-from financial_model.core.line_item import LineItem, LineItemType, CalculationRule, Driver
-from financial_model.core.statement import Statement, StatementType
 from financial_model.core.assumptions import Assumptions
-from financial_model.core.balancer import BalanceSheetBalancer, CashFlowBalancer
-from financial_model.core.model import FinancialModel
+from financial_model.core.balancer import BalanceSheetBalancer
+from financial_model.core.line_item import CalculationRule, Driver, LineItem, LineItemType
+from financial_model.core.period import Period, PeriodIndex, PeriodType
+from financial_model.core.statement import Statement, StatementType
 
 
 class TestPeriod:
@@ -53,11 +51,13 @@ class TestPeriod:
 
 class TestPeriodIndex:
     def test_period_index_creation(self):
-        periods = PeriodIndex([
-            Period(year=2020, period_type=PeriodType.ANNUAL),
-            Period(year=2021, period_type=PeriodType.ANNUAL),
-            Period(year=2022, period_type=PeriodType.ANNUAL),
-        ])
+        periods = PeriodIndex(
+            [
+                Period(year=2020, period_type=PeriodType.ANNUAL),
+                Period(year=2021, period_type=PeriodType.ANNUAL),
+                Period(year=2022, period_type=PeriodType.ANNUAL),
+            ]
+        )
         assert len(periods) == 3
 
     def test_period_index_labels(self):
@@ -83,10 +83,14 @@ class TestLineItem:
 
     def test_pct_of_revenue(self):
         driver = Driver("cogs_pct", 0.3, "COGS %", "%")
-        item = LineItem("COGS", LineItemType.CALCULATED, "income_statement",
-                        calculation_rule=CalculationRule.PCT_OF_REVENUE,
-                        calculation_params={"driver": "cogs_pct"},
-                        driver=driver)
+        item = LineItem(
+            "COGS",
+            LineItemType.CALCULATED,
+            "income_statement",
+            calculation_rule=CalculationRule.PCT_OF_REVENUE,
+            calculation_params={"driver": "cogs_pct"},
+            driver=driver,
+        )
         df = pd.DataFrame(index=["Revenue", "COGS"], columns=[0, 1, 2], dtype=float)
         df.loc["Revenue"] = [100, 110, 121]
         assumptions = {"cogs_pct": driver}
@@ -95,10 +99,14 @@ class TestLineItem:
 
     def test_growth_rate(self):
         driver = Driver("growth", 0.1, "Growth", "%")
-        item = LineItem("Revenue", LineItemType.CALCULATED, "income_statement",
-                        calculation_rule=CalculationRule.GROWTH_RATE,
-                        calculation_params={"driver": "growth"},
-                        driver=driver)
+        item = LineItem(
+            "Revenue",
+            LineItemType.CALCULATED,
+            "income_statement",
+            calculation_rule=CalculationRule.GROWTH_RATE,
+            calculation_params={"driver": "growth"},
+            driver=driver,
+        )
         # Create MultiIndex DataFrame like the model uses
         df = pd.DataFrame(index=["Revenue"], columns=[0, 1, 2], dtype=float)
         df.loc["Revenue", 0] = 100
@@ -116,10 +124,14 @@ class TestLineItem:
 
     def test_days_outstanding(self):
         driver = Driver("ar_days", 45, "AR Days", "days")
-        item = LineItem("AR", LineItemType.CALCULATED, "balance_sheet",
-                        calculation_rule=CalculationRule.DAYS_OUTSTANDING,
-                        calculation_params={"driver": "ar_days", "base_line": "Revenue"},
-                        driver=driver)
+        item = LineItem(
+            "AR",
+            LineItemType.CALCULATED,
+            "balance_sheet",
+            calculation_rule=CalculationRule.DAYS_OUTSTANDING,
+            calculation_params={"driver": "ar_days", "base_line": "Revenue"},
+            driver=driver,
+        )
         df = pd.DataFrame(index=["Revenue", "AR"], columns=[0], dtype=float)
         df.loc["Revenue"] = 365_000_000
         assumptions = {"ar_days": driver}
@@ -178,20 +190,24 @@ class TestBalancer:
         periods = PeriodIndex([Period(year=2020 + i, period_type=PeriodType.ANNUAL) for i in range(3)])
         cols = periods.to_dataframe_index()
 
-        bs = pd.DataFrame(index=[
-            "Cash & Cash Equivalents",
-            "Accounts Receivable",
-            "Total Current Assets",
-            "Property Plant & Equipment, Net",
-            "Total Assets",
-            "Accounts Payable",
-            "Total Current Liabilities",
-            "Long-Term Debt",
-            "Total Liabilities",
-            "Common Stock",
-            "Retained Earnings",
-            "Total Equity",
-        ], columns=cols, dtype=float)
+        bs = pd.DataFrame(
+            index=[
+                "Cash & Cash Equivalents",
+                "Accounts Receivable",
+                "Total Current Assets",
+                "Property Plant & Equipment, Net",
+                "Total Assets",
+                "Accounts Payable",
+                "Total Current Liabilities",
+                "Long-Term Debt",
+                "Total Liabilities",
+                "Common Stock",
+                "Retained Earnings",
+                "Total Equity",
+            ],
+            columns=cols,
+            dtype=float,
+        )
 
         # Set up simple BS
         bs.loc["Accounts Receivable"] = [100, 110, 121]
@@ -215,14 +231,24 @@ class TestBalancer:
         assert result.balanced
         # Assets should equal L+E
         for i in range(3):
-            assets = bs.loc["Cash & Cash Equivalents"].iloc[i] + bs.loc["Accounts Receivable"].iloc[i] + bs.loc["Property Plant & Equipment, Net"].iloc[i]
-            le = bs.loc["Accounts Payable"].iloc[i] + bs.loc["Long-Term Debt"].iloc[i] + bs.loc["Common Stock"].iloc[i] + bs.loc["Retained Earnings"].iloc[i]
+            assets = (
+                bs.loc["Cash & Cash Equivalents"].iloc[i]
+                + bs.loc["Accounts Receivable"].iloc[i]
+                + bs.loc["Property Plant & Equipment, Net"].iloc[i]
+            )
+            le = (
+                bs.loc["Accounts Payable"].iloc[i]
+                + bs.loc["Long-Term Debt"].iloc[i]
+                + bs.loc["Common Stock"].iloc[i]
+                + bs.loc["Retained Earnings"].iloc[i]
+            )
             assert abs(assets - le) < 0.01
 
 
 class TestFinancialModel:
     def test_three_statement_model_creation(self):
         from financial_model.models.three_statement import ThreeStatementModel
+
         model = ThreeStatementModel()
         periods = PeriodIndex([Period(year=2020 + i, period_type=PeriodType.ANNUAL) for i in range(3)])
         model.set_periods(periods)
@@ -234,6 +260,7 @@ class TestFinancialModel:
 
     def test_model_calculation_runs(self):
         from financial_model.models.three_statement import ThreeStatementModel
+
         model = ThreeStatementModel()
         periods = PeriodIndex([Period(year=2020 + i, period_type=PeriodType.ANNUAL) for i in range(3)])
         model.set_periods(periods)

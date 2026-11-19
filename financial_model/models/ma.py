@@ -3,130 +3,255 @@ M&A Merger Model.
 Accretion/dilution, synergy analysis, pro forma combination.
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field, fields
+from pathlib import Path
 from typing import Any
+
 import pandas as pd
-import numpy as np
 
 from financial_model.models.three_statement import ThreeStatementModel
-from financial_model.core.assumptions import Assumptions, Driver
-from financial_model.core.line_item import LineItem, LineItemType
+
+
+def _row(df: pd.DataFrame, line: str, idx: int, default: float = 0.0) -> float:
+    if line not in df.index:
+        return default
+    val = df.loc[line].iloc[idx]
+    return default if pd.isna(val) else float(val)
 
 
 @dataclass
 class MergerModel:
     """
     Merger model for accretion/dilution analysis.
-    Combines acquirer and target into pro forma entity.
+    Combines acquirer and target into a pro forma entity.
+
+    Consideration is split between cash (funded with new debt at ``financing_rate``)
+    and acquirer stock (issued at ``acquirer_share_price``; when omitted the price is
+    derived from the acquirer's year-1 EPS and ``acquirer_pe``).
     """
 
     acquirer: ThreeStatementModel
     target: ThreeStatementModel
 
-    # Deal terms
     offer_price_per_share: float = 0.0
     target_shares: float = 1_000_000
     cash_consideration_pct: float = 0.50
     stock_consideration_pct: float = 0.50
-    synergies: float = 0.0  # Annual run-rate synergies
-    synergy_phase_in: list[float] = None  # % realized each year
+    synergies: float = 0.0  # Annual run-rate pre-tax synergies
+    synergy_phase_in: list[float] = field(default_factory=lambda: [0.3, 0.6, 0.8, 1.0, 1.0])
     financing_rate: float = 0.06
     tax_rate: float = 0.21
+    acquirer_shares: float = 10_000_000
+    acquirer_share_price: float | None = None
+    acquirer_pe: float = 20.0
 
-    def __post_init__(self):
+    name: str = "M&A Model"
+    model_type = "ma"
+
+    def __post_init__(self) -> None:
         if self.synergy_phase_in is None:
             self.synergy_phase_in = [0.3, 0.6, 0.8, 1.0, 1.0]
+        if abs(self.cash_consideration_pct + self.stock_consideration_pct - 1.0) > 1e-9:
+            raise ValueError("cash_consideration_pct + stock_consideration_pct must equal 1")
+        if self.target_shares < 0 or self.acquirer_shares <= 0:
+            raise ValueError("share counts must be positive")
 
-    def calculate_accretion_dilution(self) -> dict[str, Any]:
-        """Run accretion/dilution analysis."""
-        acq_result = self.acquirer.calculate()
-        tgt_result = self.target.calculate()
+    # ------------------------------------------------------------------ #
+    # Config
+    # ------------------------------------------------------------------ #
+    DEAL_FIELDS = (
+        "offer_price_per_share",
+        "target_shares",
+        "cash_consideration_pct",
+        "stock_consideration_pct",
+        "synergies",
+        "synergy_phase_in",
+        "financing_rate",
+        "tax_rate",
+        "acquirer_shares",
+        "acquirer_share_price",
+        "acquirer_pe",
+    )
 
+    @classmethod
+    def from_config(cls, config: dict[str, Any], base_dir: Path | None = None) -> MergerModel:
+        """Build a merger from a deal config.
+
+        ``acquirer`` and ``target`` are each a path to a model YAML (relative to
+        ``base_dir``) or an inline model config; ``deal`` holds the transaction terms::
+
+            model_type: ma
+            acquirer: acquirer.yaml
+            target: target.yaml
+            deal: {offer_price_per_share: 40, target_shares: 1000000, synergies: 1500000}
+        """
+        from financial_model.models.registry import build_model, normalize_model_type
+
+        base = Path(base_dir) if base_dir is not None else Path.cwd()
+        sides = {}
+        for side in ("acquirer", "target"):
+            spec = config.get(side)
+            if spec is None:
+                raise ValueError(f"M&A config needs an '{side}' model (path or inline config)")
+            if isinstance(spec, (str, Path)):
+                path = Path(spec) if Path(spec).is_absolute() else base / spec
+                sub_config, sub_base = ThreeStatementModel.load_config(path), path.parent
+            elif isinstance(spec, dict):
+                sub_config, sub_base = spec, base
+            else:
+                raise ValueError(f"'{side}' must be a path or a mapping")
+            if normalize_model_type(sub_config.get("model_type")) not in ("three-statement", "dcf", "lbo"):
+                raise ValueError(f"'{side}' must be a three-statement, dcf or lbo model")
+            sides[side] = build_model(sub_config, base_dir=sub_base)
+
+        deal = dict(config.get("deal") or {})
+        unknown = set(deal) - set(cls.DEAL_FIELDS)
+        if unknown:
+            raise ValueError(f"Unknown deal terms: {', '.join(sorted(unknown))}. Allowed: {', '.join(cls.DEAL_FIELDS)}")
+        if "cash_consideration_pct" in deal and "stock_consideration_pct" not in deal:
+            deal["stock_consideration_pct"] = 1.0 - float(deal["cash_consideration_pct"])
+        elif "stock_consideration_pct" in deal and "cash_consideration_pct" not in deal:
+            deal["cash_consideration_pct"] = 1.0 - float(deal["stock_consideration_pct"])
+        known = {f.name for f in fields(cls)}
+        return cls(
+            acquirer=sides["acquirer"],
+            target=sides["target"],
+            name=config.get("name", "M&A Model"),
+            **{k: v for k, v in deal.items() if k in known},
+        )
+
+    def _results(self, scenario: str | None) -> tuple[Any, Any]:
+        """Acquirer and target results; a scenario applies to each side that defines it."""
+
+        def run(model: ThreeStatementModel) -> Any:
+            use = scenario if scenario and scenario in model.assumptions.scenarios else None
+            return model.calculate(scenario=use)
+
+        return run(self.acquirer), run(self.target)
+
+    # ------------------------------------------------------------------ #
+    def _phase_in(self, idx: int) -> float:
+        if not self.synergy_phase_in:
+            return 1.0
+        return self.synergy_phase_in[min(idx, len(self.synergy_phase_in) - 1)]
+
+    def _share_price(self, acq_eps: float, acq_is: pd.DataFrame) -> float:
+        if self.acquirer_share_price is not None and self.acquirer_share_price > 0:
+            return self.acquirer_share_price
+        if acq_eps > 0:
+            return acq_eps * self.acquirer_pe
+        # Loss-making acquirer: fall back to a revenue multiple
+        revenue_per_share = _row(acq_is, "Revenue", 0) / self.acquirer_shares if self.acquirer_shares else 0.0
+        return max(revenue_per_share * 5.0, 1.0)
+
+    def calculate_accretion_dilution(self, scenario: str | None = None) -> dict[str, Any]:
+        """Run accretion/dilution analysis for every projected period (year-1 keys kept for convenience)."""
+        acq_result, tgt_result = self._results(scenario)
         acq_is = acq_result.income_statement
         tgt_is = tgt_result.income_statement
-        acq_bs = acq_result.balance_sheet
-        tgt_bs = tgt_result.balance_sheet
+        n_periods = min(len(acq_result.periods), len(tgt_result.periods))
 
-        periods = acq_result.periods
-        n_periods = len(periods)
+        acq_ni_0 = _row(acq_is, "Net Income", 0)
+        acq_eps_0 = acq_ni_0 / self.acquirer_shares if self.acquirer_shares > 0 else 0.0
 
-        # Acquirer standalone EPS
-        acq_ni = acq_is.loc["Net Income"].iloc[0] if "Net Income" in acq_is.index else 0
-        acq_shares = 10_000_000  # Would come from BS
-        acq_eps = acq_ni / acq_shares if acq_shares > 0 else 0
-
-        # Deal metrics
         equity_value = self.offer_price_per_share * self.target_shares
         cash_paid = equity_value * self.cash_consideration_pct
         stock_value = equity_value * self.stock_consideration_pct
-        new_shares = stock_value / (acq_is.loc["Revenue"].iloc[0] / acq_shares * 10)  # Simplified: assume P/E
-
-        # Pro forma Year 1
-        pf_revenue = acq_is.loc["Revenue"].iloc[0] + tgt_is.loc["Revenue"].iloc[0]
-        pf_ebit = (acq_is.loc["Operating Income"].iloc[0] if "Operating Income" in acq_is.index else 0) + \
-                  (tgt_is.loc["Operating Income"].iloc[0] if "Operating Income" in tgt_is.index else 0)
-        pf_synergies = self.synergies * self.synergy_phase_in[0]
-        pf_ebit += pf_synergies
-
-        # Interest on acquisition debt
+        share_price = self._share_price(acq_eps_0, acq_is)
+        new_shares = stock_value / share_price if share_price > 0 else 0.0
+        pf_shares = self.acquirer_shares + new_shares
         acq_debt = cash_paid
         interest_expense = acq_debt * self.financing_rate
-        pf_ebit -= interest_expense
 
-        pf_tax = pf_ebit * self.tax_rate if pf_ebit > 0 else 0
-        pf_ni = pf_ebit - pf_tax
+        per_period: list[dict[str, Any]] = []
+        for i in range(n_periods):
+            acq_ni = _row(acq_is, "Net Income", i)
+            tgt_ni = _row(tgt_is, "Net Income", i)
+            acq_eps = acq_ni / self.acquirer_shares if self.acquirer_shares > 0 else 0.0
+            synergies = self.synergies * self._phase_in(i)
+            # Pro forma NI = standalone NIs + after-tax synergies - after-tax acquisition interest
+            pf_ni = acq_ni + tgt_ni + (synergies - interest_expense) * (1 - self.tax_rate)
+            pf_eps = pf_ni / pf_shares if pf_shares > 0 else 0.0
+            accretion = (pf_eps - acq_eps) / abs(acq_eps) if acq_eps != 0 else 0.0
+            per_period.append(
+                {
+                    "period": acq_result.periods[i].label,
+                    "acquirer_eps": acq_eps,
+                    "pf_eps": pf_eps,
+                    "accretion_dilution_pct": accretion,
+                    "pf_revenue": _row(acq_is, "Revenue", i) + _row(tgt_is, "Revenue", i),
+                    "pf_ebit": _row(acq_is, "Operating Income", i) + _row(tgt_is, "Operating Income", i) + synergies,
+                    "pf_synergies": synergies,
+                    "pf_ni": pf_ni,
+                }
+            )
 
-        pf_shares = acq_shares + new_shares
-        pf_eps = pf_ni / pf_shares if pf_shares > 0 else 0
-
-        accretion = (pf_eps - acq_eps) / acq_eps if acq_eps != 0 else 0
-
+        first: dict[str, Any] = per_period[0] if per_period else {}
         return {
-            "acquirer_ni": acq_ni,
-            "acquirer_eps": acq_eps,
-            "target_ni": tgt_is.loc["Net Income"].iloc[0] if "Net Income" in tgt_is.index else 0,
+            "acquirer_ni": acq_ni_0,
+            "acquirer_eps": acq_eps_0,
+            "target_ni": _row(tgt_is, "Net Income", 0),
             "equity_value": equity_value,
             "cash_paid": cash_paid,
             "stock_value": stock_value,
+            "acquirer_share_price": share_price,
             "new_shares_issued": new_shares,
-            "pf_revenue": pf_revenue,
-            "pf_ebit": pf_ebit,
-            "pf_synergies": pf_synergies,
+            "pf_revenue": first.get("pf_revenue", 0.0),
+            "pf_ebit": first.get("pf_ebit", 0.0) - interest_expense,
+            "pf_synergies": first.get("pf_synergies", 0.0),
             "pf_interest": interest_expense,
-            "pf_ni": pf_ni,
+            "pf_ni": first.get("pf_ni", 0.0),
             "pf_shares": pf_shares,
-            "pf_eps": pf_eps,
-            "accretion_dilution_pct": accretion,
-            "is_accretive": accretion > 0,
+            "pf_eps": first.get("pf_eps", 0.0),
+            "accretion_dilution_pct": first.get("accretion_dilution_pct", 0.0),
+            "is_accretive": first.get("accretion_dilution_pct", 0.0) > 0,
+            "by_period": per_period,
         }
 
-    def contribution_analysis(self) -> pd.DataFrame:
-        """Show each company's contribution to pro forma."""
-        acq_result = self.acquirer.calculate()
-        tgt_result = self.target.calculate()
+    def contribution_analysis(self, scenario: str | None = None) -> pd.DataFrame:
+        """Show each company's contribution to the pro forma entity (year 1)."""
+        acq_result, tgt_result = self._results(scenario)
+        acq_is, tgt_is = acq_result.income_statement, tgt_result.income_statement
 
-        acq_is = acq_result.income_statement
-        tgt_is = tgt_result.income_statement
+        def ebitda(df: pd.DataFrame) -> float:
+            return _row(df, "Operating Income", 0) + abs(_row(df, "Depreciation & Amortization", 0))
 
         rows = []
-        for label, acq_line, tgt_line in [
-            ("Revenue", "Revenue", "Revenue"),
-            ("EBITDA", "Operating Income", "Operating Income"),
-            ("D&A", "Depreciation & Amortization", "Depreciation & Amortization"),
-            ("EBIT", "Operating Income", "Operating Income"),
-            ("Interest", "Interest Expense", "Interest Expense"),
-            ("Pre-Tax", "Pre-Tax Income", "Pre-Tax Income"),
-            ("Tax", "Income Tax Expense", "Income Tax Expense"),
-            ("Net Income", "Net Income", "Net Income"),
-        ]:
-            acq_val = acq_is.loc[acq_line].iloc[0] if acq_line in acq_is.index else 0
-            tgt_val = tgt_is.loc[tgt_line].iloc[0] if tgt_line in tgt_is.index else 0
-            rows.append({
-                "Metric": label,
-                "Acquirer": acq_val,
-                "Target": tgt_val,
-                "Combined": acq_val + tgt_val,
-                "Acquirer %": acq_val / (acq_val + tgt_val) if (acq_val + tgt_val) != 0 else 0,
-            })
-
+        metrics: list[tuple[str, Any]] = [
+            ("Revenue", lambda df: _row(df, "Revenue", 0)),
+            ("EBITDA", ebitda),
+            ("D&A", lambda df: abs(_row(df, "Depreciation & Amortization", 0))),
+            ("EBIT", lambda df: _row(df, "Operating Income", 0)),
+            ("Interest", lambda df: _row(df, "Interest Expense", 0)),
+            ("Pre-Tax", lambda df: _row(df, "Pre-Tax Income", 0)),
+            ("Tax", lambda df: _row(df, "Income Tax Expense", 0)),
+            ("Net Income", lambda df: _row(df, "Net Income", 0)),
+        ]
+        for label, fn in metrics:
+            acq_val = fn(acq_is)
+            tgt_val = fn(tgt_is)
+            combined = acq_val + tgt_val
+            rows.append(
+                {
+                    "Metric": label,
+                    "Acquirer": acq_val,
+                    "Target": tgt_val,
+                    "Combined": combined,
+                    "Acquirer %": acq_val / combined if combined != 0 else 0.0,
+                }
+            )
         return pd.DataFrame(rows)
+
+    def analysis_tables(self, scenario: str | None = None) -> dict[str, Any]:
+        """Deal summary, accretion/dilution by period and year-1 contribution analysis."""
+        ad = self.calculate_accretion_dilution(scenario)
+        summary = {k: v for k, v in ad.items() if k != "by_period"}
+        by_period = pd.DataFrame(ad["by_period"]).set_index("period")
+        by_period.index.name = "Period"
+        return {
+            "Deal Summary": summary,
+            "Accretion Dilution": by_period,
+            "Contribution": self.contribution_analysis(scenario).set_index("Metric"),
+        }

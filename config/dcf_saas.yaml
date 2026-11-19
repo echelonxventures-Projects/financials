@@ -1,4 +1,5 @@
 name: "SaaS DCF Valuation Model"
+model_type: "dcf"
 periods:
   start_year: 2024
   years: 5
@@ -8,7 +9,7 @@ assumptions:
   metadata:
     industry: "SaaS"
     currency: "USD"
-    valuation_date: "2024-01-15"
+    valuation_date: "2024-01-01"
 
   drivers:
     # Operating assumptions (same as three-statement)
@@ -36,6 +37,10 @@ assumptions:
       value: 0.12
       description: "G&A % of revenue"
       unit: "%"
+    sbc:
+      value: [800000, 1000000, 1200000, 1400000, 1600000]
+      description: "Stock-based compensation (treated as a real expense)"
+      unit: "$"
     tax_rate:
       value: 0.21
       description: "Tax rate"
@@ -52,18 +57,34 @@ assumptions:
       value: 0.30
       description: "Deferred revenue %"
       unit: "%"
+    ppe_gross:
+      value: 1000000
+      description: "Opening gross PP&E"
+      unit: "$"
     capex:
       value: -500000
       description: "Annual CapEx"
       unit: "$"
     depreciation_rate:
       value: 0.20
-      description: "Depreciation rate"
+      description: "Depreciation rate on gross PP&E"
       unit: "%"
-    sbc:
-      value: [800000, 1000000, 1200000, 1400000, 1600000]
-      description: "Stock-based compensation"
+    beginning_cash:
+      value: 500000
+      description: "Opening cash"
       unit: "$"
+    long_term_debt:
+      value: 2000000
+      description: "Existing long-term debt"
+      unit: "$"
+    interest_expense:
+      value: 120000
+      description: "Interest on existing debt"
+      unit: "$"
+    shares_outstanding:
+      value: 1000000
+      description: "Diluted shares outstanding"
+      unit: "#"
 
     # DCF-specific assumptions
     risk_free_rate:
@@ -108,10 +129,4 @@ assumptions:
       exit_multiple: 20.0
       beta: 1.1
 
-statements:
-  - type: "income_statement"
-    line_items: []
-  - type: "balance_sheet"
-    line_items: []
-  - type: "cash_flow"
-    line_items: []
+statements: []

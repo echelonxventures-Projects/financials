@@ -1,0 +1,49 @@
+name: "SaaS Acquisition (Accretion / Dilution)"
+model_type: "ma"
+
+# Each side is a model config: inline (as here) or a path to a model YAML relative to this
+# file, e.g. `acquirer: three_statement_saas.yaml`. Its model_type picks the class.
+acquirer:
+  name: "Acquirer Co"
+  model_type: "three-statement"
+  periods: {start_year: 2024, years: 5, type: "annual"}
+  assumptions:
+    drivers:
+      revenue: {value: 40000000, description: "Starting revenue", unit: "$"}
+      revenue_growth: {value: [0.15, 0.14, 0.12, 0.10, 0.08], description: "YoY growth", unit: "%"}
+      cogs_pct: {value: 0.22, description: "COGS % of revenue", unit: "%"}
+      rd_pct: {value: 0.15, description: "R&D % of revenue", unit: "%"}
+      sm_pct: {value: 0.25, description: "S&M % of revenue", unit: "%"}
+      gna_pct: {value: 0.10, description: "G&A % of revenue", unit: "%"}
+      tax_rate: {value: 0.21, description: "Tax rate", unit: "%"}
+      beginning_cash: {value: 8000000, description: "Opening cash", unit: "$"}
+      apic: {value: 20000000, description: "Opening paid-in capital", unit: "$"}
+target:
+  name: "Target Co"
+  model_type: "three-statement"
+  periods: {start_year: 2024, years: 5, type: "annual"}
+  assumptions:
+    drivers:
+      revenue: {value: 8000000, description: "Starting revenue", unit: "$"}
+      revenue_growth: {value: [0.25, 0.22, 0.20, 0.18, 0.15], description: "YoY growth", unit: "%"}
+      cogs_pct: {value: 0.25, description: "COGS % of revenue", unit: "%"}
+      rd_pct: {value: 0.15, description: "R&D % of revenue", unit: "%"}
+      sm_pct: {value: 0.25, description: "S&M % of revenue", unit: "%"}
+      gna_pct: {value: 0.10, description: "G&A % of revenue", unit: "%"}
+      tax_rate: {value: 0.21, description: "Tax rate", unit: "%"}
+      beginning_cash: {value: 1000000, description: "Opening cash", unit: "$"}
+      apic: {value: 4000000, description: "Opening paid-in capital", unit: "$"}
+    scenarios:
+      upside: {revenue_growth: [0.35, 0.30, 0.25, 0.22, 0.18]}
+      downside: {revenue_growth: [0.12, 0.10, 0.08, 0.06, 0.05]}
+
+deal:
+  offer_price_per_share: 18.0      # $ per target share
+  target_shares: 2000000
+  cash_consideration_pct: 0.50     # remainder paid in acquirer stock
+  financing_rate: 0.065            # pre-tax rate on acquisition debt for the cash portion
+  synergies: 1500000               # annual run-rate pre-tax synergies
+  synergy_phase_in: [0.3, 0.6, 0.8, 1.0, 1.0]
+  tax_rate: 0.21
+  acquirer_shares: 10000000
+  acquirer_pe: 25.0                # used to price new shares when acquirer_share_price is omitted
