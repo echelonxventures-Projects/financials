@@ -4,8 +4,10 @@ Typer CLI for the financial modeling toolkit.
 
 from __future__ import annotations
 
+import json
+import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, NoReturn, Optional
 
 import pandas as pd
 import typer
@@ -58,7 +60,7 @@ def _normalize_type(model_type: str | None) -> str:
         raise typer.BadParameter(str(exc)) from exc
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     typer.echo(f"Error: {message}", err=True)
     raise typer.Exit(1)
 
@@ -84,20 +86,30 @@ def init(
 
 @app.command()
 def run(
-    config: Path = typer.Argument(..., help="YAML config file"),
+    config: Path = typer.Argument(..., help="YAML/JSON config file, or - to read it from stdin"),
     scenario: Optional[str] = typer.Option(None, "--scenario", "-s", help="Scenario to run"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file (.xlsx/.json) or directory (csv)"),
-    format: Optional[str] = typer.Option(None, "--format", "-f", help="excel | csv | json (inferred from --output)"),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output file (.xlsx/.json), directory (csv), or - for JSON on stdout"
+    ),
+    format: Optional[str] = typer.Option(
+        None, "--format", "-f", help="excel | csv | json (inferred from --output; json alone prints to stdout)"
+    ),
     model_type: Optional[str] = typer.Option(None, "--type", "-t", help="Override the config's model_type"),
 ) -> None:
-    """Run a model from a config file (exports include DCF/LBO analysis sheets)."""
+    """Run a model from a config file (exports include DCF/LBO analysis sheets).
+
+    From any language: `financial-model run - -o -` reads the config (JSON or YAML) on stdin
+    and writes the full result as JSON on stdout; errors go to stderr with a non-zero exit.
+    """
     model = _load_any(config, model_type)
     if isinstance(model, MergerModel):
         _run_merger(model, scenario, output, format)
         return
     result = model.calculate(scenario=scenario)
 
-    if output:
+    if _json_to_stdout(output, format):
+        typer.echo(JSONExporter().dumps_result(result, model.analysis_tables(result)))
+    elif output:
         fmt = _resolve_format(output, format)
         if fmt == "excel":
             model.export_excel(str(output), result)
@@ -187,9 +199,11 @@ def lbo(
 
 @app.command()
 def ma(
-    config: Path = typer.Argument(..., help="M&A deal YAML (acquirer, target, deal terms)"),
+    config: Path = typer.Argument(..., help="M&A deal YAML/JSON (acquirer, target, deal terms), or - for stdin"),
     scenario: Optional[str] = typer.Option(None, "--scenario", "-s", help="Applied to each side that defines it"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Export tables (.xlsx/.json or a CSV directory)"),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Export tables (.xlsx/.json or a CSV directory), or - for JSON on stdout"
+    ),
     format: Optional[str] = typer.Option(None, "--format", "-f", help="excel | csv | json (inferred from --output)"),
 ) -> None:
     """Run M&A accretion/dilution and contribution analysis."""
@@ -303,6 +317,40 @@ def providers() -> None:
 
 
 @app.command()
+def schema(
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write to a file instead of stdout"),
+) -> None:
+    """Print the JSON Schema for config files (models and M&A deals), for editors and validators in any language."""
+    from financial_model.schema import config_json_schema_text
+
+    text = config_json_schema_text()
+    if output:
+        output.write_text(text, encoding="utf-8")
+        typer.echo(f"Wrote {output}", err=True)
+    else:
+        typer.echo(text, nl=False)
+
+
+@app.command()
+def openapi(
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write to a file instead of stdout"),
+) -> None:
+    """Print the REST API's OpenAPI spec (generate a client for any language from it)."""
+    try:
+        require("fastapi", "The REST API")
+    except MissingDependencyError as exc:
+        _fail(str(exc))
+    from financial_model.api.main import create_app
+
+    text = json.dumps(create_app({}).openapi(), indent=2) + "\n"
+    if output:
+        output.write_text(text, encoding="utf-8")
+        typer.echo(f"Wrote {output}", err=True)
+    else:
+        typer.echo(text, nl=False)
+
+
+@app.command()
 def synthetic(
     industry: str = typer.Option("saas", "--industry", "-i"),
     years: int = typer.Option(5, "--years", "-y"),
@@ -324,7 +372,7 @@ def synthetic(
 
 @app.command()
 def validate(
-    config: Path = typer.Argument(..., help="YAML config file"),
+    config: Path = typer.Argument(..., help="YAML/JSON config file, or - to read it from stdin"),
 ) -> None:
     """Validate a config file (structure + a dry run) without exporting."""
     try:
@@ -549,9 +597,16 @@ def _generate_config(model_type: str, industry: str, years: int, start_year: int
 def _load_any(config_path: Path, model_type: str | None = None) -> Any:
     """Load any model (including M&A) from YAML; ``model_type`` argument > config key > three-statement."""
     config_path = Path(config_path)
-    if not config_path.exists():
+    if str(config_path) == STDIN:
+        config = _read_stdin_config()
+        config_path = Path.cwd() / "<stdin>"  # relative paths in the config resolve from the cwd
+    elif not config_path.exists():
         _fail(f"config file not found: {config_path}")
-    config = FinancialModel.load_config(config_path)
+    else:
+        try:
+            config = FinancialModel.load_config(config_path)
+        except (ValueError, yaml.YAMLError) as exc:
+            _fail(f"invalid config {config_path.name}: {exc}")
     declared = _normalize_type(config.get("model_type"))
     key = _normalize_type(model_type or declared)
     if (key == "ma") != (declared == "ma"):
@@ -559,7 +614,12 @@ def _load_any(config_path: Path, model_type: str | None = None) -> Any:
             f"{config_path} is a '{declared}' config; this command needs "
             + ("an M&A deal config" if key == "ma" else "a three-statement, dcf, lbo or budget config")
         )
-    return build_model(config, base_dir=config_path.parent, model_type=key)
+    try:
+        return build_model(config, base_dir=config_path.parent, model_type=key)
+    except (ValueError, KeyError, TypeError) as exc:
+        # One line on stderr + exit 1, so scripts in any language can surface it.
+        detail = f"missing key {exc}" if isinstance(exc, KeyError) else str(exc)
+        _fail(f"invalid config {config_path.name}: {detail}")
 
 
 def _load_model(config_path: Path, model_type: str | None = None) -> FinancialModel:
@@ -572,6 +632,9 @@ def _load_model(config_path: Path, model_type: str | None = None) -> FinancialMo
 
 def _run_merger(model: MergerModel, scenario: str | None, output: Path | None, fmt: str | None) -> None:
     tables = model.analysis_tables(scenario)
+    if _json_to_stdout(output, fmt):
+        typer.echo(JSONExporter().dumps_tables(tables))
+        return
     summary = tables["Deal Summary"]
     typer.echo(f"\n=== {model.name} ===")
     if scenario:
@@ -618,6 +681,32 @@ def _run_merger(model: MergerModel, scenario: str | None, output: Path | None, f
         else:
             JSONExporter().export_tables(tables, output)
         typer.echo(f"\nExported to {output}")
+
+
+STDIN = STDOUT = "-"
+
+
+def _read_stdin_config() -> dict[str, Any]:
+    """A config piped on stdin: JSON or YAML (YAML is a superset of JSON)."""
+    text = sys.stdin.read()
+    if not text.strip():
+        _fail("no config on stdin")
+    try:
+        config = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        _fail(f"stdin is not valid JSON or YAML: {exc}")
+    if not isinstance(config, dict):
+        _fail("stdin: expected a mapping at the top level")
+    return config
+
+
+def _json_to_stdout(output: Path | None, fmt: str | None) -> bool:
+    """`-o -`, or `-f json` without `-o`, writes JSON to stdout (nothing else is printed)."""
+    if output is not None and str(output) == STDOUT:
+        if fmt and fmt.lower() != "json":
+            raise typer.BadParameter("only json can be written to stdout (-o -)")
+        return True
+    return output is None and bool(fmt) and str(fmt).lower() == "json"
 
 
 def _resolve_format(output: Path, fmt: str | None) -> str:

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Python 3.9+ with no upper bound (was 3.11+). CI tests 3.9 through 3.14, the newest stable `3.x` on Linux, macOS and Windows, the free-threaded 3.14t build, every dependency at its declared minimum, and (weekly) the newest pre-release dependencies. See `docs/compatibility.md`
 - `scripts/min_constraints.py`: pip constraints pinning each runtime dependency to its floor
+- Use from any language: `financial-model run - -o -` reads a JSON/YAML config on stdin and writes the result as JSON on stdout (`ma` and `validate` accept `-` too); config errors are a one-line `Error:` on stderr with exit 1 instead of a traceback
+- `financial-model schema` and the committed `schemas/config.schema.json` (JSON Schema 2020-12 for model and M&A configs; editor autocomplete via yaml-language-server); `financial-model openapi` prints the API spec without a server
+- `examples/` for JavaScript, Go, Ruby, C# and POSIX shell, each via the CLI and the REST API; a CI job checks that they all report the same valuation
+- `financial_model.schema`: the config models shared by the API and the JSON Schema
 - Container image follows the newest Python by default (`--build-arg PYTHON_VERSION=` to pin)
 
 - Pluggable data providers (`financial_model.data.providers`): `file` reads your own statements offline (Excel workbook, directory of CSV/XLSX/JSON, or JSON — including the toolkit's own exports; tolerant of title rows, transposed sheets, `FY2023`/`Q1 FY2024`/date labels and accounting number formats); `yfinance` is now one provider among others; `register_provider()` and the `financial_model.data_providers` entry point for third-party sources

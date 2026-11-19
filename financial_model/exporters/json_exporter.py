@@ -92,16 +92,22 @@ class JSONExporter:
     def __init__(self, indent: int = 2) -> None:
         self.indent = indent
 
+    def dumps_result(self, result: Any, extras: dict[str, Any] | None = None) -> str:
+        """The JSON text `export_result` writes (used for stdout output)."""
+        return json.dumps(result_to_dict(result, extras), indent=self.indent, default=str)
+
+    def dumps_tables(self, tables: dict[str, Any]) -> str:
+        return json.dumps({k: table_to_jsonable(v) for k, v in tables.items()}, indent=self.indent, default=str)
+
     def export_result(self, result: Any, path: str | Path, extras: dict[str, Any] | None = None) -> Path:
-        out = Path(path)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        with out.open("w", encoding="utf-8") as f:
-            json.dump(result_to_dict(result, extras), f, indent=self.indent, default=str)
-        return out.resolve()
+        return self._write(path, self.dumps_result(result, extras))
 
     def export_tables(self, tables: dict[str, Any], path: str | Path) -> Path:
+        return self._write(path, self.dumps_tables(tables))
+
+    @staticmethod
+    def _write(path: str | Path, text: str) -> Path:
         out = Path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
-        with out.open("w", encoding="utf-8") as f:
-            json.dump({k: table_to_jsonable(v) for k, v in tables.items()}, f, indent=self.indent, default=str)
+        out.write_text(text, encoding="utf-8")
         return out.resolve()

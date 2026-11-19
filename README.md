@@ -163,6 +163,19 @@ curl -X POST http://localhost:8000/dcf \
 Also `POST /lbo`, `/ma`, `/charts` (HTML dashboard), `/export/excel`, `/fetch`, `/synthetic`
 and `GET /health`, `/models`. Full reference: `docs/interfaces.md`.
 
+## Other languages
+
+Use it from JavaScript, Go, Ruby, C#, Java, R, shell or anything else, with no Python code:
+
+```bash
+financial-model run - -o - < config.json > result.json   # CLI as a JSON filter (stdin -> stdout)
+financial-model serve                                    # REST API; OpenAPI spec at /openapi.json
+financial-model schema                                   # JSON Schema for configs (editors, validators)
+```
+
+Tested examples for five languages are in [`examples/`](examples/); see
+[docs/other-languages.md](docs/other-languages.md).
+
 ## Testing
 
 ```bash

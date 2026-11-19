@@ -5,7 +5,7 @@
 | Command | Purpose |
 |---|---|
 | `financial-model init --type {three-statement,dcf,lbo,budget,ma}` | Write a starter config |
-| `financial-model run CONFIG [-s SCENARIO] [-o FILE]` | Run any model; output format follows the extension (`.xlsx`, `.json`, or a directory for CSVs). Exports include the model's analysis tables (DCF valuation & sensitivity, LBO sources/uses, debt schedule & returns) |
+| `financial-model run CONFIG [-s SCENARIO] [-o FILE]` | Run any model; output format follows the extension (`.xlsx`, `.json`, or a directory for CSVs). Exports include the model's analysis tables (DCF valuation & sensitivity, LBO sources/uses, debt schedule & returns). `CONFIG` may be `-` (JSON/YAML on stdin); `-o -` writes JSON to stdout |
 | `financial-model dcf CONFIG` | DCF valuation, FCF build and sensitivity table |
 | `financial-model lbo CONFIG` | Sources & uses, debt schedule, MOIC and IRR |
 | `financial-model ma CONFIG [-s SCENARIO] [-o FILE]` | M&A deal summary, accretion/dilution by year, contribution |
@@ -15,11 +15,15 @@
 | `financial-model providers` | List the data providers (built-in and plugins) |
 | `financial-model synthetic` | Generate a synthetic SaaS company config |
 | `financial-model validate CONFIG` | Check structure and that the model balances (both sides for M&A) |
+| `financial-model schema [-o FILE]` | JSON Schema for config files (see [Other languages](other-languages.md)) |
+| `financial-model openapi [-o FILE]` | The REST API's OpenAPI spec, without starting a server |
 | `financial-model --version` | Print the version |
 
 The config's `model_type` key selects the model class; `--type` overrides it within the
 single-entity types (an M&A deal file cannot be run as a DCF and vice versa).
 `python -m financial_model` is equivalent to the `financial-model` script.
+Errors exit non-zero with a one-line `Error: ...` on stderr, so the CLI can be driven from
+any language (see [Other languages](other-languages.md)).
 
 ## REST API
 

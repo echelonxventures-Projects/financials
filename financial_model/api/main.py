@@ -32,6 +32,14 @@ from financial_model.models.dcf import DCFModel
 from financial_model.models.lbo import LBOModel
 from financial_model.models.ma import MergerModel
 from financial_model.models.registry import MODEL_CLASSES, normalize_model_type
+from financial_model.schema import (  # noqa: F401 - re-exported: request bodies share the config schema
+    AssumptionsConfig,
+    DriverConfig,
+    LineItemConfig,
+    ModelConfig,
+    PeriodConfig,
+    StatementConfig,
+)
 from financial_model.utils.error_handler import DataFetchError
 from financial_model.utils.optional import MissingDependencyError, require
 from financial_model.utils.rate_limiter import CircuitBreakerOpen, RateLimitExceeded
@@ -101,54 +109,6 @@ def _http_error(exc: Exception) -> HTTPException:
 
 
 router = APIRouter()
-
-
-class PeriodConfig(BaseModel):
-    start_year: int = 2024
-    years: int = 5
-    type: str = "annual"
-    count: int | None = None
-
-
-class DriverConfig(BaseModel):
-    value: float | list[float]
-    description: str = ""
-    unit: str = ""
-
-
-class AssumptionsConfig(BaseModel):
-    drivers: dict[str, DriverConfig] = Field(default_factory=dict)
-    scenarios: dict[str, dict[str, float | list[float]]] = Field(default_factory=dict)
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class LineItemConfig(BaseModel):
-    name: str
-    line_type: str
-    statement_type: str
-    parent: str | None = None
-    children: list[str] = Field(default_factory=list)
-    calculation_rule: str | None = None
-    calculation_params: dict[str, Any] = Field(default_factory=dict)
-    driver: DriverConfig | None = None
-    format: str = "{:,.0f}"
-    unit: str = "$"
-    order: int = 0
-    is_total: bool = False
-    description: str = ""
-
-
-class StatementConfig(BaseModel):
-    type: str
-    line_items: list[LineItemConfig] = Field(default_factory=list)
-
-
-class ModelConfig(BaseModel):
-    name: str = "Financial Model"
-    model_type: str = "three-statement"
-    periods: PeriodConfig = Field(default_factory=PeriodConfig)
-    assumptions: AssumptionsConfig = Field(default_factory=AssumptionsConfig)
-    statements: list[StatementConfig] = Field(default_factory=list)
 
 
 class CalculateRequest(BaseModel):

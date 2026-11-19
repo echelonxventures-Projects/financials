@@ -127,6 +127,46 @@ jobs:
           financial-model fetch out.xlsx -o derived.yaml
           financial-model validate derived.yaml
 
+  examples:
+    # The toolkit from other languages: each example runs through the CLI (stdin/stdout
+    # JSON) and the REST API, and every one must report the same valuation.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "ruby"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: python -m pip install ".[api]"
+      - name: Run every example via the CLI and via the API
+        run: |
+          financial-model serve --port 8000 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/health >/dev/null && break; sleep 1; done
+          run_all() {
+            node examples/node/valuation.mjs
+            (cd examples/go && go run .)
+            ruby examples/ruby/valuation.rb
+            dotnet run examples/csharp/valuation.cs
+          }
+          ev() { grep "Enterprise value" | tr -d ', ' | cut -d: -f2; }
+          cli=$(run_all | ev | sort -u)
+          api=$(FIN_API_URL=http://127.0.0.1:8000 run_all | ev | sort -u)
+          shell_cli=$(sh examples/shell/valuation.sh | python -c "import json,sys;print(round(json.load(sys.stdin)['analysis']['DCF Valuation']['ev_gordon']))")
+          shell_api=$(FIN_API_URL=http://127.0.0.1:8000 sh examples/shell/valuation.sh | python -c "import json,sys;print(round(json.load(sys.stdin)['dcf']['ev_gordon']))")
+          echo "cli=$cli api=$api shell_cli=$shell_cli shell_api=$shell_api"
+          test "$(printf '%s\n' $cli $api $shell_cli $shell_api | sort -u | wc -l)" -eq 1
+
   container:
     # Same OCI image from two different runtimes.
     needs: test

@@ -1,0 +1,431 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/echelonxventures-Projects/financials/main/schemas/config.schema.json",
+  "title": "Financial Model config",
+  "description": "Config accepted by the financial-model CLI, API and library.",
+  "if": {
+    "required": [
+      "model_type"
+    ],
+    "properties": {
+      "model_type": {
+        "enum": [
+          "ma",
+          "m&a",
+          "m-a",
+          "merger"
+        ]
+      }
+    }
+  },
+  "then": {
+    "$ref": "#/$defs/DealConfig"
+  },
+  "else": {
+    "$ref": "#/$defs/ModelConfig"
+  },
+  "$defs": {
+    "AssumptionsConfig": {
+      "properties": {
+        "drivers": {
+          "additionalProperties": {
+            "$ref": "#/$defs/DriverConfig"
+          },
+          "title": "Drivers",
+          "type": "object"
+        },
+        "scenarios": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "type": "object"
+          },
+          "description": "Scenario name -> {driver: value} overrides of the base drivers",
+          "title": "Scenarios",
+          "type": "object"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "title": "AssumptionsConfig",
+      "type": "object"
+    },
+    "DealConfig": {
+      "description": "An M&A deal: two model configs (inline, or file paths when used from the CLI) plus terms.",
+      "properties": {
+        "name": {
+          "default": "M&A Model",
+          "title": "Name",
+          "type": "string"
+        },
+        "model_type": {
+          "enum": [
+            "ma",
+            "m&a",
+            "m-a",
+            "merger"
+          ],
+          "title": "Model Type",
+          "type": "string"
+        },
+        "acquirer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelConfig"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Inline model config, or a path to one (CLI only)",
+          "title": "Acquirer"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelConfig"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Inline model config, or a path to one (CLI only)",
+          "title": "Target"
+        },
+        "deal": {
+          "$ref": "#/$defs/DealTerms"
+        }
+      },
+      "required": [
+        "model_type",
+        "acquirer",
+        "target"
+      ],
+      "title": "DealConfig",
+      "type": "object"
+    },
+    "DealTerms": {
+      "additionalProperties": false,
+      "description": "Transaction terms of an M&A deal (all optional; defaults shown).",
+      "properties": {
+        "offer_price_per_share": {
+          "default": 0.0,
+          "title": "Offer Price Per Share",
+          "type": "number"
+        },
+        "target_shares": {
+          "default": 1000000,
+          "title": "Target Shares",
+          "type": "number"
+        },
+        "cash_consideration_pct": {
+          "default": 0.5,
+          "title": "Cash Consideration Pct",
+          "type": "number"
+        },
+        "stock_consideration_pct": {
+          "default": 0.5,
+          "title": "Stock Consideration Pct",
+          "type": "number"
+        },
+        "synergies": {
+          "default": 0.0,
+          "description": "Annual run-rate pre-tax synergies",
+          "title": "Synergies",
+          "type": "number"
+        },
+        "synergy_phase_in": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Synergy Phase In",
+          "type": "array"
+        },
+        "financing_rate": {
+          "default": 0.06,
+          "title": "Financing Rate",
+          "type": "number"
+        },
+        "tax_rate": {
+          "default": 0.21,
+          "title": "Tax Rate",
+          "type": "number"
+        },
+        "acquirer_shares": {
+          "default": 10000000,
+          "title": "Acquirer Shares",
+          "type": "number"
+        },
+        "acquirer_share_price": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: acquirer year-1 EPS x acquirer_pe",
+          "title": "Acquirer Share Price"
+        },
+        "acquirer_pe": {
+          "default": 20.0,
+          "title": "Acquirer Pe",
+          "type": "number"
+        }
+      },
+      "title": "DealTerms",
+      "type": "object"
+    },
+    "DriverConfig": {
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "One value for every period, or one value per period",
+          "title": "Value"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "DriverConfig",
+      "type": "object"
+    },
+    "LineItemConfig": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "line_type": {
+          "title": "Line Type",
+          "type": "string"
+        },
+        "statement_type": {
+          "enum": [
+            "income_statement",
+            "balance_sheet",
+            "cash_flow"
+          ],
+          "title": "Statement Type",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent"
+        },
+        "children": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Children",
+          "type": "array"
+        },
+        "calculation_rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Calculation Rule"
+        },
+        "calculation_params": {
+          "additionalProperties": true,
+          "title": "Calculation Params",
+          "type": "object"
+        },
+        "driver": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DriverConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "format": {
+          "default": "{:,.0f}",
+          "title": "Format",
+          "type": "string"
+        },
+        "unit": {
+          "default": "$",
+          "title": "Unit",
+          "type": "string"
+        },
+        "order": {
+          "default": 0,
+          "title": "Order",
+          "type": "integer"
+        },
+        "is_total": {
+          "default": false,
+          "title": "Is Total",
+          "type": "boolean"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "line_type",
+        "statement_type"
+      ],
+      "title": "LineItemConfig",
+      "type": "object"
+    },
+    "ModelConfig": {
+      "description": "A single-entity model: three-statement, dcf, lbo, budget (or a plugin model type).",
+      "properties": {
+        "name": {
+          "default": "Financial Model",
+          "title": "Name",
+          "type": "string"
+        },
+        "model_type": {
+          "default": "three-statement",
+          "description": "Model class; plugins can register more types",
+          "examples": [
+            "three-statement",
+            "dcf",
+            "lbo",
+            "budget"
+          ],
+          "title": "Model Type",
+          "type": "string"
+        },
+        "periods": {
+          "$ref": "#/$defs/PeriodConfig"
+        },
+        "assumptions": {
+          "$ref": "#/$defs/AssumptionsConfig"
+        },
+        "statements": {
+          "items": {
+            "$ref": "#/$defs/StatementConfig"
+          },
+          "title": "Statements",
+          "type": "array"
+        }
+      },
+      "title": "ModelConfig",
+      "type": "object"
+    },
+    "PeriodConfig": {
+      "properties": {
+        "start_year": {
+          "default": 2024,
+          "title": "Start Year",
+          "type": "integer"
+        },
+        "years": {
+          "default": 5,
+          "title": "Years",
+          "type": "integer"
+        },
+        "type": {
+          "default": "annual",
+          "enum": [
+            "annual",
+            "quarterly",
+            "monthly"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total number of periods (overrides years x periods per year)",
+          "title": "Count"
+        }
+      },
+      "title": "PeriodConfig",
+      "type": "object"
+    },
+    "StatementConfig": {
+      "properties": {
+        "type": {
+          "enum": [
+            "income_statement",
+            "balance_sheet",
+            "cash_flow"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "line_items": {
+          "items": {
+            "$ref": "#/$defs/LineItemConfig"
+          },
+          "title": "Line Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "StatementConfig",
+      "type": "object"
+    }
+  }
+}

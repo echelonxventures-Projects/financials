@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../schemas/config.schema.json
 name: "SaaS DCF Valuation Model"
 model_type: "dcf"
 periods:

@@ -17,6 +17,7 @@ nav:
       - M&A: models/ma.md
       - Budget: models/budget.md
   - CLI & API: interfaces.md
+  - Other languages: other-languages.md
   - Data sources: data.md
   - Self-hosting: self-hosting.md
   - Deployment: deployment.md
