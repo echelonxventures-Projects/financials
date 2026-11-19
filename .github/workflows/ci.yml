@@ -55,7 +55,7 @@ jobs:
         run: python -m pytest tests/ --cov=financial_model --cov-report=xml
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.x'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage.xml
 
