@@ -1,0 +1,27 @@
+site_name: Financial Model Toolkit
+site_description: Extensible, config-driven financial modeling in Python
+repo_url: https://github.com/echelonxventures-Projects/financials
+docs_dir: docs
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+nav:
+  - Home: index.md
+  - Modeling conventions: conventions.md
+  - Models:
+      - Three-statement: models/three-statement.md
+      - DCF: models/dcf.md
+      - LBO: models/lbo.md
+      - M&A: models/ma.md
+      - Budget: models/budget.md
+  - CLI & API: interfaces.md
+  - Data sources: data.md
+  - Self-hosting: self-hosting.md
+  - Deployment: deployment.md
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true

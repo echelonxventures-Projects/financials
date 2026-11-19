@@ -6,21 +6,24 @@ Extensible, config-driven financial modeling in Python. Build three-statement mo
 
 - **Three-Statement Model**: Integrated IS/BS/CF with automatic balancing (cash/revolver/RE plugs)
 - **DCF Valuation**: WACC (CAPM), terminal value (Gordon Growth + Exit Multiple), sensitivity tables
-- **LBO Model**: Sources & uses, multi-tranche debt, cash sweep, IRR/MOIC waterfall
-- **M&A Model**: Accretion/dilution, synergy phase-in, contribution analysis
+- **LBO Model**: Sources & uses, multi-tranche debt schedule (interest, amortization, cash sweep), IRR/MOIC
+- **M&A Model**: Accretion/dilution by year, synergy phase-in, contribution analysis
 - **Budget Model**: Bottom-up driver trees (ARR, headcount, departments), quarterly granularity
 - **Config-Driven**: All assumptions, line items, and topology in YAML — no code changes needed
-- **Data Pipeline**: Fetch public company data (yfinance) or generate synthetic industry data
-- **Multi-Format Export**: Excel (formatted), CSV, JSON, HTML charts
+- **Data Pipeline**: Derive drivers from your own CSV / Excel / JSON statements (offline), from Yahoo Finance (optional), or from any plugin provider; or generate synthetic data
+- **Multi-Format Export**: Excel (formatted), CSV, JSON — including each model's analysis tables (DCF valuation & sensitivity, LBO sources/uses, debt schedule & returns, M&A accretion)
+- **Charts**: Interactive Plotly dashboards for every model type, as one self-contained HTML file
 - **Interfaces**: CLI, REST API (FastAPI), Python library
-- **Testing**: Property-based (Hypothesis), golden master vs Excel, CI/CD
+- **Agnostic**: Lean core install with optional extras; Linux / macOS / Windows; any ASGI server; recipes for systemd, launchd, Windows, any OCI runtime (Docker, Podman...), Compose, Kubernetes and PaaS; data providers and model types plug in via entry points
+- **Self-hosted**: optional API key, CORS, request limits and fetch rate limits via a settings file or `FIN_*` env vars; no CDN or cloud services required
+- **Testing**: Property-based (Hypothesis), hand-derived golden master, statement tie-out checks, CI/CD
 
 ## Quick Start
 
 ```bash
-# Install
+# Install (core: models, exports, CLI). Add extras as needed: [api] [charts] [yfinance] or [all]
 cd financial_model
-pip install -e ".[dev]"
+pip install -e ".[all]"
 
 # Generate a SaaS three-statement model config
 financial-model init --type three-statement --industry saas --years 5 -o my_model.yaml
@@ -28,14 +31,28 @@ financial-model init --type three-statement --industry saas --years 5 -o my_mode
 # Run the model
 financial-model run my_model.yaml --output model.xlsx
 
-# Run DCF valuation
-financial-model dcf my_model.yaml
+# Run a scenario, export JSON or CSVs (format follows the extension)
+financial-model run my_model.yaml --scenario upside --output model.json
 
-# Run LBO analysis
-financial-model lbo my_model.yaml
+# DCF valuation and LBO analysis (use a matching template or the examples in config/)
+financial-model dcf config/dcf_saas.yaml
+financial-model lbo config/lbo_saas.yaml
 
-# Fetch public company data
-financial-model fetch SNOW --years 5 -o snow_data.yaml
+# Check a config loads, validates and balances
+financial-model validate my_model.yaml
+
+# M&A accretion / dilution (acquirer + target + deal terms in one file)
+financial-model ma config/ma_saas.yaml -o deal.xlsx
+
+# Interactive chart dashboard for any model
+financial-model chart config/lbo_saas.yaml -o lbo.html
+
+# Start the REST API (any OS; or systemd / launchd / Windows / containers / k8s / PaaS: docs/deployment.md)
+financial-model serve
+
+# Derive a model from your own statements (Excel / CSV / JSON), or a public company
+financial-model fetch my_company.xlsx -o my_model.yaml
+financial-model fetch SNOW --provider yfinance --years 5 -o snow_data.yaml
 
 # Generate synthetic SaaS data
 financial-model synthetic --industry saas --years 5 -o synthetic.yaml
@@ -48,10 +65,17 @@ financial_model/
 ├── financial_model/
 │   ├── core/           # Engine: periods, line items, statements, balancing
 │   ├── models/         # ThreeStatement, DCF, LBO, M&A, Budget
-│   ├── data/           # Loaders (yfinance), synthetic generators
+│   ├── models/registry # model_type -> class mapping shared by CLI and API
+│   ├── data/           # Pluggable providers (file, yfinance, plugins), driver derivation, synthetic data
+│   ├── exporters/      # Excel, CSV, JSON
+│   ├── visualization/  # Plotly chart builder and HTML dashboards
+│   ├── utils/          # Validation, rate limiting / circuit breaker, error types
+│   ├── config_loader.py# Runtime settings (defaults < YAML < FIN_* env)
 │   ├── cli/            # Typer CLI
 │   ├── api/            # FastAPI REST API
-│   └── config/         # YAML templates
+├── deploy/             # systemd, launchd, Windows, Compose, Kubernetes recipes
+├── config/             # Example model configs (three-statement, DCF, LBO, budget, M&A) + settings example
+├── docs/               # MkDocs documentation
 ├── tests/              # Unit, property-based, golden master tests
 ├── .github/workflows/  # CI/CD
 └── pyproject.toml
@@ -98,8 +122,9 @@ from financial_model.core.period import Period, PeriodIndex, PeriodType
 
 # Three-statement
 model = ThreeStatementModel()
-model.set_periods(PeriodIndex([Period(year=2024+i, period_type=PeriodType.ANNUAL) for i in range(5)]))
-result = model.calculate()
+model.set_periods(PeriodIndex.generate(start_year=2024, years=5))
+result = model.calculate()            # or model.calculate(scenario="upside")
+print(result.labelled(result.income_statement))
 model.export_excel("output.xlsx", result)
 
 # DCF
@@ -121,8 +146,8 @@ print(f"MOIC: {returns['moic']:.2f}x, IRR: {returns['irr']:.2%}")
 ## REST API
 
 ```bash
-# Start server
-uvicorn financial_model.api.main:app --reload
+# Start server (host/port/API key/CORS from settings; see docs/self-hosting.md)
+financial-model serve
 
 # Calculate model
 curl -X POST http://localhost:8000/calculate \
@@ -134,6 +159,9 @@ curl -X POST http://localhost:8000/dcf \
   -H "Content-Type: application/json" \
   -d '{"config": {...}, "wacc_range": [0.08, 0.12], "growth_range": [0.02, 0.04]}'
 ```
+
+Also `POST /lbo`, `/ma`, `/charts` (HTML dashboard), `/export/excel`, `/fetch`, `/synthetic`
+and `GET /health`, `/models`. Full reference: `docs/interfaces.md`.
 
 ## Testing
 
@@ -153,9 +181,11 @@ pytest tests/test_core.py::TestProperties -v
 ### Add a New Model Type
 
 1. Create `financial_model/models/my_model.py` inheriting from `ThreeStatementModel`
-2. Add model-specific assumptions in `__post_init__`
+2. Add model-specific assumptions in `__init__` and set a `model_type`
 3. Add custom calculation methods
-4. Register in `financial_model/models/__init__.py`
+4. Register it once: add it to `MODEL_CLASSES` in `financial_model/models/registry.py` (or call
+   `register_model("my-type", MyModel)`) — the CLI, API and `model_type:` in YAML pick it up
+5. Optionally override `analysis_tables(result)` to add sheets/tables to every export
 
 ### Add Custom Line Items
 
@@ -172,6 +202,7 @@ statements:
         calculation_params:
           driver: "custom_pct"
         driver:
+          name: "custom_pct"
           value: 0.05
           description: "Custom % of revenue"
           unit: "%"
@@ -181,15 +212,20 @@ statements:
 ## Conventions
 
 - **FAST Standard** compliant: Flexible, Appropriate, Structured, Transparent
-- **Sign convention**: Revenue positive, expenses negative, assets positive, liabilities/equity positive
-- **Balancing**: Cash (asset plug), Revolver (liability plug), Retained Earnings (equity plug)
+- **Sign convention**: Revenue positive, expenses negative, assets positive, liabilities/equity positive. Percentage and magnitude drivers can be entered with either sign
+- **Opening balance sheet**: built from the period-0 cash, PP&E, debt and paid-in capital drivers; opening retained earnings is the plug
+- **Config overlay**: YAML drivers overlay model defaults; `model_type` selects the model class
+- **Balancing**: Cash is the plug, floored at `min_cash`; the revolver is drawn for any shortfall. The cash flow must foot to the balance-sheet cash movement
 - **Periods**: Annual, quarterly, monthly supported via `PeriodType`
 - **Scenarios**: Override any driver per scenario (base, upside, downside, custom)
 
+See `docs/` (or `mkdocs serve`) for the full conventions and per-model mechanics.
+
 ## Requirements
 
-- Python 3.11+
-- pandas, numpy, pydantic, pyyaml, yfinance, fastapi, typer, plotly, openpyxl
+- Python 3.11+ on Linux, macOS or Windows
+- Core: pandas, numpy, openpyxl, pydantic, pyyaml, typer
+- Optional: `[api]` fastapi + uvicorn, `[charts]` plotly, `[yfinance]` yfinance
 
 ## License
 
