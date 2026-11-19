@@ -3,7 +3,7 @@ Synthetic data generators for demo companies by industry.
 """
 
 import pandas as pd
-import numpy as np
+
 from financial_model.core.period import Period, PeriodIndex, PeriodType
 
 
@@ -19,7 +19,7 @@ def generate_saas_company(
     gna_pct: float = 0.12,
     churn_rate: float = 0.05,
     expansion_rate: float = 0.15,
-    cac_payback_months: float = 12,
+    cac_payback_months: float = 12,  # noqa: ARG001 - reserved for CAC modelling
     tax_rate: float = 0.21,
 ) -> dict[str, pd.DataFrame]:
     """
@@ -30,7 +30,7 @@ def generate_saas_company(
 
     # Build ARR trajectory
     arr = [base_arr]
-    for i in range(1, years):
+    for _ in range(1, years):
         new_arr = arr[-1] * (1 + arr_growth)
         arr.append(new_arr)
 
@@ -38,21 +38,25 @@ def generate_saas_company(
     revenue = [a * (1 - churn_rate) + a * expansion_rate for a in arr]  # Net revenue retention
 
     # Income Statement
-    is_data = pd.DataFrame(index=[
-        "Revenue",
-        "COGS",
-        "Gross Profit",
-        "R&D Expense",
-        "Sales & Marketing Expense",
-        "General & Administrative Expense",
-        "Total Operating Expenses",
-        "Operating Income",
-        "Interest Expense",
-        "Other Income (Expense)",
-        "Pre-Tax Income",
-        "Income Tax Expense",
-        "Net Income",
-    ], columns=cols, dtype=float)
+    is_data = pd.DataFrame(
+        index=[
+            "Revenue",
+            "COGS",
+            "Gross Profit",
+            "R&D Expense",
+            "Sales & Marketing Expense",
+            "General & Administrative Expense",
+            "Total Operating Expenses",
+            "Operating Income",
+            "Interest Expense",
+            "Other Income (Expense)",
+            "Pre-Tax Income",
+            "Income Tax Expense",
+            "Net Income",
+        ],
+        columns=cols,
+        dtype=float,
+    )
 
     for i in range(years):
         rev = revenue[i]
@@ -82,27 +86,31 @@ def generate_saas_company(
         is_data.iloc[12, i] = ni
 
     # Balance Sheet
-    bs_data = pd.DataFrame(index=[
-        "Cash & Cash Equivalents",
-        "Accounts Receivable",
-        "Deferred Contract Costs",
-        "Prepaid Expenses",
-        "Total Current Assets",
-        "Property Plant & Equipment, Net",
-        "Intangible Assets",
-        "Goodwill",
-        "Total Assets",
-        "Accounts Payable",
-        "Accrued Expenses",
-        "Deferred Revenue",
-        "Total Current Liabilities",
-        "Long-Term Debt",
-        "Total Liabilities",
-        "Common Stock",
-        "Additional Paid-In Capital",
-        "Retained Earnings",
-        "Total Equity",
-    ], columns=cols, dtype=float)
+    bs_data = pd.DataFrame(
+        index=[
+            "Cash & Cash Equivalents",
+            "Accounts Receivable",
+            "Deferred Contract Costs",
+            "Prepaid Expenses",
+            "Total Current Assets",
+            "Property Plant & Equipment, Net",
+            "Intangible Assets",
+            "Goodwill",
+            "Total Assets",
+            "Accounts Payable",
+            "Accrued Expenses",
+            "Deferred Revenue",
+            "Total Current Liabilities",
+            "Long-Term Debt",
+            "Total Liabilities",
+            "Common Stock",
+            "Additional Paid-In Capital",
+            "Retained Earnings",
+            "Total Equity",
+        ],
+        columns=cols,
+        dtype=float,
+    )
 
     # Simple BS projections
     for i in range(years):
@@ -113,8 +121,11 @@ def generate_saas_company(
         ap = rev * (1 - gross_margin) * (30 / 365)
         accrued = rev * 0.05
 
-        cash = max(500_000, revenue[i] * 0.15) if i == 0 else bs_data.iloc[0, i-1] + is_data.iloc[12, i] * 0.5  # Simplified
+        cash = (
+            max(500_000, revenue[i] * 0.15) if i == 0 else bs_data.iloc[0, i - 1] + is_data.iloc[12, i] * 0.5
+        )  # Simplified
 
+        sm = rev * sales_marketing_pct
         bs_data.iloc[0, i] = cash  # Cash
         bs_data.iloc[1, i] = dso  # AR
         bs_data.iloc[2, i] = sm * 0.1  # Deferred contract costs
@@ -138,39 +149,48 @@ def generate_saas_company(
             bs_data.iloc[16, i] = 5_000_000  # APIC
             bs_data.iloc[17, i] = is_data.iloc[12, i]  # RE
         else:
-            bs_data.iloc[15, i] = bs_data.iloc[15, i-1]
-            bs_data.iloc[16, i] = bs_data.iloc[16, i-1]
-            bs_data.iloc[17, i] = bs_data.iloc[17, i-1] + is_data.iloc[12, i]
+            bs_data.iloc[15, i] = bs_data.iloc[15, i - 1]
+            bs_data.iloc[16, i] = bs_data.iloc[16, i - 1]
+            bs_data.iloc[17, i] = bs_data.iloc[17, i - 1] + is_data.iloc[12, i]
         bs_data.iloc[18, i] = bs_data.iloc[15, i] + bs_data.iloc[16, i] + bs_data.iloc[17, i]
         bs_data.iloc[8, i] = bs_data.iloc[14, i] + bs_data.iloc[18, i]  # Balance
 
     # Cash Flow
-    cf_data = pd.DataFrame(index=[
-        "Net Income",
-        "Depreciation & Amortization",
-        "Stock-Based Compensation",
-        "Change in Working Capital",
-        "Deferred Revenue Change",
-        "Operating Cash Flow",
-        "Capital Expenditures",
-        "Investing Cash Flow",
-        "Debt Issuance (Repayment)",
-        "Equity Issuance (Repurchase)",
-        "Financing Cash Flow",
-        "Net Change in Cash",
-        "Beginning Cash Balance",
-        "Ending Cash Balance",
-    ], columns=cols, dtype=float)
+    cf_data = pd.DataFrame(
+        index=[
+            "Net Income",
+            "Depreciation & Amortization",
+            "Stock-Based Compensation",
+            "Change in Working Capital",
+            "Deferred Revenue Change",
+            "Operating Cash Flow",
+            "Capital Expenditures",
+            "Investing Cash Flow",
+            "Debt Issuance (Repayment)",
+            "Equity Issuance (Repurchase)",
+            "Financing Cash Flow",
+            "Net Change in Cash",
+            "Beginning Cash Balance",
+            "Ending Cash Balance",
+        ],
+        columns=cols,
+        dtype=float,
+    )
 
     for i in range(years):
+        rev = revenue[i]
         ni = is_data.iloc[12, i]
         dna = rev * 0.03
         sbc = rev * 0.08
         wc_change = 0
         if i > 0:
-            wc_change = -(bs_data.iloc[1, i] - bs_data.iloc[1, i-1]) - (bs_data.iloc[3, i] - bs_data.iloc[3, i-1]) \
-                        + (bs_data.iloc[9, i] - bs_data.iloc[9, i-1]) + (bs_data.iloc[10, i] - bs_data.iloc[10, i-1])
-        deferred_change = bs_data.iloc[11, i] - (bs_data.iloc[11, i-1] if i > 0 else 0)
+            wc_change = (
+                -(bs_data.iloc[1, i] - bs_data.iloc[1, i - 1])
+                - (bs_data.iloc[3, i] - bs_data.iloc[3, i - 1])
+                + (bs_data.iloc[9, i] - bs_data.iloc[9, i - 1])
+                + (bs_data.iloc[10, i] - bs_data.iloc[10, i - 1])
+            )
+        deferred_change = bs_data.iloc[11, i] - (bs_data.iloc[11, i - 1] if i > 0 else 0)
 
         ocf = ni + dna + sbc + wc_change + deferred_change
         capex = -rev * 0.05
@@ -179,7 +199,7 @@ def generate_saas_company(
         equity = 0 if i > 0 else 5_000_000
         fin = debt + equity
         net_change = ocf + inv + fin
-        beg_cash = bs_data.iloc[0, i-1] if i > 0 else 500_000
+        beg_cash = bs_data.iloc[0, i - 1] if i > 0 else 500_000
         end_cash = beg_cash + net_change
 
         cf_data.iloc[0, i] = ni
