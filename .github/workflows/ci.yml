@@ -17,7 +17,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -46,7 +46,7 @@ jobs:
           - { os: windows-latest, python-version: "3.x" }
           - { os: ubuntu-latest, python-version: "3.14t" }  # free-threaded (no GIL) build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -66,7 +66,7 @@ jobs:
     name: lowest dependencies (py3.9)
     runs-on: ubuntu-24.04  # newest Ubuntu image with Python 3.9 builds
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -110,7 +110,7 @@ jobs:
           - { os: windows-latest, python-version: "3.9" }
           - { os: windows-latest, python-version: "3.x" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -132,7 +132,7 @@ jobs:
     # JSON) and the REST API, and every one must report the same valuation.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -175,7 +175,7 @@ jobs:
       matrix:
         engine: [docker, podman]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build image
         run: ${{ matrix.engine }} build -t financial-model .
       - name: Smoke test
