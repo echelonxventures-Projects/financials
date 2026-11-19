@@ -1,0 +1,22 @@
+# Runtime settings for `financial-model serve` / the API container.
+# Copy to ./financial.yaml (auto-loaded) or point FIN_CONFIG_PATH at it.
+# Every key can also be set as an env var: FIN_<SECTION>_<KEY>, e.g. FIN_API_PORT=9000.
+# Model assumptions do NOT go here - they live in the model YAMLs (three_statement_saas.yaml, ...).
+
+api:
+  host: 127.0.0.1          # 0.0.0.0 to listen on all interfaces (the Docker image does this)
+  port: 8000
+  workers: 1
+  cors_origins: []         # e.g. ["https://dashboard.example.com"]; empty = same-origin only
+  api_key: ""              # set to require `X-API-Key: <value>` on every route except /health and /docs
+  max_request_mb: 10       # larger request bodies get HTTP 413
+
+data:
+  rate_limit:              # applies to yfinance fetches (CLI `fetch` and API /fetch)
+    max_requests_per_minute: 30
+    max_requests_per_hour: 500
+    circuit_breaker_threshold: 5   # consecutive failures before fetches are refused...
+    circuit_breaker_timeout: 60.0  # ...for this many seconds
+
+logging:
+  level: INFO
