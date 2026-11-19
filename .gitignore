@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Tooling
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*,cover
+
+# Docs
+site/
+
+# Environments / editors
+.venv/
+venv/
+.env
+.idea/
+.vscode/
+.DS_Store
+
+# Generated model outputs
+*.xlsx
+!docs/**/*.xlsx
