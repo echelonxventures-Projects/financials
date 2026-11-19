@@ -36,8 +36,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.x"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.x"]
         include:
+          # Python 3.9 builds are not published for the newest Ubuntu image; use the last one that has them.
+          - { os: ubuntu-24.04, python-version: "3.9" }
           - { os: macos-latest, python-version: "3.9" }
           - { os: macos-latest, python-version: "3.x" }
           - { os: windows-latest, python-version: "3.9" }
@@ -62,7 +64,7 @@ jobs:
   lowest-deps:
     # Every runtime dependency at the minimum pyproject.toml declares, on the oldest Python.
     name: lowest dependencies (py3.9)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # newest Ubuntu image with Python 3.9 builds
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -77,7 +79,9 @@ jobs:
       - run: python -m pytest tests/
 
   latest-deps:
-    # Newest releases and pre-releases of every dependency on the newest Python.
+    # Newest releases of everything, plus pre-releases of the runtime dependencies (what
+    # users install), on the newest Python. Test tools stay on stable releases so a
+    # pre-release clash between two test tools is not reported as our breakage.
     # Informational: an upstream pre-release breaking us must not block merges.
     name: latest + pre-release dependencies
     runs-on: ubuntu-latest
@@ -88,7 +92,8 @@ jobs:
         with:
           python-version: "3.x"
           allow-prereleases: true
-      - run: python -m pip install --upgrade --pre -e ".[dev]"
+      - run: python -m pip install --upgrade -e ".[dev]"
+      - run: python -m pip install --upgrade --pre $(python scripts/min_constraints.py --names)
       - run: python -m pip list
       - run: python -m pytest tests/
 
@@ -99,8 +104,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ["3.9", "3.x"]
+        include:
+          - { os: ubuntu-24.04, python-version: "3.9" }
+          - { os: ubuntu-latest, python-version: "3.x" }
+          - { os: windows-latest, python-version: "3.9" }
+          - { os: windows-latest, python-version: "3.x" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
