@@ -223,7 +223,7 @@ See `docs/` (or `mkdocs serve`) for the full conventions and per-model mechanics
 
 ## Requirements
 
-- Python 3.11+ on Linux, macOS or Windows
+- Python 3.9 or newer (no upper bound; CI covers 3.9 through the newest release, including free-threaded builds) on Linux, macOS or Windows. See [docs/compatibility.md](docs/compatibility.md)
 - Core: pandas, numpy, openpyxl, pydantic, pyyaml, typer
 - Optional: `[api]` fastapi + uvicorn, `[charts]` plotly, `[yfinance]` yfinance
 

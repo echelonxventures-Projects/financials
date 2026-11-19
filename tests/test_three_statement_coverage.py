@@ -1,6 +1,7 @@
 """
 Tests for ThreeStatementModel coverage - YAML loading and from_yaml edge cases.
 """
+from __future__ import annotations
 
 import tempfile
 from pathlib import Path

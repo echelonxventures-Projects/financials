@@ -1,6 +1,7 @@
 """
 Tests for statement module to achieve 100% coverage - targeting validation paths.
 """
+from __future__ import annotations
 
 from financial_model.core.line_item import CalculationRule, LineItem, LineItemType
 from financial_model.core.statement import Statement, StatementType

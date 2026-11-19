@@ -1,4 +1,5 @@
 """Tests for financial_model.utils: validation, rate limiting, error handling."""
+from __future__ import annotations
 
 import threading
 

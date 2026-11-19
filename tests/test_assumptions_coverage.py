@@ -1,6 +1,7 @@
 """
 Tests for assumptions module to achieve 100% coverage - targeting uncovered lines.
 """
+from __future__ import annotations
 
 import tempfile
 

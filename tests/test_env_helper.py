@@ -1,4 +1,5 @@
 """Tests for the env_helper module."""
+from __future__ import annotations
 
 import os
 

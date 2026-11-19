@@ -3,6 +3,7 @@ Tests for the platform layer added on top of the engine: model registry, M&A con
 guarded data fetching, the CLI's ma/chart/serve/init commands and the API's security,
 M&A, charts and export endpoints.
 """
+from __future__ import annotations
 
 import json
 from pathlib import Path

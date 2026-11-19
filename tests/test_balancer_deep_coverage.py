@@ -1,6 +1,7 @@
 """
 Deep tests for balancer module to cover remaining uncovered lines.
 """
+from __future__ import annotations
 
 import numpy as np
 import pandas as pd

@@ -1,4 +1,5 @@
 """Rate-limited data fetching with circuit breaker pattern."""
+from __future__ import annotations
 
 import threading
 import time

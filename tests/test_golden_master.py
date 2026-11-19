@@ -1,6 +1,7 @@
 """
 Golden master tests: compare model output against reference Excel workbook.
 """
+from __future__ import annotations
 
 from financial_model.core.assumptions import Driver
 from financial_model.core.period import Period, PeriodIndex, PeriodType

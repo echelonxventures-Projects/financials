@@ -5,6 +5,7 @@ Sources are pluggable (see ``financial_model.data.providers``): ``file`` reads y
 CSV / Excel / JSON statements offline, ``yfinance`` pulls public filings (optional extra),
 and third-party providers register via the ``financial_model.data_providers`` entry point.
 """
+from __future__ import annotations
 
 from financial_model.data.loader import DataLoader, derive_drivers_from_financials, load_public_company_data
 from financial_model.data.providers import (

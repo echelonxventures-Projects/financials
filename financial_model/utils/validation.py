@@ -1,4 +1,5 @@
 """Input validation utilities with comprehensive financial data guards."""
+from __future__ import annotations
 
 import re
 from dataclasses import dataclass

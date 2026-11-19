@@ -1,6 +1,7 @@
 """
 Synthetic data generators for demo companies by industry.
 """
+from __future__ import annotations
 
 import pandas as pd
 

@@ -2,6 +2,7 @@
 Tests for line_item remaining uncovered calculation rule branches.
 Target lines: 121-122, 175-176, 198-200, 220-221, 228, 248-249, 267-268, 287-292
 """
+from __future__ import annotations
 
 import numpy as np
 import pandas as pd

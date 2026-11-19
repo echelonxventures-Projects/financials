@@ -20,6 +20,7 @@ nav:
   - Data sources: data.md
   - Self-hosting: self-hosting.md
   - Deployment: deployment.md
+  - Compatibility: compatibility.md
 markdown_extensions:
   - admonition
   - tables

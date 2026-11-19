@@ -1,6 +1,7 @@
 """
 Tests for line_item - targeting remaining calculation rule branches.
 """
+from __future__ import annotations
 
 import pandas as pd
 

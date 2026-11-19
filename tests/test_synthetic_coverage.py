@@ -1,6 +1,7 @@
 """
 Tests for synthetic data generator to achieve 100% coverage - targeting uncovered lines.
 """
+from __future__ import annotations
 
 from financial_model.data.synthetic import (
     generate_consumer_company,

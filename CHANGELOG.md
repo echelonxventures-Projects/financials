@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Python 3.9+ with no upper bound (was 3.11+). CI tests 3.9 through 3.14, the newest stable `3.x` on Linux, macOS and Windows, the free-threaded 3.14t build, every dependency at its declared minimum, and (weekly) the newest pre-release dependencies. See `docs/compatibility.md`
+- `scripts/min_constraints.py`: pip constraints pinning each runtime dependency to its floor
+- Container image follows the newest Python by default (`--build-arg PYTHON_VERSION=` to pin)
+
 - Pluggable data providers (`financial_model.data.providers`): `file` reads your own statements offline (Excel workbook, directory of CSV/XLSX/JSON, or JSON — including the toolkit's own exports; tolerant of title rows, transposed sheets, `FY2023`/`Q1 FY2024`/date labels and accounting number formats); `yfinance` is now one provider among others; `register_provider()` and the `financial_model.data_providers` entry point for third-party sources
 - `financial-model fetch SOURCE --provider`, `financial-model providers`; API `GET /providers`, `POST /import` (derive a config from statements in the request), `provider` on `POST /fetch`
 - Model plugins via the `financial_model.models` entry point
@@ -18,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI on Linux, macOS and Windows; a core-only install job; container builds with both Docker and Podman
 
 ### Changed
+
+- `yfinance` floor is 0.2.1 (0.2.0 was never published, so `>=0.2` could not be installed at its minimum)
+- Dropped the `pytest<9` cap
 
 - Derived configs start projecting the year after the last historical period (was: the current year) and record the actual data source
 - `data.default_provider` setting; rate limiting applies to every remote provider

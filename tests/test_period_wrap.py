@@ -1,6 +1,7 @@
 """
 Tests for period - targeting next/prev wrap for quarterly/monthly.
 """
+from __future__ import annotations
 
 from financial_model.core.period import Period, PeriodType
 

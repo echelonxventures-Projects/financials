@@ -1,6 +1,7 @@
 """
 Tests for balancer module to achieve 100% coverage - targeting _total_* and _sum_* methods and edge cases.
 """
+from __future__ import annotations
 
 import numpy as np
 import pandas as pd

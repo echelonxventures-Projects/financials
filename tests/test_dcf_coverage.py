@@ -1,6 +1,7 @@
 """
 Tests for DCF model to achieve 100% coverage - targeting uncovered lines.
 """
+from __future__ import annotations
 
 from financial_model.core.assumptions import Assumptions, Driver
 from financial_model.core.line_item import CalculationRule, LineItem, LineItemType

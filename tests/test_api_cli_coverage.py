@@ -1,6 +1,7 @@
 """
 Tests for API and CLI exception handlers and edge cases.
 """
+from __future__ import annotations
 
 import json
 import tempfile

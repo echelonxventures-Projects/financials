@@ -1,6 +1,7 @@
 """
 Tests for API module to achieve 100% coverage - targeting exception handlers and config conversion.
 """
+from __future__ import annotations
 
 from unittest.mock import patch
 

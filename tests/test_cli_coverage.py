@@ -1,6 +1,7 @@
 """
 Tests for CLI to achieve 100% coverage - targeting uncovered lines.
 """
+from __future__ import annotations
 
 import tempfile
 from pathlib import Path

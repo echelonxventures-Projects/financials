@@ -6,6 +6,7 @@ Vendor / environment neutrality:
   orientation and common accounting formats), yfinance, or a registered plugin
 - the API never lets a client read server files through a provider
 """
+from __future__ import annotations
 
 import json
 import subprocess
@@ -323,7 +324,7 @@ class TestRegistry:
                 return self._obj
 
         monkeypatch.setattr(
-            "financial_model.utils.plugins.entry_points",
+            "financial_model.utils.plugins._entry_points",
             lambda group: [EP("good", EchoProvider), EP("bad", exc=ImportError("missing dep"))],
         )
         assert discover("financial_model.data_providers") == {"good": EchoProvider}
@@ -344,7 +345,7 @@ class TestRegistry:
             def load(self):
                 return PluginModel
 
-        monkeypatch.setattr("financial_model.utils.plugins.entry_points", lambda group: [EP()])
+        monkeypatch.setattr("financial_model.utils.plugins._entry_points", lambda group: [EP()])
         monkeypatch.setattr(registry, "_plugins_loaded", False)
         try:
             assert "plugin-model" in registry.available_model_types()

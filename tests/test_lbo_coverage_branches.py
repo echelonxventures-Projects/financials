@@ -2,6 +2,7 @@
 Tests for LBO model remaining uncovered lines.
 Target lines: 114, 125-129, 139, 143-146, 251
 """
+from __future__ import annotations
 
 from financial_model.core.assumptions import Assumptions, Driver
 from financial_model.core.line_item import CalculationRule, LineItem, LineItemType

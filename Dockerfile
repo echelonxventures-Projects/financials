@@ -5,15 +5,19 @@
 # Settings come from FIN_* env vars or a mounted settings file (FIN_CONFIG_PATH);
 # see docs/self-hosting.md.
 
+# Tracks the newest Python 3 release by default; pin one for reproducible builds:
+#   docker build --build-arg PYTHON_VERSION=3.12 -t financial-model .
+ARG PYTHON_VERSION=3
+
 # ---- builder ----
-FROM python:3.13-slim AS builder
+FROM python:${PYTHON_VERSION}-slim AS builder
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
 COPY financial_model ./financial_model
 RUN pip install --no-cache-dir --prefix=/install ".[all]"
 
 # ---- runtime ----
-FROM python:3.13-slim
+FROM python:${PYTHON_VERSION}-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     FIN_API_HOST=0.0.0.0 \

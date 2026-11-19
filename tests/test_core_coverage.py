@@ -1,6 +1,7 @@
 """
 Tests for core modules to achieve 100% coverage.
 """
+from __future__ import annotations
 
 from datetime import date
 

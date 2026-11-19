@@ -1,6 +1,7 @@
 """
 Tests for balancer module to achieve 100% coverage.
 """
+from __future__ import annotations
 
 import pandas as pd
 

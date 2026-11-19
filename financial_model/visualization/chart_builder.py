@@ -65,7 +65,8 @@ def _row(df: pd.DataFrame, line: str) -> list[float] | None:
 
 
 def _safe_div(a: list[float], b: list[float]) -> list[float | None]:
-    return [x / y if y else None for x, y in zip(a, b, strict=False)]
+    # zip(strict=) is Python 3.10+; unequal lengths truncate, as intended here.
+    return [x / y if y else None for x, y in zip(a, b)]  # noqa: B905
 
 
 class ChartBuilder:

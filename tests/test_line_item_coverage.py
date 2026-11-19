@@ -1,6 +1,7 @@
 """
 Tests for line_item module to achieve 100% coverage.
 """
+from __future__ import annotations
 
 import pandas as pd
 

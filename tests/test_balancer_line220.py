@@ -1,6 +1,7 @@
 """
 Tests for balancer line 220 - Total Current Liabilities recalculation.
 """
+from __future__ import annotations
 
 import pandas as pd
 

@@ -2,6 +2,7 @@
 Tests for balancer line 220 - Total Current Liabilities recalculation.
 This test specifically targets line 220 in balancer.py which is in _recalculate_aggregates.
 """
+from __future__ import annotations
 
 import pandas as pd
 

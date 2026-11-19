@@ -1,6 +1,7 @@
 """
 Test suite for financial model.
 """
+from __future__ import annotations
 
 import pytest
 

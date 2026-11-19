@@ -2,6 +2,7 @@
 Core financial modeling engine.
 Provides base classes for statements, line items, balancing, and model topology.
 """
+from __future__ import annotations
 
 from financial_model.core.assumptions import Assumptions, Driver
 from financial_model.core.balancer import BalanceSheetBalancer, CashFlowBalancer

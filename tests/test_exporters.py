@@ -1,4 +1,5 @@
 """Tests for the Excel / CSV / JSON exporters against real model results."""
+from __future__ import annotations
 
 import csv
 import json

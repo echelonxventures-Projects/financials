@@ -1,4 +1,5 @@
 """Utilities: validation, rate-limiting, error handling."""
+from __future__ import annotations
 
 from financial_model.utils.error_handler import (
     CalculationError,

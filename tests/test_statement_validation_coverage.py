@@ -2,6 +2,7 @@
 Tests for statement validation remaining uncovered lines.
 Target lines: 46, 49, 52, 55, 58
 """
+from __future__ import annotations
 
 from financial_model.core.line_item import CalculationRule, LineItem, LineItemType
 from financial_model.core.statement import Statement, StatementType

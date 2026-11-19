@@ -1,6 +1,7 @@
 """
 Core engine tests: period, line items, statements, balancing.
 """
+from __future__ import annotations
 
 import pandas as pd
 from hypothesis import given, settings

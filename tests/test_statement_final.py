@@ -1,6 +1,7 @@
 """
 Tests for statement validation remaining lines.
 """
+from __future__ import annotations
 
 from financial_model.core.line_item import CalculationRule, LineItem, LineItemType
 from financial_model.core.statement import Statement, StatementType

@@ -1,0 +1,8 @@
+# Keeps the CI actions current. Python dependencies have no upper bounds, so new releases
+# are picked up automatically and tested by the weekly latest-deps CI job.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

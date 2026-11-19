@@ -2,6 +2,7 @@
 Tests for ThreeStatementModel YAML loading edge cases.
 Target lines: 399, 406, 413-422
 """
+from __future__ import annotations
 
 import tempfile
 from pathlib import Path

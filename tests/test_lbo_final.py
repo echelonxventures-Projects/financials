@@ -1,6 +1,7 @@
 """
 Tests for LBO model remaining uncovered lines.
 """
+from __future__ import annotations
 
 from financial_model.core.assumptions import Assumptions, Driver
 from financial_model.core.line_item import CalculationRule, LineItem, LineItemType

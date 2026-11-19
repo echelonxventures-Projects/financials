@@ -1,6 +1,7 @@
 """
 Pre-built model implementations.
 """
+from __future__ import annotations
 
 from financial_model.models.budget import BudgetModel
 from financial_model.models.dcf import DCFModel

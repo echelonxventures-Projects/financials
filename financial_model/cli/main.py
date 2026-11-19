@@ -5,7 +5,7 @@ Typer CLI for the financial modeling toolkit.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import pandas as pd
 import typer
@@ -85,10 +85,10 @@ def init(
 @app.command()
 def run(
     config: Path = typer.Argument(..., help="YAML config file"),
-    scenario: str | None = typer.Option(None, "--scenario", "-s", help="Scenario to run"),
-    output: Path | None = typer.Option(None, "--output", "-o", help="Output file (.xlsx/.json) or directory (csv)"),
-    format: str | None = typer.Option(None, "--format", "-f", help="excel | csv | json (inferred from --output)"),
-    model_type: str | None = typer.Option(None, "--type", "-t", help="Override the config's model_type"),
+    scenario: Optional[str] = typer.Option(None, "--scenario", "-s", help="Scenario to run"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file (.xlsx/.json) or directory (csv)"),
+    format: Optional[str] = typer.Option(None, "--format", "-f", help="excel | csv | json (inferred from --output)"),
+    model_type: Optional[str] = typer.Option(None, "--type", "-t", help="Override the config's model_type"),
 ) -> None:
     """Run a model from a config file (exports include DCF/LBO analysis sheets)."""
     model = _load_any(config, model_type)
@@ -116,8 +116,8 @@ def run(
 @app.command()
 def dcf(
     config: Path = typer.Argument(..., help="YAML config file"),
-    scenario: str | None = typer.Option(None, "--scenario", "-s"),
-    output: Path | None = typer.Option(None, "--output", "-o", help="Export the full model to Excel"),
+    scenario: Optional[str] = typer.Option(None, "--scenario", "-s"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Export the full model to Excel"),
 ) -> None:
     """Run DCF valuation on a model."""
     model = _load_model(config, "dcf")
@@ -152,8 +152,8 @@ def dcf(
 @app.command()
 def lbo(
     config: Path = typer.Argument(..., help="YAML config file"),
-    scenario: str | None = typer.Option(None, "--scenario", "-s"),
-    output: Path | None = typer.Option(None, "--output", "-o", help="Export the full model to Excel"),
+    scenario: Optional[str] = typer.Option(None, "--scenario", "-s"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Export the full model to Excel"),
 ) -> None:
     """Run LBO analysis."""
     model = _load_model(config, "lbo")
@@ -188,9 +188,9 @@ def lbo(
 @app.command()
 def ma(
     config: Path = typer.Argument(..., help="M&A deal YAML (acquirer, target, deal terms)"),
-    scenario: str | None = typer.Option(None, "--scenario", "-s", help="Applied to each side that defines it"),
-    output: Path | None = typer.Option(None, "--output", "-o", help="Export tables (.xlsx/.json or a CSV directory)"),
-    format: str | None = typer.Option(None, "--format", "-f", help="excel | csv | json (inferred from --output)"),
+    scenario: Optional[str] = typer.Option(None, "--scenario", "-s", help="Applied to each side that defines it"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Export tables (.xlsx/.json or a CSV directory)"),
+    format: Optional[str] = typer.Option(None, "--format", "-f", help="excel | csv | json (inferred from --output)"),
 ) -> None:
     """Run M&A accretion/dilution and contribution analysis."""
     model = _load_any(config, "ma")
@@ -202,8 +202,8 @@ def ma(
 def chart(
     config: Path = typer.Argument(..., help="Model YAML config"),
     output: Path = typer.Option(Path("charts.html"), "--output", "-o", help="HTML dashboard file (or a directory)"),
-    scenario: str | None = typer.Option(None, "--scenario", "-s"),
-    model_type: str | None = typer.Option(None, "--type", "-t", help="Override the config's model_type"),
+    scenario: Optional[str] = typer.Option(None, "--scenario", "-s"),
+    model_type: Optional[str] = typer.Option(None, "--type", "-t", help="Override the config's model_type"),
     theme: str = typer.Option("light", "--theme", help="light | dark"),
     cdn: bool = typer.Option(False, "--cdn", help="Load plotly.js from a CDN instead of embedding it (smaller files)"),
 ) -> None:
@@ -230,9 +230,9 @@ def chart(
 
 @app.command()
 def serve(
-    host: str | None = typer.Option(None, "--host", help="Bind address (default: settings api.host, 127.0.0.1)"),
-    port: int | None = typer.Option(None, "--port", "-p", help="Port (default: settings api.port, 8000)"),
-    settings: Path | None = typer.Option(None, "--settings", help="Runtime settings YAML (see docs/self-hosting.md)"),
+    host: Optional[str] = typer.Option(None, "--host", help="Bind address (default: settings api.host, 127.0.0.1)"),
+    port: Optional[int] = typer.Option(None, "--port", "-p", help="Port (default: settings api.port, 8000)"),
+    settings: Optional[Path] = typer.Option(None, "--settings", help="Runtime settings YAML (see docs/self-hosting.md)"),
     reload: bool = typer.Option(False, "--reload", help="Auto-reload on code changes (development)"),
 ) -> None:
     """Start the REST API server (any ASGI server also works: see docs/deployment.md)."""
@@ -264,7 +264,7 @@ def fetch(
     source: str = typer.Argument(
         ..., help="Ticker (remote providers) or a path to your own statements (.xlsx, .json, or a directory)"
     ),
-    provider: str | None = typer.Option(
+    provider: Optional[str] = typer.Option(
         None,
         "--provider",
         "-p",

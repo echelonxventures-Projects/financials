@@ -1,4 +1,5 @@
 """Tests for ChartBuilder: charts plot the model's own numbers, for every model type."""
+from __future__ import annotations
 
 from pathlib import Path
 
@@ -80,7 +81,8 @@ class TestDCFCharts:
         assert {"dcf_fcf", "dcf_bridge", "dcf_sensitivity"} <= set(figs)
         dcf = model.calculate_dcf(result)
         bridge = figs["dcf_bridge"].data[0]
-        relative = [v for v, m in zip(bridge.y, bridge.measure, strict=True) if m == "relative"]
+        assert len(bridge.y) == len(bridge.measure)
+        relative = [v for v, m in zip(bridge.y, bridge.measure) if m == "relative"]
         assert sum(relative) == pytest.approx(dcf["equity_gordon"])
         assert bridge.y[-1] == pytest.approx(dcf["equity_gordon"])
 

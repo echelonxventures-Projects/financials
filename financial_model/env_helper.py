@@ -4,6 +4,7 @@ Environment variable helper for zero-hardcoding configuration.
 Every setting can be overridden by an environment variable.
 Pattern: FIN_{SECTION}_{KEY} (e.g. FIN_APP_HOST, FIN_API_PORT)
 """
+from __future__ import annotations
 
 from typing import Any
 

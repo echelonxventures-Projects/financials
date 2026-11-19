@@ -1,6 +1,7 @@
 """
 Tests for API remaining uncovered lines - uvicorn main block.
 """
+from __future__ import annotations
 
 from unittest.mock import patch
 

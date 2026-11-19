@@ -2,11 +2,11 @@
 
 ## Setup
 
-1. **Python 3.15+** is required.
+1. **Python 3.9 or newer** (any release; see `docs/compatibility.md`).
 2. Clone the repo and install in editable mode with test dependencies:
 
    ```bash
-   pip install -e ".[test]"
+   pip install -e ".[dev]"
    ```
 
 3. (Optional) Enable pre-commit hooks: `pre-commit install`.

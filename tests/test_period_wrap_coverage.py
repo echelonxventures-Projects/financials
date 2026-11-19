@@ -2,6 +2,7 @@
 Tests for period remaining uncovered lines - next/prev quarterly/monthly wrap.
 Target lines: 76, 80, 88, 92
 """
+from __future__ import annotations
 
 from financial_model.core.period import Period, PeriodType
 

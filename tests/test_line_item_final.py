@@ -1,6 +1,7 @@
 """
 Tests for line_item remaining uncovered calculation rule branches.
 """
+from __future__ import annotations
 
 import numpy as np
 import pandas as pd

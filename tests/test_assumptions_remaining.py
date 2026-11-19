@@ -1,6 +1,7 @@
 """
 Tests for assumptions module - targeting set_scenario and scenario_names.
 """
+from __future__ import annotations
 
 from financial_model.core.assumptions import Assumptions
 

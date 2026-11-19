@@ -2,6 +2,7 @@
 End-to-end behaviour tests: statements tie, scenarios apply, YAML overlays defaults,
 the LBO debt schedule works, and the CLI does what the README says.
 """
+from __future__ import annotations
 
 import json
 from pathlib import Path

@@ -1,6 +1,7 @@
 """
 Tests for API and CLI remaining uncovered lines.
 """
+from __future__ import annotations
 
 import tempfile
 from pathlib import Path

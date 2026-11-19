@@ -1,6 +1,7 @@
 """
 Model-specific tests: three-statement, DCF, LBO.
 """
+from __future__ import annotations
 
 from financial_model.core.period import Period, PeriodIndex, PeriodType
 from financial_model.data.synthetic import generate_saas_company
