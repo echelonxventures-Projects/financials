@@ -45,7 +45,7 @@ OPTIONAL = ("fastapi", "uvicorn", "starlette", "plotly", "yfinance")
 
 @pytest.fixture(scope="module")
 def model_and_result():
-    m = build_model(yaml.safe_load((CONFIG_DIR / "three_statement_saas.yaml").read_text()), CONFIG_DIR)
+    m = build_model(yaml.safe_load((CONFIG_DIR / "three_statement_saas.yaml").read_text(encoding="utf-8")), CONFIG_DIR)
     return m, m.calculate()
 
 

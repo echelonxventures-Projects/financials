@@ -9,8 +9,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import yaml
-from click.testing import CliRunner
-from typer.main import get_command
+from typer.testing import CliRunner
 
 from financial_model.cli.main import _load_model, _synthetic_to_config, app
 from financial_model.core.line_item import Driver
@@ -24,7 +23,7 @@ from financial_model.models.three_statement import ThreeStatementModel
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 runner = CliRunner()
-cli = get_command(app)
+cli = app
 
 
 def _model(cls=ThreeStatementModel, years=5, **drivers):
@@ -298,13 +297,13 @@ class TestCLIEndToEnd:
 
         out_json = tmp_path / "out.json"
         assert runner.invoke(cli, ["run", str(cfg), "-o", str(out_json)]).exit_code == 0
-        payload = json.loads(out_json.read_text())
+        payload = json.loads(out_json.read_text(encoding="utf-8"))
         assert payload["periods"] == ["FY2024", "FY2025", "FY2026"]
         assert "FY2024" in payload["income_statement"]
 
         out_csv = tmp_path / "csvs"
         assert runner.invoke(cli, ["run", str(cfg), "-o", str(out_csv)]).exit_code == 0
-        assert "FY2024" in (out_csv / "income_statement.csv").read_text().splitlines()[0]
+        assert "FY2024" in (out_csv / "income_statement.csv").read_text(encoding="utf-8").splitlines()[0]
 
         out_xlsx = tmp_path / "out.xlsx"
         assert runner.invoke(cli, ["run", str(cfg), "-o", str(out_xlsx)]).exit_code == 0

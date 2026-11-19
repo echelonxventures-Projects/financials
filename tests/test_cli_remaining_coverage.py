@@ -5,8 +5,7 @@ Tests for CLI remaining uncovered lines.
 import tempfile
 from pathlib import Path
 
-from click.testing import CliRunner
-from typer.main import get_command
+from typer.testing import CliRunner
 
 from financial_model.cli.main import _export_json, app
 from financial_model.core.assumptions import Driver
@@ -19,8 +18,8 @@ class TestCLIRemainingCoverage:
     """Test CLI remaining uncovered lines."""
 
     def setup_method(self):
-        # Use Typer's get_command to create a Click command for testing
-        self.click_app = get_command(app)
+        # typer.testing.CliRunner takes the Typer app directly (no click needed)
+        self.click_app = app
         self.runner = CliRunner()
         self.periods = PeriodIndex([Period(year=2024 + i, period_type=PeriodType.ANNUAL) for i in range(3)])
 

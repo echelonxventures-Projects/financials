@@ -9,7 +9,6 @@ import yaml
 
 from financial_model import config_loader
 
-
 # ── Test helpers ──────────────────────────────────────────────────────
 
 _SIMPLE_YAML = """

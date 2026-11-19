@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 import pandas as pd
 import typer
-from click.testing import CliRunner
 from fastapi.testclient import TestClient
+from typer.testing import CliRunner
 
 from financial_model.api.main import app
 from financial_model.cli.main import _export_csv, _export_json, _print_summary
@@ -20,7 +20,7 @@ from financial_model.core.model import ModelResult
 from financial_model.core.period import Period, PeriodIndex, PeriodType
 
 client = TestClient(app)
-click_app = typer.main.get_command(cli_app)
+click_app = cli_app
 
 
 class TestAPIExceptionHandlers:

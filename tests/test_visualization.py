@@ -14,7 +14,7 @@ CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 
 
 def _load(name: str):
-    return build_model(yaml.safe_load((CONFIG_DIR / name).read_text()), base_dir=CONFIG_DIR)
+    return build_model(yaml.safe_load((CONFIG_DIR / name).read_text(encoding="utf-8")), base_dir=CONFIG_DIR)
 
 
 def _trace(fig: go.Figure, name: str):
@@ -148,7 +148,7 @@ class TestPrimitivesAndOutput:
     def test_dashboard_is_self_contained_by_default(self, builder, tmp_path):
         figs = builder.model_charts(_load("three_statement_saas.yaml"))
         path = builder.export_dashboard(figs, tmp_path / "d.html", title="T <&>")
-        page = path.read_text()
+        page = path.read_text(encoding="utf-8")
         assert "T &lt;&amp;&gt;" in page
         assert page.count("plotly.js v") == 1  # bundle embedded exactly once
         assert 'src="https://cdn.plot.ly' not in page
@@ -157,7 +157,7 @@ class TestPrimitivesAndOutput:
     def test_dashboard_cdn_mode_is_small(self, builder, tmp_path):
         figs = builder.model_charts(_load("three_statement_saas.yaml"))
         path = builder.export_dashboard(figs, tmp_path / "d.html", offline=False)
-        assert 'src="https://cdn.plot.ly' in path.read_text()
+        assert 'src="https://cdn.plot.ly' in path.read_text(encoding="utf-8")
         assert path.stat().st_size < 200_000
 
     def test_dashboard_requires_charts(self, builder, tmp_path):

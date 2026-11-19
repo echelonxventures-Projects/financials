@@ -39,7 +39,7 @@ runner = CliRunner()
 
 
 def _yaml(name: str) -> dict:
-    return yaml.safe_load((CONFIG_DIR / name).read_text())
+    return yaml.safe_load((CONFIG_DIR / name).read_text(encoding="utf-8"))
 
 
 @pytest.fixture
@@ -241,7 +241,7 @@ class TestCLI:
         r = runner.invoke(cli_app, ["run", str(CONFIG_DIR / "ma_saas.yaml"), "-o", str(target), "-s", "downside"])
         assert r.exit_code == 0, r.output
         if check == "file":
-            assert "Accretion Dilution" in json.loads(target.read_text())
+            assert "Accretion Dilution" in json.loads(target.read_text(encoding="utf-8"))
         else:
             assert (target / "accretion_dilution.csv").exists()
 
@@ -260,7 +260,7 @@ class TestCLI:
         out = tmp_path / "c.html"
         r = runner.invoke(cli_app, ["chart", str(CONFIG_DIR / cfg), "-o", str(out), "--cdn"])
         assert r.exit_code == 0, r.output
-        assert out.read_text().startswith("<!doctype html>")
+        assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
 
     def test_chart_directory_output(self, tmp_path):
         out = tmp_path / "charts"

@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import typer
-from click.testing import CliRunner
+from typer.testing import CliRunner
 
 from financial_model.cli.main import (
     _data_to_config,
@@ -21,7 +21,7 @@ from financial_model.cli.main import (
 )
 
 # Get the Click command from Typer app for testing
-click_app = typer.main.get_command(app)
+click_app = app
 
 
 class TestCLICommands:

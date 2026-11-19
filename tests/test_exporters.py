@@ -21,7 +21,7 @@ CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 def _load(name: str):
     import yaml
 
-    return build_model(yaml.safe_load((CONFIG_DIR / name).read_text()), base_dir=CONFIG_DIR)
+    return build_model(yaml.safe_load((CONFIG_DIR / name).read_text(encoding="utf-8")), base_dir=CONFIG_DIR)
 
 
 @pytest.fixture(scope="module")
@@ -275,11 +275,11 @@ class TestJSONExport:
     def test_export_result(self, dcf, tmp_path):
         model, result = dcf
         path = model.export_json(tmp_path / "sub" / "m.json", result)
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         assert data["periods"] == result.labels
         assert "DCF Valuation" in data["analysis"]
         assert not any(isinstance(v, float) and math.isnan(v) for v in data["analysis"]["DCF Valuation"].values())
 
     def test_export_tables(self, tmp_path):
         path = JSONExporter().export_tables({"t": pd.DataFrame({"v": [1.0]}, index=["r"])}, tmp_path / "t.json")
-        assert json.loads(path.read_text()) == {"t": {"r": {"v": 1.0}}}
+        assert json.loads(path.read_text(encoding="utf-8")) == {"t": {"r": {"v": 1.0}}}

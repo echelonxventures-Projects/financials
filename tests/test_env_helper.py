@@ -1,6 +1,7 @@
 """Tests for the env_helper module."""
 
 import os
+
 import pytest
 
 from financial_model import env_helper
