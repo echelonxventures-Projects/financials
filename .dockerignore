@@ -18,6 +18,4 @@ site
 tests
 docs
 *.xlsx
-test_*.yaml
-test_payload.json
 .env
