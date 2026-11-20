@@ -3,7 +3,7 @@ Credentials: password hashes, API keys and signed session tokens (standard libra
 
 * Passwords: PBKDF2-HMAC-SHA256 with a per-password salt, encoded
   ``pbkdf2_sha256$<iterations>$<salt>$<hash>`` so the work factor can be raised later.
-* API keys: ``fm_<prefix>_<secret>``. Only a SHA-256 digest is stored; the prefix
+* API keys: ``<api_key_prefix>_<id>_<secret>``. Only a SHA-256 digest is stored; the prefix
   finds the row, the digest is compared in constant time. The plain key is shown once.
 * Session tokens: ``<base64url(json)>.<base64url(hmac)>`` signed with the platform
   secret, carrying user, tenant and expiry. Stateless, so any replica can verify them.
@@ -17,14 +17,14 @@ import hmac
 import json
 import secrets
 import time
+from dataclasses import dataclass
 from typing import Any
 
-KEY_PREFIX = "fm"
 
-
-def hash_password(password: str, iterations: int = 600_000) -> str:
-    if len(password) < 8:
-        raise ValueError("password must be at least 8 characters")
+def hash_password(password: str, iterations: int, min_length: int = 1) -> str:
+    """Hash ``password``; the work factor and length rule come from the platform settings."""
+    if len(password) < min_length:
+        raise ValueError(f"password must be at least {min_length} characters")
     salt = secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), iterations).hex()
     return f"pbkdf2_sha256${iterations}${salt}${digest}"
@@ -43,22 +43,28 @@ def verify_password(password: str, encoded: str | None) -> bool:
     return hmac.compare_digest(candidate, digest)
 
 
-def new_api_key() -> tuple[str, str, str]:
-    """Return ``(plain_key, prefix, digest)``; store prefix + digest, show the plain key once."""
-    prefix = secrets.token_hex(4)
-    key = f"{KEY_PREFIX}_{prefix}_{secrets.token_urlsafe(24)}"
-    return key, prefix, digest_key(key)
+@dataclass(frozen=True)
+class KeyFormat:
+    """API keys ``<brand>_<lookup id>_<secret>``; ``brand`` is the ``api_key_prefix`` setting."""
 
+    brand: str
 
-def digest_key(key: str) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
+    def new(self) -> tuple[str, str, str]:
+        """Return ``(plain_key, lookup_id, digest)``; store the id + digest, show the plain key once."""
+        lookup = secrets.token_hex(4)
+        key = f"{self.brand}_{lookup}_{secrets.token_urlsafe(24)}"
+        return key, lookup, self.digest(key)
 
+    @staticmethod
+    def digest(key: str) -> str:
+        return hashlib.sha256(key.encode()).hexdigest()
 
-def key_prefix(key: str) -> str | None:
-    parts = key.split("_", 2)
-    if len(parts) != 3 or parts[0] != KEY_PREFIX or not parts[1]:
-        return None
-    return parts[1]
+    def prefix_of(self, key: str) -> str | None:
+        head, sep, rest = key.partition(f"{self.brand}_")
+        if head or not sep:
+            return None
+        lookup, sep, secret = rest.partition("_")
+        return lookup if sep and lookup and secret else None
 
 
 def _b64(data: bytes) -> str:

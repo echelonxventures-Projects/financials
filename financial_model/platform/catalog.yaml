@@ -1,0 +1,195 @@
+# Commercial catalogue: the built-in starting point. Nothing commercial is hard-coded
+# in Python; every price, quota, feature, role, account type and endpoint rule is here.
+#
+# Change it without editing this file:
+#   * override pieces inline in the settings file under `platform:` (same keys as below,
+#     deep-merged; `null` removes an entry), e.g.  platform: {plans: {pro: {price: {monthly: 29}}}}
+#   * or replace it: `platform.catalog: [my_catalog.yaml]` (list of files, merged in order;
+#     the word `builtin` stands for this file).
+#
+# The example prices below are placeholders - set your own.
+
+currency: USD
+
+# ---------------------------------------------------------------- account types
+# max_members: null = unlimited (the plan's `seats` limit still applies).
+# signup: may be created by POST /v1/signup.  user_creatable: by POST /v1/accounts.
+account_kinds:
+  individual: {label: Individual, max_members: 1, signup: true, user_creatable: false}
+  organization: {label: Organization, max_members: null, signup: false, user_creatable: true}
+signup_kind: individual
+default_account_kind: organization # POST /v1/accounts without `kind`
+
+# Plan given to new accounts of each kind, and to accounts whose subscription lapsed.
+default_plan: {individual: free, organization: team}
+lapsed_plan: free
+
+# ---------------------------------------------------------------- roles
+# rank orders roles (a caller can only grant roles up to their own rank).
+# permissions: names used by `endpoints` below; "*" = all.
+roles:
+  owner: {rank: 40, permissions: ["*"]}
+  admin: {rank: 30, permissions: [view, run, manage_members, manage_keys, manage_billing]}
+  member: {rank: 20, permissions: [view, run]}
+  viewer: {rank: 10, permissions: [view]}
+creator_role: owner # role of whoever creates an account; the last holder cannot be removed
+default_member_role: member
+service_key_role: member # role of API keys not tied to a user (issued by the operator)
+
+# ---------------------------------------------------------------- account statuses
+# Set by billing events or the operator. blocked: refuse metered calls with `message`.
+# use_lapsed_plan: apply `lapsed_plan` limits while keeping the account and its data.
+account_statuses:
+  active: {blocked: false}
+  past_due: {blocked: true, message: "payment is past due; update your billing details to continue"}
+  canceled: {blocked: false, use_lapsed_plan: true}
+initial_status: active
+
+# ---------------------------------------------------------------- metrics
+# Anything an endpoint can meter. Plans price or cap them under `metering`.
+metrics:
+  runs: {label: Model runs, unit: run}
+  fetches: {label: Market-data fetches, unit: fetch}
+  imports: {label: Statement imports, unit: import}
+  synthetic: {label: Synthetic datasets, unit: dataset}
+
+# A metric a plan does not list under `metering` gets this rule (default: not available).
+default_metering: {included: 0, overage: block}
+
+# ---------------------------------------------------------------- endpoints
+# Key: "METHOD /path" as declared in the API (path templates like /v1/keys/{key_id}).
+#   public: no credentials.   permission: role permission required.
+#   metric + quantity: usage recorded on success, checked against the plan first.
+#   features: plan features required.   model_type: fixed type (else read from the config body).
+#   periods_from: where to read `periods` in the body config (default: the config itself).
+# Routes not listed use `default_endpoint`.
+default_endpoint: {permission: view}
+endpoints:
+  "GET /health": {public: true}
+  "POST /calculate": {permission: run, metric: runs, quantity: 1, features: ["export:json"]}
+  "POST /dcf": {permission: run, metric: runs, quantity: 1, model_type: dcf, features: ["export:json"]}
+  "POST /lbo": {permission: run, metric: runs, quantity: 1, model_type: lbo, features: ["export:json"]}
+  "POST /ma": {permission: run, metric: runs, quantity: 1, model_type: ma, periods_from: acquirer, features: ["export:json"]}
+  "POST /charts": {permission: run, metric: runs, quantity: 1, features: [charts]}
+  "POST /export/excel": {permission: run, metric: runs, quantity: 1, features: ["export:excel"]}
+  "POST /fetch": {permission: run, metric: fetches, quantity: 1, features: [data_fetch]}
+  "POST /import": {permission: run, metric: imports, quantity: 1}
+  "POST /synthetic": {permission: run, metric: synthetic, quantity: 1}
+  "GET /models": {permission: view}
+  "GET /providers": {permission: view}
+  "GET /v1/plans": {public: true}
+  "POST /v1/signup": {public: true}
+  "POST /v1/login": {public: true}
+  "POST /v1/billing/webhook": {public: true}
+  "GET /v1/me": {permission: view}
+  "POST /v1/accounts": {permission: view}
+  "GET /v1/members": {permission: view}
+  "POST /v1/members": {permission: manage_members}
+  "DELETE /v1/members/{user_id}": {permission: manage_members}
+  "GET /v1/keys": {permission: view}
+  "POST /v1/keys": {permission: manage_keys}
+  "DELETE /v1/keys/{key_id}": {permission: manage_keys}
+  "GET /v1/usage": {permission: view}
+  "GET /v1/invoice": {permission: view}
+  "POST /v1/billing/checkout": {permission: manage_billing}
+
+# ---------------------------------------------------------------- plans
+# audience: account kinds that may hold the plan.
+# price: monthly / yearly fixed fee (null = contact sales); per_seat multiplies by members.
+# limits: seats, api_keys, periods (per model); null = unlimited.
+# model_types: ["*"] = all.   features: free-form names required by `endpoints`.
+# metering (pay to use): per metric
+#   included: quantity in the fixed price (null = unlimited)
+#   overage: block (refuse beyond included) | bill (allow and charge)
+#   unit_price: price per unit beyond included, or `tiers: [{up_to: N, unit_price: p}, {up_to: null, ...}]`
+#   cap: hard ceiling even when billing overage (null = none)
+# display: anything extra for a pricing page (passed through by GET /v1/plans).
+plans:
+  free:
+    name: Free
+    audience: [individual]
+    price: {monthly: 0, yearly: null, per_seat: false}
+    limits: {seats: 1, api_keys: 1, periods: 60}
+    model_types: [three-statement, budget, paas, b2b-saas, b2c-subscription]
+    features: ["export:json"]
+    metering:
+      runs: {included: 100, overage: block}
+      imports: {included: 20, overage: block}
+      synthetic: {included: 20, overage: block}
+    display: {support: community, description: "Model your own business with the core and business-model templates."}
+
+  payg:
+    name: Pay as you go
+    audience: [individual, organization]
+    price: {monthly: 0, yearly: null, per_seat: false}
+    limits: {seats: 10, api_keys: 5, periods: 240}
+    model_types: ["*"]
+    features: ["export:json", "export:excel", "export:csv", charts, data_fetch]
+    metering:
+      runs:
+        included: 0
+        overage: bill
+        tiers:
+          - {up_to: 10000, unit_price: 0.02}
+          - {up_to: null, unit_price: 0.01}
+        cap: 1000000
+      fetches: {included: 0, overage: bill, unit_price: 0.05}
+      imports: {included: null}
+      synthetic: {included: null}
+    display: {support: email, description: "No subscription: pay only for what you run."}
+
+  pro:
+    name: Pro
+    audience: [individual]
+    price: {monthly: 19, yearly: 190, per_seat: false}
+    limits: {seats: 1, api_keys: 3, periods: 120}
+    model_types: ["*"]
+    features: ["export:json", "export:excel", "export:csv", charts, data_fetch]
+    metering:
+      runs: {included: 5000, overage: block}
+      fetches: {included: 500, overage: block}
+      imports: {included: null}
+      synthetic: {included: null}
+    display: {support: email, description: "Every model, Excel/CSV export, charts and market data."}
+
+  team:
+    name: Team
+    audience: [organization]
+    price: {monthly: 49, yearly: 490, per_seat: true}
+    limits: {seats: 25, api_keys: 10, periods: 240}
+    model_types: ["*"]
+    features: ["export:json", "export:excel", "export:csv", charts, data_fetch]
+    metering:
+      runs: {included: 50000, overage: bill, unit_price: 0.005}
+      fetches: {included: 5000, overage: block}
+      imports: {included: null}
+      synthetic: {included: null}
+    display: {support: email, description: "Shared workspace with roles, per-seat pricing and API access."}
+
+  business:
+    name: Business
+    audience: [organization]
+    price: {monthly: 999, yearly: 9990, per_seat: false}
+    limits: {seats: 100, api_keys: 50, periods: null}
+    model_types: ["*"]
+    features: ["export:json", "export:excel", "export:csv", charts, data_fetch]
+    metering:
+      runs: {included: 500000, overage: bill, unit_price: 0.002}
+      fetches: {included: 50000, overage: bill, unit_price: 0.01}
+      imports: {included: null}
+      synthetic: {included: null}
+    display: {support: priority, description: "High-volume API for embedding models in your product."}
+
+  enterprise:
+    name: Enterprise
+    audience: [organization]
+    price: {monthly: null, yearly: null, per_seat: false}
+    limits: {seats: null, api_keys: null, periods: null}
+    model_types: ["*"]
+    features: ["export:json", "export:excel", "export:csv", charts, data_fetch]
+    metering:
+      runs: {included: null}
+      fetches: {included: null}
+      imports: {included: null}
+      synthetic: {included: null}
+    display: {support: dedicated, description: "Unlimited use, private deployment, SLA and custom models."}

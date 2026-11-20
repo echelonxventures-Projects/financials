@@ -52,6 +52,10 @@ version = { attr = "financial_model.__version__" }
 [tool.setuptools.packages.find]
 include = ["financial_model*"]
 
+[tool.setuptools.package-data]
+# Data files that hold defaults instead of code (catalogue, settings, model templates).
+financial_model = ["platform/*.yaml", "models/templates/*.yaml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

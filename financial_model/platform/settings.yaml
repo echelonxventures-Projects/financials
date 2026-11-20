@@ -1,0 +1,52 @@
+# Built-in runtime settings of the commercial platform (the `platform:` section of the
+# settings file). Every key can be overridden in financial.yaml or as FIN_PLATFORM_<KEY>.
+# Prices, plans, quotas, roles and endpoint rules are in the catalogue (catalog.yaml).
+
+enabled: false
+# sqlite:///relative.db, sqlite:////absolute.db, sqlite:///:memory:, or a plugin scheme.
+database: sqlite:///financial_platform.db
+# Catalogue files merged in order; `builtin` = the shipped catalog.yaml.
+catalog: [builtin]
+
+# Signs login tokens. Set it in production so tokens survive restarts and replicas agree.
+secret_key: ""
+token_ttl_hours: 24
+password_iterations: 600000
+password_min_length: 8
+api_key_prefix: fm
+allow_signup: true
+
+billing:
+  # manual | stripe | a plugin provider name. Each provider reads the block named after it.
+  provider: manual
+  manual: {}
+  stripe:
+    api_base: https://api.stripe.com/v1
+    timeout_seconds: 20
+    secret_key: ""
+    webhook_secret: ""
+    signature_tolerance_seconds: 300
+    # plan key -> Stripe price id (fixed fees)
+    prices: {}
+    # metric -> Stripe billing meter event name (pay-to-use overage); see `platform sync-usage`
+    meters: {}
+    # Extra form fields sent when creating a Checkout session.
+    checkout: {mode: subscription}
+    # Stripe subscription status -> account status (a key of catalogue account_statuses).
+    status_map:
+      active: active
+      trialing: active
+      past_due: past_due
+      unpaid: past_due
+      canceled: canceled
+      incomplete_expired: canceled
+    default_status: canceled
+    # Webhook event type -> how to apply it.
+    #   status: an account status, or `from_subscription` (use status_map)
+    #   plan_from: metadata | none      tenant_from: client_reference_id | metadata | customer
+    events:
+      checkout.session.completed: {status: active, plan_from: metadata, tenant_from: client_reference_id}
+      customer.subscription.created: {status: from_subscription, plan_from: metadata, tenant_from: metadata}
+      customer.subscription.updated: {status: from_subscription, plan_from: metadata, tenant_from: metadata}
+      customer.subscription.deleted: {status: canceled, plan_from: none, tenant_from: metadata}
+      invoice.payment_failed: {status: past_due, plan_from: none, tenant_from: customer}

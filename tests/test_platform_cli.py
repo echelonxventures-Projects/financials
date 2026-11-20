@@ -17,9 +17,10 @@ def test_operator_flow(tmp_path, monkeypatch):
 
     out = runner.invoke(app, ["platform", "plans", "--json"])
     assert out.exit_code == 0
-    assert {p["key"] for p in json.loads(out.output)} >= {"free", "pro", "team", "business", "enterprise"}
+    assert {p["key"] for p in json.loads(out.output)["plans"]} >= {"free", "payg", "pro", "team", "enterprise"}
+    assert "overage bill" in runner.invoke(app, ["platform", "plans"]).output
 
-    out = runner.invoke(app, ["platform", "create-org", "Acme", "--owner", "cfo@acme.test", "--plan", "team", *db])
+    out = runner.invoke(app, ["platform", "create-account", "Acme", "--owner", "cfo@acme.test", "--plan", "team", *db])
     assert out.exit_code == 0, out.output
     tenant = out.output.split()[1]
 
@@ -37,8 +38,12 @@ def test_operator_flow(tmp_path, monkeypatch):
     assert usage["plan"] == "enterprise" and usage["seats_used"] == 2
 
     out = runner.invoke(
-        app, ["platform", "create-user", "solo@example.com", "--individual", "--password", "longenough", *db]
+        app, ["platform", "create-user", "solo@example.com", "--signup", "--password", "longenough", *db]
     )
     assert out.exit_code == 0 and "fm_" in out.output
     listing = runner.invoke(app, ["platform", "tenants", *db]).output
     assert "organization" in listing and "individual" in listing
+
+    bills = json.loads(runner.invoke(app, ["platform", "invoice", *db]).output)
+    assert len(bills) == 2 and all("total" in b for b in bills)
+    assert json.loads(runner.invoke(app, ["platform", "sync-usage", *db]).output) == {"reported": []}

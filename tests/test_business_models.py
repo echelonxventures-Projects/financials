@@ -161,3 +161,27 @@ def test_cli_init_and_run(key, tmp_path):
     from openpyxl import load_workbook
 
     assert "Unit Economics" in load_workbook(xlsx).sheetnames
+
+
+def test_defaults_come_from_template_files(tmp_path, monkeypatch):
+    from financial_model import config_loader
+    from financial_model.models.business import TEMPLATE_DIR, load_template
+
+    for key in BUSINESS_MODELS:
+        assert (TEMPLATE_DIR / f"{key}.yaml").is_file()
+        assert load_template(key)["model_type"] == key
+
+    custom = load_template("b2c-subscription")
+    custom["drivers"]["monthly_arpu"]["value"] = 4.99
+    custom["name"] = "My Consumer App"
+    (tmp_path / "b2c-subscription.yaml").write_text(yaml.safe_dump(custom), encoding="utf-8")
+    monkeypatch.setenv("FIN_MODELS_TEMPLATE_PATHS", str(tmp_path))
+    config_loader._reset_cache()
+    try:
+        model = B2CSubscriptionModel()
+        assert model.name == "My Consumer App"
+        assert model.assumptions.drivers["monthly_arpu"].get_value(0) == pytest.approx(4.99)
+        assert business_template("b2c-subscription")["assumptions"]["drivers"]["monthly_arpu"]["value"] == 4.99
+    finally:
+        monkeypatch.delenv("FIN_MODELS_TEMPLATE_PATHS")
+        config_loader._reset_cache()

@@ -28,10 +28,10 @@ STORE_GROUP = "financial_model.platform_stores"
 @dataclass
 class Tenant:
     id: str
-    kind: str  # "individual" (B2C) | "organization" (B2B)
+    kind: str  # a catalogue account kind
     name: str
-    plan: str
-    status: str = "active"  # active | past_due | canceled
+    plan: str  # a catalogue plan key
+    status: str  # a catalogue account status
     billing_customer_id: str | None = None
     created_at: float = 0.0
 
@@ -136,7 +136,7 @@ class Store:  # pragma: no cover - interface only
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS tenants (
     id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, plan TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active', billing_customer_id TEXT, created_at REAL NOT NULL
+    status TEXT NOT NULL, billing_customer_id TEXT, created_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tenants_customer ON tenants(billing_customer_id);
 CREATE TABLE IF NOT EXISTS users (

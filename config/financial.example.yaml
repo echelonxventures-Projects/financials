@@ -21,22 +21,28 @@ data:
 logging:
   level: INFO
 
+# Business-model templates (paas, b2b-saas, b2c-subscription): extra directories
+# searched first for `<model_type>.yaml`, to ship your own default drivers and scenarios.
+models:
+  template_paths: []
+
 # Commercial multi-tenant mode: hosted PaaS API, B2B organisations, B2C self-serve.
-# Off by default. See docs/commercial.md.
+# Off by default. Every default lives in financial_model/platform/settings.yaml (runtime)
+# and financial_model/platform/catalog.yaml (plans, prices, pay-to-use, roles, endpoints);
+# anything below overrides them. See docs/commercial.md.
 platform:
   enabled: false
   database: sqlite:///financial_platform.db   # or sqlite:////data/platform.db in a container
   secret_key: ""            # REQUIRED in production (signs login tokens): FIN_PLATFORM_SECRET_KEY
-  token_ttl_hours: 24
-  allow_signup: true        # POST /v1/signup for individuals (B2C)
-  default_plan: free        # plan for new individual accounts
-  default_org_plan: team    # plan for new organisations
-  plans:                    # change or add tiers; null removes one
-    pro: {price_monthly: 19, runs_per_month: 5000}
-    # startup: {name: Startup, audience: organization, price_monthly: 199, seats: 10, runs_per_month: 100000}
+  # catalog: [builtin, pricing.yaml]          # layer or replace catalogue files
+  # currency: EUR
+  # plans:                                     # deep-merged over the catalogue; null removes
+  #   pro: {price: {monthly: 29}, metering: {runs: {included: 10000}}}
+  #   payg: {metering: {runs: {tiers: null, unit_price: 0.03}}}
   billing:
-    provider: manual        # manual (offline invoices + `financial-model platform set-plan`) | stripe | plugin
+    provider: manual        # manual | stripe | a plugin provider
     stripe:
       secret_key: ""        # FIN_PLATFORM_BILLING_STRIPE_SECRET_KEY
       webhook_secret: ""    # FIN_PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET; endpoint: POST /v1/billing/webhook
       prices: {}            # plan -> Stripe price id, e.g. {pro: price_123, team: price_456}
+      meters: {}            # metric -> Stripe meter event name for pay-to-use, e.g. {runs: model_runs}

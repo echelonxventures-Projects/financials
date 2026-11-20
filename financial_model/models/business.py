@@ -24,9 +24,11 @@ return next to the statements.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, ClassVar
 
 import pandas as pd
+import yaml
 
 from financial_model.core.line_item import CalculationRule, Driver, LineItem, LineItemType
 from financial_model.core.model import ModelResult
@@ -59,20 +61,26 @@ class BusinessModel(ThreeStatementModel):
     """Three-statement model whose revenue, COGS and S&M come from a customer engine."""
 
     model_type = "business"
-    #: Business-specific drivers layered over the three-statement defaults.
-    BUSINESS_DRIVERS: ClassVar[list[Driver]] = []
-    #: Three-statement defaults this business model changes (e.g. AR days for consumers).
-    DEFAULT_OVERRIDES: ClassVar[dict[str, Any]] = {}
 
     def __init__(self, name: str | None = None, periods: Any = None, assumptions: Any = None):
-        super().__init__(name=name or type(self).__name__, periods=periods, assumptions=assumptions)
+        template = load_template(self.model_type)
+        super().__init__(
+            name=name or str(template.get("name") or type(self).__name__), periods=periods, assumptions=assumptions
+        )
         self._engine_cache: tuple[dict[str, Driver], int, Engine] | None = None
-        for driver in self.BUSINESS_DRIVERS:
-            self.assumptions.set_driver(Driver(driver.name, driver.value, driver.description, driver.unit))
-        for name_, value in self.DEFAULT_OVERRIDES.items():
-            existing = self.assumptions.drivers.get(name_)
-            desc, unit = (existing.description, existing.unit) if existing else ("", "")
-            self.assumptions.set_driver(Driver(name_, value, desc, unit))
+        # Business drivers, then the three-statement defaults this business model changes.
+        for section in ("drivers", "default_overrides"):
+            for driver_name, spec in (template.get(section) or {}).items():
+                existing = self.assumptions.drivers.get(driver_name)
+                spec = spec if isinstance(spec, dict) else {"value": spec}
+                self.assumptions.set_driver(
+                    Driver(
+                        driver_name,
+                        spec.get("value", 0),
+                        spec.get("description") or (existing.description if existing else ""),
+                        spec.get("unit") or (existing.unit if existing else ""),
+                    )
+                )
         self._wire_income_statement()
 
     # ------------------------------------------------------------------ #
@@ -238,26 +246,6 @@ class B2BSaaSModel(BusinessModel):
     """
 
     model_type = "b2b-saas"
-    BUSINESS_DRIVERS: ClassVar[list[Driver]] = [
-        Driver("starting_customers", [200], "Customers at the start of the first period", "#"),
-        Driver("starting_acv", [50_000], "Average ACV of the starting customer base", "$/yr"),
-        Driver("sales_reps", [10, 14, 18, 22, 26], "Ramped quota-carrying reps (average in period)", "#"),
-        Driver("quota_per_rep", [700_000], "Annual new-ARR quota per ramped rep", "$/yr"),
-        Driver("quota_attainment", [0.70], "Average quota attainment", "%"),
-        Driver("new_acv", [55_000], "ACV of newly won customers", "$/yr"),
-        Driver("rep_cost", [250_000], "Fully loaded annual cost per rep (OTE, SE and SDR support)", "$/yr"),
-        Driver("marketing_spend", [1_500_000], "Demand-generation spend per period", "$"),
-        Driver("annual_logo_churn", [0.10], "Annual logo (and ARR) churn", "%"),
-        Driver("annual_expansion", [0.18], "Annual expansion on existing ARR (upsell, seats, price)", "%"),
-        Driver("services_pct", [0.05], "Professional services revenue as % of subscription revenue", "%"),
-        Driver("services_cogs_pct", [0.80], "Cost of services as % of services revenue", "%"),
-    ]
-    DEFAULT_OVERRIDES: ClassVar[dict[str, Any]] = {
-        "cogs_pct": [0.20],  # hosting + support on subscription revenue
-        "sm_pct": [0.05],  # S&M beyond reps and demand gen (enablement, events, tools)
-        "deferred_rev_pct": [0.40],  # annual upfront billing
-        "ar_days": [60],
-    }
     KPI_ROWS: ClassVar[list[tuple[str, str]]] = [
         ("end_customers", "Customers (end of period)"),
         ("new_customers", "New Logos"),
@@ -347,22 +335,6 @@ class B2CSubscriptionModel(BusinessModel):
     """
 
     model_type = "b2c-subscription"
-    BUSINESS_DRIVERS: ClassVar[list[Driver]] = [
-        Driver("starting_subscribers", [100_000], "Paying subscribers at the start", "#"),
-        Driver("marketing_spend", [4_000_000], "Paid acquisition spend per period", "$"),
-        Driver("paid_cac", [40], "Cost to acquire one paying subscriber through paid channels", "$"),
-        Driver("organic_ratio", [0.60], "Organic / referral subscribers per paid subscriber", "x"),
-        Driver("monthly_churn", [0.05], "Monthly subscriber churn", "%"),
-        Driver("monthly_arpu", [9.99], "Average revenue per subscriber per month (net of discounts)", "$/mo"),
-        Driver("payment_fee_pct", [0.15], "Payment processor / app-store fees as % of revenue", "%"),
-    ]
-    DEFAULT_OVERRIDES: ClassVar[dict[str, Any]] = {
-        "cogs_pct": [0.10],  # content, hosting, support
-        "sm_pct": [0.05],  # brand, community, team
-        "ar_days": [5],  # consumers prepay; only processor settlement lag
-        "deferred_rev_pct": [0.10],  # annual plans paid upfront
-        "inventory_days": [0],
-    }
     KPI_ROWS: ClassVar[list[tuple[str, str]]] = [
         ("end_customers", "Subscribers (end of period)"),
         ("paid_new", "New Subscribers - Paid"),
@@ -388,8 +360,9 @@ class B2CSubscriptionModel(BusinessModel):
             new = paid + organic
             monthly_churn = min(abs(_dv(drivers, "monthly_churn", i)), 1.0)
             churn_p = per_period_rate(monthly_churn, ppy, from_periods_per_year=12)
-            # Subscribers added during the period are exposed to churn for half of it on average.
-            churned = min((subs + new / 2) * churn_p, subs + new)
+            # Subscribers added during the period are exposed to churn for part of it.
+            exposure = _dv(drivers, "new_subscriber_churn_exposure", i, 0.0)
+            churned = min((subs + new * exposure) * churn_p, subs + new)
             end = subs + new - churned
             avg = (subs + end) / 2
             arpu = abs(_dv(drivers, "monthly_arpu", i))
@@ -439,28 +412,6 @@ class PaaSModel(BusinessModel):
     """
 
     model_type = "paas"
-    BUSINESS_DRIVERS: ClassVar[list[Driver]] = [
-        Driver("starting_accounts", [1_000], "Paying accounts at the start", "#"),
-        Driver("new_signups", [20_000], "Developer sign-ups per period", "#"),
-        Driver("signup_conversion", [0.03], "Share of sign-ups that become paying accounts", "%"),
-        Driver("annual_account_churn", [0.15], "Annual churn of paying accounts", "%"),
-        Driver("usage_per_account", [5_000], "Starting monthly usage per paying account (units)", "units/mo"),
-        Driver("usage_growth", [0.30], "Annual growth in usage per surviving account", "%"),
-        Driver("free_units", [500], "Monthly free allowance per paying account (units, unbilled)", "units/mo"),
-        Driver("price_per_unit", [0.10], "List price per billable unit", "$"),
-        Driver("discount_pct", [0.05], "Average committed-use / volume discount", "%"),
-        Driver("platform_fee", [100], "Monthly platform (seat / plan) fee per paying account", "$/mo"),
-        Driver("free_accounts", [10_000], "Active free-tier accounts (average in period)", "#"),
-        Driver("free_account_usage", [300], "Monthly usage per free-tier account (units)", "units/mo"),
-        Driver("infra_cost_per_unit", [0.03], "Infrastructure cost per unit served", "$"),
-        Driver("marketing_spend", [1_000_000], "Developer marketing / DevRel spend per period", "$"),
-    ]
-    DEFAULT_OVERRIDES: ClassVar[dict[str, Any]] = {
-        "cogs_pct": [0.05],  # support, payment processing, third-party services
-        "sm_pct": [0.10],  # sales team for larger accounts
-        "ar_days": [30],
-        "deferred_rev_pct": [0.05],  # mostly billed in arrears
-    }
     KPI_ROWS: ClassVar[list[tuple[str, str]]] = [
         ("end_customers", "Paying Accounts (end of period)"),
         ("new_customers", "New Paying Accounts"),
@@ -535,63 +486,54 @@ BUSINESS_MODELS: dict[str, type[BusinessModel]] = {
 }
 
 
-#: Scenario overlays shipped with each template (driver -> value).
-TEMPLATE_SCENARIOS: dict[str, dict[str, dict[str, Any]]] = {
-    "paas": {
-        "base": {},
-        "upside": {"signup_conversion": 0.04, "usage_growth": 0.40, "annual_account_churn": 0.10},
-        "downside": {"signup_conversion": 0.02, "usage_growth": 0.15, "infra_cost_per_unit": 0.04},
-    },
-    "b2b-saas": {
-        "base": {},
-        "upside": {"quota_attainment": 0.80, "annual_expansion": 0.25, "annual_logo_churn": 0.07},
-        "downside": {"quota_attainment": 0.55, "annual_expansion": 0.10, "annual_logo_churn": 0.15},
-    },
-    "b2c-subscription": {
-        "base": {},
-        "upside": {"paid_cac": 32, "monthly_churn": 0.04, "organic_ratio": 0.80},
-        "downside": {"paid_cac": 55, "monthly_churn": 0.065, "organic_ratio": 0.40},
-    },
-}
+TEMPLATE_DIR = Path(__file__).with_name("templates")
 
-TEMPLATE_NAMES = {
-    "paas": "PaaS (usage-based platform) Model",
-    "b2b-saas": "B2B SaaS (sales-led) Model",
-    "b2c-subscription": "B2C Subscription Model",
-}
+
+def template_dirs() -> list[Path]:
+    """Directories searched for ``<model_type>.yaml``: settings ``models.template_paths``, then the built-ins."""
+    from financial_model.config_loader import get_config
+
+    extra = (get_config().get("models") or {}).get("template_paths") or []
+    if isinstance(extra, (str, Path)):
+        extra = [extra]
+    return [*(Path(p).expanduser() for p in extra), TEMPLATE_DIR]
+
+
+def load_template(model_type: str) -> dict[str, Any]:
+    """The defaults file of a business-model type (first match in :func:`template_dirs`)."""
+    for directory in template_dirs():
+        path = directory / f"{model_type}.yaml"
+        if path.is_file():
+            with path.open(encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            if not isinstance(data, dict):
+                raise ValueError(f"{path}: a model template must be a mapping")
+            return data
+    raise FileNotFoundError(f"no template '{model_type}.yaml' in {', '.join(str(d) for d in template_dirs())}")
+
+
+def _truncate(spec: Any, years: int) -> Any:
+    if isinstance(spec, dict) and isinstance(spec.get("value"), list):
+        return {**spec, "value": spec["value"][: max(1, years)]}
+    return spec
 
 
 def business_template(model_type: str, years: int = 5, start_year: int = 2025) -> dict[str, Any]:
-    """Starter YAML config for a business-model type: its own drivers, the changed defaults, scenarios."""
-    cls = BUSINESS_MODELS[model_type]
+    """Starter model config for a business-model type, built from its template file."""
+    if model_type not in BUSINESS_MODELS:
+        raise ValueError(f"'{model_type}' is not a business-model type")
+    t = load_template(model_type)
     drivers: dict[str, Any] = {}
-    for d in cls.BUSINESS_DRIVERS:
-        value = list(d.value) if isinstance(d.value, (list, tuple)) else d.value
-        if isinstance(value, list) and len(value) == 1:
-            value = value[0]
-        elif isinstance(value, list):
-            value = value[: max(1, years)]
-        drivers[d.name] = {"value": value, "description": d.description, "unit": d.unit}
-    defaults = ThreeStatementModel().assumptions.drivers
-    for name, value in cls.DEFAULT_OVERRIDES.items():
-        base = defaults.get(name)
-        v = value[0] if isinstance(value, list) and len(value) == 1 else value
-        drivers[name] = {"value": v, "description": base.description if base else "", "unit": base.unit if base else ""}
-    drivers.update(
-        {
-            "rd_pct": {"value": 0.18, "description": "R&D as % of revenue", "unit": "%"},
-            "gna_pct": {"value": 0.10, "description": "G&A as % of revenue", "unit": "%"},
-            "beginning_cash": {"value": 5_000_000, "description": "Opening cash", "unit": "$"},
-            "apic": {"value": 10_000_000, "description": "Opening paid-in capital", "unit": "$"},
-        }
-    )
+    for section in ("drivers", "default_overrides", "template_drivers"):
+        for name, spec in (t.get(section) or {}).items():
+            drivers[name] = _truncate(spec, years)
     return {
-        "name": TEMPLATE_NAMES[model_type],
+        "name": t.get("name", model_type),
         "model_type": model_type,
-        "periods": {"start_year": start_year, "years": years, "type": "annual"},
+        "periods": {**(t.get("periods") or {}), "start_year": start_year, "years": years},
         "assumptions": {
-            "metadata": {"business_model": model_type, "currency": "USD"},
+            "metadata": dict(t.get("metadata") or {}),
             "drivers": drivers,
-            "scenarios": TEMPLATE_SCENARIOS[model_type],
+            "scenarios": dict(t.get("scenarios") or {}),
         },
     }

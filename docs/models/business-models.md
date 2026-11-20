@@ -18,6 +18,12 @@ financial-model run b2b.yaml --scenario downside -o b2b.xlsx
 
 Example configs: `config/paas.yaml`, `config/b2b_saas.yaml`, `config/b2c_subscription.yaml`.
 
+Every default (drivers, the three-statement defaults each type changes, scenarios, the
+template name) is data in `financial_model/models/templates/<model_type>.yaml`, not code.
+Override per model in the model YAML, or ship your own defaults: put a
+`<model_type>.yaml` in a directory listed in the settings key `models.template_paths`
+(or `FIN_MODELS_TEMPLATE_PATHS`); it is used instead of the built-in one.
+
 ## What the engine replaces
 
 Only three income-statement lines change. Everything else (R&D, G&A, SBC, D&A, working
@@ -55,8 +61,8 @@ capital, capex, debt, equity, tax) keeps its three-statement driver.
 ### B2C subscription
 
 `starting_subscribers`, `marketing_spend`, `paid_cac`, `organic_ratio`, `monthly_churn`,
-`monthly_arpu`, `payment_fee_pct`. Subscribers added during a period are exposed to churn
-for half of it.
+`monthly_arpu`, `payment_fee_pct`, `new_subscriber_churn_exposure` (share of a period that
+subscribers added in it are exposed to churn; 0.5 by default).
 
 ## Unit Economics table
 

@@ -1,16 +1,18 @@
 """
-Billing providers: turn a plan choice into a payment, and payment events into plan changes.
+Billing providers: turn a plan choice into a payment, payment events into account
+changes, and pay-to-use usage into metered charges.
 
-The platform never depends on one payment company. A provider implements
-:class:`BillingProvider`; the built-ins are
+The platform never depends on one payment company, and no provider detail is fixed
+in code: each provider reads the settings block named after it under
+``platform.billing`` (built-in defaults in ``settings.yaml``). Built-ins:
 
-* ``manual`` (default): no online payment. The operator invoices offline and changes
-  plans with ``financial-model platform set-plan`` (typical for B2B / enterprise deals).
-* ``stripe``: hosted Checkout for self-serve B2C/B2B upgrades and signed webhooks for
-  subscription changes. Uses Stripe's REST API over HTTPS with the standard library;
-  no Stripe SDK is needed.
+* ``manual``: no online payment. The operator invoices offline (``financial-model
+  platform invoice``) and applies plans with ``financial-model platform set-plan``.
+* ``stripe``: hosted Checkout, signed webhooks and billing-meter usage events over
+  Stripe's REST API with the standard library (no SDK). Endpoint URL, tolerance,
+  checkout fields, status mapping and event handling are all settings.
 
-Others (Paddle, Lemon Squeezy, Chargebee, an invoicing system...) register under the
+Others (Paddle, Lemon Squeezy, Chargebee, an ERP...) register under the
 ``financial_model.billing_providers`` entry point or with :func:`register_billing_provider`.
 """
 
@@ -20,6 +22,7 @@ import hashlib
 import hmac
 import json
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
@@ -43,7 +46,7 @@ class BillingEvent:
     tenant_id: str | None = None
     customer_id: str | None = None
     plan: str | None = None
-    status: str | None = None  # active | past_due | canceled
+    status: str | None = None  # an account status from the catalogue
     raw_type: str = ""
     data: dict[str, Any] = field(default_factory=dict)
 
@@ -53,6 +56,11 @@ class BillingProvider:
 
     def __init__(self, settings: dict[str, Any] | None = None):
         self.settings = settings or {}
+
+    def setting(self, key: str) -> Any:
+        if key not in self.settings:
+            raise BillingError(f"platform.billing.{self.name}.{key} is not set")
+        return self.settings[key]
 
     def checkout_url(
         self,
@@ -71,21 +79,27 @@ class BillingProvider:
     def parse_webhook(self, payload: bytes, headers: dict[str, str]) -> list[BillingEvent]:  # noqa: ARG002
         raise BillingError(f"billing provider '{self.name}' does not accept webhooks")
 
+    def report_usage(self, customer_id: str, metric: str, quantity: float, identifier: str) -> bool:  # noqa: ARG002
+        """Send billable pay-to-use units to the provider; False = not supported (invoice offline)."""
+        return False
+
 
 class ManualBilling(BillingProvider):
-    """Offline invoicing: plans are changed by the operator."""
+    """Offline invoicing: plans are changed and usage is invoiced by the operator."""
 
     name = "manual"
 
 
-HttpPost = Callable[[str, dict[str, Any], dict[str, str]], dict[str, Any]]
+HttpPost = Callable[[str, dict[str, Any], dict[str, str], float], dict[str, Any]]
 
 
-def _urllib_post(url: str, form: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+def _urllib_post(url: str, form: dict[str, Any], headers: dict[str, str], timeout: float) -> dict[str, Any]:
+    if not url.startswith("https://"):
+        raise BillingError(f"refusing to call a non-HTTPS billing endpoint: {url}")
     data = urllib.parse.urlencode(form).encode()
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")  # noqa: S310 - fixed https URL
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")  # noqa: S310 - https only
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             body: dict[str, Any] = json.loads(resp.read())
             return body
     except urllib.error.HTTPError as exc:
@@ -95,31 +109,30 @@ def _urllib_post(url: str, form: dict[str, Any], headers: dict[str, str]) -> dic
         raise BillingError(f"payment provider unreachable: {exc.reason}") from exc
 
 
-class StripeBilling(BillingProvider):
-    """Stripe Checkout + webhooks.
+def _flatten(prefix: str, value: Any, out: dict[str, Any]) -> None:
+    """Nested mapping -> Stripe-style form fields (``a[b][c]=v``)."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            _flatten(f"{prefix}[{k}]" if prefix else str(k), v, out)
+    else:
+        out[prefix] = value
 
-    Settings (``platform.billing.stripe``): ``secret_key``, ``webhook_secret`` and
-    ``prices`` mapping plan key -> Stripe price id (``{pro: price_123, team: price_456}``).
-    Checkout sessions carry the tenant id (``client_reference_id``) and plan (metadata),
-    so the webhook can apply the change without any other lookup.
-    """
+
+class StripeBilling(BillingProvider):
+    """Stripe Checkout, webhooks and billing-meter events, driven by ``platform.billing.stripe``."""
 
     name = "stripe"
-    API = "https://api.stripe.com/v1"
-    TOLERANCE_SECONDS = 300
 
     def __init__(self, settings: dict[str, Any] | None = None, http_post: HttpPost | None = None):
         super().__init__(settings)
         self.http_post = http_post or _urllib_post
 
-    def _secret(self) -> str:
+    def _post(self, path: str, form: dict[str, Any]) -> dict[str, Any]:
         key = str(self.settings.get("secret_key") or "")
         if not key:
             raise BillingError("platform.billing.stripe.secret_key is not set")
-        return key
-
-    def _post(self, path: str, form: dict[str, Any]) -> dict[str, Any]:
-        return self.http_post(f"{self.API}{path}", form, {"Authorization": f"Bearer {self._secret()}"})
+        url = f"{str(self.setting('api_base')).rstrip('/')}{path}"
+        return self.http_post(url, form, {"Authorization": f"Bearer {key}"}, float(self.setting("timeout_seconds")))
 
     def checkout_url(
         self, tenant_id: str, plan: str, email: str | None, success_url: str, cancel_url: str, seats: int = 1
@@ -127,29 +140,45 @@ class StripeBilling(BillingProvider):
         price = (self.settings.get("prices") or {}).get(plan)
         if not price:
             raise BillingError(f"no Stripe price configured for plan '{plan}' (platform.billing.stripe.prices)")
-        form: dict[str, Any] = {
-            "mode": "subscription",
-            "success_url": success_url,
-            "cancel_url": cancel_url,
-            "client_reference_id": tenant_id,
-            "line_items[0][price]": price,
-            "line_items[0][quantity]": max(1, int(seats)),
-            "metadata[tenant_id]": tenant_id,
-            "metadata[plan]": plan,
-            "subscription_data[metadata][tenant_id]": tenant_id,
-            "subscription_data[metadata][plan]": plan,
-        }
+        form: dict[str, Any] = {}
+        _flatten("", self.settings.get("checkout") or {}, form)
+        form.update(
+            {
+                "success_url": success_url,
+                "cancel_url": cancel_url,
+                "client_reference_id": tenant_id,
+                "line_items[0][price]": price,
+                "line_items[0][quantity]": max(1, int(seats)),
+                "metadata[tenant_id]": tenant_id,
+                "metadata[plan]": plan,
+                "subscription_data[metadata][tenant_id]": tenant_id,
+                "subscription_data[metadata][plan]": plan,
+            }
+        )
         if email:
             form["customer_email"] = email
-        session = self._post("/checkout/sessions", form)
-        url = session.get("url")
+        url = self._post("/checkout/sessions", form).get("url")
         if not url:
             raise BillingError("Stripe did not return a checkout URL")
         return str(url)
 
     def portal_url(self, customer_id: str, return_url: str) -> str:
-        session = self._post("/billing_portal/sessions", {"customer": customer_id, "return_url": return_url})
-        return str(session["url"])
+        return str(self._post("/billing_portal/sessions", {"customer": customer_id, "return_url": return_url})["url"])
+
+    def report_usage(self, customer_id: str, metric: str, quantity: float, identifier: str) -> bool:
+        meter = (self.settings.get("meters") or {}).get(metric)
+        if not meter:
+            return False  # metric not sold through Stripe; it stays on the offline invoice
+        self._post(
+            "/billing/meter_events",
+            {
+                "event_name": meter,
+                "identifier": identifier,
+                "payload[stripe_customer_id]": customer_id,
+                "payload[value]": f"{quantity:g}",
+            },
+        )
+        return True
 
     def verify_signature(self, payload: bytes, header: str, now: float | None = None) -> None:
         secret = str(self.settings.get("webhook_secret") or "")
@@ -163,7 +192,7 @@ class StripeBilling(BillingProvider):
             timestamp = int(parts["t"][0])
         except (KeyError, ValueError) as exc:
             raise BillingError("malformed Stripe-Signature header") from exc
-        if abs((now or time.time()) - timestamp) > self.TOLERANCE_SECONDS:
+        if abs((now or time.time()) - timestamp) > float(self.setting("signature_tolerance_seconds")):
             raise BillingError("webhook timestamp outside tolerance")
         expected = hmac.new(secret.encode(), f"{timestamp}.".encode() + payload, hashlib.sha256).hexdigest()
         if not any(hmac.compare_digest(expected, sig) for sig in parts.get("v1", [])):
@@ -174,33 +203,34 @@ class StripeBilling(BillingProvider):
         self.verify_signature(payload, lowered.get("stripe-signature", ""))
         event = json.loads(payload)
         etype = str(event.get("type", ""))
+        rule = (self.settings.get("events") or {}).get(etype)
+        if not rule:
+            return []  # acknowledged and ignored
         obj = (event.get("data") or {}).get("object") or {}
         meta = obj.get("metadata") or {}
-        base: dict[str, Any] = {
-            "id": str(event.get("id")),
-            "raw_type": etype,
-            "customer_id": obj.get("customer"),
-            "data": obj,
-        }
-        if etype == "checkout.session.completed":
-            return [
-                BillingEvent(
-                    tenant_id=obj.get("client_reference_id") or meta.get("tenant_id"),
-                    plan=meta.get("plan"),
-                    status="active",
-                    **base,
-                )
-            ]
-        if etype in ("customer.subscription.created", "customer.subscription.updated"):
-            status = {"active": "active", "trialing": "active", "past_due": "past_due", "unpaid": "past_due"}.get(
-                str(obj.get("status")), "canceled"
+
+        status = rule.get("status")
+        if status == "from_subscription":
+            status = (self.settings.get("status_map") or {}).get(
+                str(obj.get("status")), self.settings.get("default_status")
             )
-            return [BillingEvent(tenant_id=meta.get("tenant_id"), plan=meta.get("plan"), status=status, **base)]
-        if etype == "customer.subscription.deleted":
-            return [BillingEvent(tenant_id=meta.get("tenant_id"), status="canceled", **base)]
-        if etype == "invoice.payment_failed":
-            return [BillingEvent(status="past_due", **base)]
-        return []  # other events are acknowledged and ignored
+        # tenant_from "customer": no id here; the service resolves it from the stored customer id.
+        tenant_id = {
+            "client_reference_id": obj.get("client_reference_id") or meta.get("tenant_id"),
+            "metadata": meta.get("tenant_id"),
+        }.get(str(rule.get("tenant_from", "metadata")))
+        plan = meta.get("plan") if rule.get("plan_from") == "metadata" else None
+        return [
+            BillingEvent(
+                id=str(event.get("id")),
+                tenant_id=tenant_id,
+                customer_id=obj.get("customer"),
+                plan=plan,
+                status=status,
+                raw_type=etype,
+                data=obj,
+            )
+        ]
 
 
 _PROVIDERS: dict[str, type[BillingProvider]] = {"manual": ManualBilling, "stripe": StripeBilling}
@@ -215,7 +245,10 @@ def billing_provider(billing_settings: dict[str, Any] | None) -> BillingProvider
     for name, cls in discover(BILLING_GROUP).items():
         _PROVIDERS.setdefault(name, cls)
     cfg = billing_settings or {}
-    name = str(cfg.get("provider") or "manual")
+    provider = cfg.get("provider")
+    if not provider:
+        raise ValueError("platform.billing.provider is not set")
+    name = str(provider)
     if name not in _PROVIDERS:
         raise ValueError(f"unknown billing provider '{name}'. Available: {', '.join(sorted(_PROVIDERS))}")
     return _PROVIDERS[name](cfg.get(name) or {})

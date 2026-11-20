@@ -3,8 +3,10 @@ Commercial platform: multi-tenant accounts, plans, metering and billing.
 
 Turns the self-hosted API into a hosted product. Individuals sign up themselves
 (B2C), organisations get members, roles and seats (B2B), and every model endpoint
-is metered per tenant so the same deployment can be sold as a PaaS API. Everything
-here uses the standard library; the HTTP layer needs the ``api`` extra.
+is metered per tenant so the same deployment can be sold as a PaaS API. Prices,
+plans, pay-to-use rates, quotas, roles and endpoint rules are data (catalog.yaml,
+settings.yaml), overridable from the settings file. Everything here uses the
+standard library; the HTTP layer needs the ``api`` extra.
 
 Enable it with ``platform.enabled: true`` in the settings file (or
 ``FIN_PLATFORM_ENABLED=1``). See docs/commercial.md.
@@ -13,20 +15,22 @@ Enable it with ``platform.enabled: true`` in the settings file (or
 from __future__ import annotations
 
 from financial_model.platform.billing import BillingEvent, BillingProvider, register_billing_provider
-from financial_model.platform.plans import DEFAULT_PLANS, Plan, load_plans
+from financial_model.platform.catalog import Catalog, CatalogError, MeterRule, Plan, builtin_settings
 from financial_model.platform.service import PlatformService, Principal
 from financial_model.platform.store import SQLiteStore, Store, open_store, register_store
 
 __all__ = [
-    "DEFAULT_PLANS",
     "BillingEvent",
     "BillingProvider",
+    "Catalog",
+    "CatalogError",
+    "MeterRule",
     "Plan",
     "PlatformService",
     "Principal",
     "SQLiteStore",
     "Store",
-    "load_plans",
+    "builtin_settings",
     "open_store",
     "register_billing_provider",
     "register_store",

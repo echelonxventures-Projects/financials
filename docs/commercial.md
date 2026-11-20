@@ -4,18 +4,57 @@ The toolkit can be sold three ways from the same code base and the same deployme
 
 | Offering | Who buys | What they get | How it is delivered |
 |---|---|---|---|
-| **B2C** (self-serve) | Founders, students, analysts, freelancers | Personal account, Free or Pro plan, card checkout | `POST /v1/signup`, hosted checkout |
-| **B2B** (teams) | Finance teams, advisors, accountants, funds | Organisation with members, roles, seats and shared usage; Team, Business or Enterprise plan | `POST /v1/organizations`, invoices or checkout |
-| **PaaS** (API) | Software companies embedding models in their product | Tenant API keys, per-month run quotas, usage reports for invoicing | The REST API with `X-API-Key` |
+| **B2C** (self-serve) | Founders, students, analysts, freelancers | Personal account on a free, subscription or pay-as-you-go plan | `POST /v1/signup`, hosted checkout |
+| **B2B** (teams) | Finance teams, advisors, accountants, funds | Organisation with members, roles, seats and shared usage | `POST /v1/accounts`, invoices or checkout |
+| **PaaS** (API) | Software companies embedding models in their product | Account API keys, metered usage, pay-to-use pricing | The REST API with `X-API-Key` |
 
 Plus the **Community edition**: the MIT-licensed self-hosted toolkit, unchanged. With
 `platform.enabled: false` (the default) the API behaves exactly as described in
 [Self-hosting](self-hosting.md).
 
-## Turning it on
+## Zero hard-coding
+
+No price, plan, quota, feature, role, account type, status, endpoint rule or billing
+behaviour is written in Python. They are data, in two files shipped with the package:
+
+| File | Holds | Override with |
+|---|---|---|
+| `financial_model/platform/catalog.yaml` | currency, account kinds, roles and permissions, account statuses, metrics, plans (prices, limits, features, pay-to-use metering), per-endpoint rules | inline keys under `platform:` in your settings file, or your own catalogue files via `platform.catalog` |
+| `financial_model/platform/settings.yaml` | runtime defaults: database, token lifetime, password policy, API-key prefix, sign-up switch, billing provider settings (Stripe URL, signature tolerance, checkout fields, status map, webhook event handling) | the `platform:` section of your settings file, or `FIN_PLATFORM_*` environment variables |
+
+Three ways to change the commercial model, from smallest to largest:
 
 ```yaml
 # financial.yaml
+platform:
+  # 1. Change one value (deep-merged; everything else stays)
+  plans:
+    pro: {price: {monthly: 29}, metering: {runs: {included: 10000}}}
+    business: null                       # remove a plan
+    startup:                             # add a plan
+      name: Startup
+      audience: [organization]
+      price: {monthly: 199, per_seat: false}
+      limits: {seats: 10, api_keys: 5, periods: 240}
+      model_types: ["*"]
+      features: ["export:json", "export:excel", charts]
+      metering: {runs: {included: 100000, overage: bill, unit_price: 0.004}}
+  currency: EUR
+
+  # 2. Layer your own catalogue file(s) over the built-in one
+  catalog: [builtin, /etc/financial-model/pricing.yaml]
+
+  # 3. Or replace the built-in catalogue entirely
+  # catalog: [/etc/financial-model/catalog.yaml]
+```
+
+The catalogue is validated when the platform starts: an unknown plan, role, account
+kind, status or metric referenced anywhere is an error, not a silent default.
+`financial-model platform plans` prints the effective catalogue.
+
+## Turning it on
+
+```yaml
 platform:
   enabled: true
   database: sqlite:////data/platform.db
@@ -28,169 +67,179 @@ financial-model serve --settings financial.yaml
 FIN_PLATFORM_SECRET_KEY=... docker compose -f deploy/compose.platform.yaml up -d --build
 ```
 
-Every setting can also be set as an environment variable (`FIN_PLATFORM_ENABLED=1`,
-`FIN_PLATFORM_BILLING_PROVIDER=stripe`, ...). Put a TLS-terminating proxy in front:
-API keys and passwords must never cross the network in plain HTTP.
+Put a TLS-terminating proxy in front: API keys and passwords must never cross the
+network in plain HTTP.
 
-In platform mode:
+## Plans and pay-to-use
 
-* `/health`, `/docs`, `/openapi.json` and `/v1/plans`, `/v1/signup`, `/v1/login`,
-  `/v1/billing/webhook` are public.
-* Every other endpoint needs `X-API-Key: fm_...` (a tenant key) or
-  `Authorization: Bearer <token>` (from `/v1/login`). The single shared `api.api_key`
-  of self-hosted mode is not used.
-* Model endpoints check the plan before running and count a run only when it succeeds.
+A plan has a fixed fee (optional), limits, the models and features it includes, and a
+metering rule per metric:
 
-## Plans
+```yaml
+plans:
+  payg:
+    name: Pay as you go
+    audience: [individual, organization]      # account kinds that may hold it
+    price: {monthly: 0, yearly: null, per_seat: false}
+    limits: {seats: 10, api_keys: 5, periods: 240}   # null = unlimited
+    model_types: ["*"]
+    features: ["export:json", "export:excel", "export:csv", charts, data_fetch]
+    metering:
+      runs:
+        included: 0              # units in the fixed fee (null = unlimited)
+        overage: bill            # block = refuse beyond included; bill = allow and charge
+        tiers:                   # or a flat `unit_price: 0.02`
+          - {up_to: 10000, unit_price: 0.02}
+          - {up_to: null, unit_price: 0.01}
+        cap: 1000000             # hard ceiling even when billing
+    display: {support: email}    # free-form, returned by GET /v1/plans for a pricing page
+```
 
-| Plan | Audience | Price (default) | Runs / month | Seats | Includes |
-|---|---|---|---|---|---|
-| Free | individual | $0 | 100 | 1 | three-statement, budget, PaaS, B2B, B2C models; JSON |
-| Pro | individual | $19/mo, $190/yr | 5,000 | 1 | every model (DCF, LBO, M&A), Excel/CSV, charts, market data |
-| Team | organization | $49 per seat/mo | 50,000 | 25 | Pro features, members and roles, 10 API keys |
-| Business | organization | $999/mo | 500,000 | 100 | high-volume API (PaaS), unlimited periods, priority support |
-| Enterprise | organization | contact sales | unlimited | unlimited | private deployment / on-prem licence, SLA, custom models |
+That one shape covers every pricing model:
 
-These are defaults. Change prices, quotas and features, add tiers, or remove one in
-`platform.plans` without touching code:
+| Pricing model | How to express it |
+|---|---|
+| Free tier | `price.monthly: 0`, `overage: block` with an `included` allowance |
+| Subscription | `price.monthly` / `price.yearly`, generous `included`, `overage: block` |
+| Per seat | `price.per_seat: true` (fee x members) and `limits.seats` |
+| Pay as you go | `price.monthly: 0`, `included: 0`, `overage: bill` with a price |
+| Subscription + overage | `price.monthly` plus `included` and `overage: bill` |
+| Volume / tiered | `tiers` |
+| Unlimited / enterprise | `included: null`, `price.monthly: null` (contact sales) |
+
+Metrics are defined in the catalogue (`metrics:`) and attached to endpoints
+(`endpoints:`), so a new billable action is a catalogue entry. A metric a plan does not
+list gets `default_metering` (built-in: not available).
+
+The built-in plans (Free, Pay as you go, Pro, Team, Business, Enterprise) are
+**placeholders**: set your own prices before charging anyone.
+
+Refusals: `402` when the plan lacks a model, feature or limit (upgrade), `429` when an
+allowance or cap is used up, `403` when the caller's role lacks the permission, `401`
+without valid credentials.
+
+`GET /v1/invoice` (and `financial-model platform invoice`) prices the month so far:
+the fixed fee (x seats for per-seat plans) plus each metric's charge beyond its
+allowance, tier by tier, in the catalogue's currency.
+
+## Accounts, roles and endpoint rules
+
+* **Account kinds** (`account_kinds`): built-in `individual` (B2C: one member, created by
+  sign-up) and `organization` (B2B: unlimited members, created by users). Add or change
+  kinds; `signup_kind` and `default_account_kind` say which kind each flow creates, and
+  `default_plan` maps each kind to its starting plan.
+* **Roles** (`roles`): a rank and a list of permissions (`"*"` = all). Built-in: owner,
+  admin, member, viewer. A caller can only grant roles up to their own rank;
+  `creator_role` is given to whoever creates an account and its last holder cannot be
+  removed.
+* **Statuses** (`account_statuses`): `blocked` refuses metered calls with a message,
+  `use_lapsed_plan` applies `lapsed_plan` limits while keeping the account.
+* **Endpoints** (`endpoints`): every route, keyed `"METHOD /path"`, says whether it is
+  `public`, which `permission` it needs, which plan `features`, and which `metric` and
+  `quantity` it meters. Usage is recorded only when the call succeeds. Routes not
+  listed use `default_endpoint`.
 
 ```yaml
 platform:
-  plans:
-    pro: {price_monthly: 29, runs_per_month: 10000}
-    startup: {name: Startup, audience: organization, price_monthly: 199, seats: 10, runs_per_month: 100000}
-    business: null   # remove a tier
+  roles:
+    analyst: {rank: 15, permissions: [view, run]}
+  endpoints:
+    "POST /export/excel": {permission: export_files, metric: runs, quantity: 2, features: ["export:excel"]}
 ```
 
-Plan fields: `name`, `audience` (`individual` | `organization` | `any`), `price_monthly`,
-`price_yearly`, `per_seat`, `seats`, `runs_per_month`, `max_periods`, `model_types`
-(`["*"]` = all), `exports` (`json`, `excel`, `csv`), `charts`, `data_fetch`, `api_keys`,
-`support`, `description`, `features`. `null` for a limit means unlimited.
-`financial-model platform plans` prints the effective catalogue; `GET /v1/plans`
-returns it as JSON for a pricing page.
+API keys look like `<api_key_prefix>_<id>_<secret>` (prefix `fm` by default); only a
+SHA-256 digest is stored. Passwords are PBKDF2-SHA256 with the iteration count and
+minimum length from the settings.
 
-What a refusal looks like: `402` when the plan does not include the feature (upgrade),
-`429` when the monthly run quota is used up, `403` when the caller's role is too low,
-`401` without valid credentials.
+### API
 
-## Accounts, roles and keys
-
-* **Individual** accounts (B2C) have one owner. Sign-up creates the user, the account on
-  `default_plan` and a first API key, shown once.
-* **Organisations** (B2B) have members with a role: `owner` > `admin` > `member` > `viewer`.
-  Admins add members (up to the plan's seats) and manage keys; viewers can read usage
-  and listings but cannot run models. The last owner cannot be removed.
-* A user can belong to several accounts. `/v1/login` takes an optional `tenant_id` to
-  choose which one the token acts for; `/v1/me` lists them.
-* API keys look like `fm_<prefix>_<secret>`. Only a SHA-256 digest is stored. Revoke with
-  `DELETE /v1/keys/{id}`. Passwords are stored as PBKDF2-SHA256 hashes.
-
-### API walkthrough
+| Endpoint | Default rule | Purpose |
+|---|---|---|
+| `GET /v1/plans` | public | catalogue for a pricing page (plans by account kind, metrics, currency) |
+| `POST /v1/signup` | public | self-serve account (`signup_kind`) + first key |
+| `POST /v1/login` | public | session token (optionally for a given `tenant_id`) |
+| `GET /v1/me` | view | user, account, plan, usage, other accounts |
+| `POST /v1/accounts` | view | create an account (`kind` default: `default_account_kind`) |
+| `GET/POST /v1/members`, `DELETE /v1/members/{id}` | view / manage_members | members and roles |
+| `GET/POST /v1/keys`, `DELETE /v1/keys/{id}` | view / manage_keys | API keys |
+| `GET /v1/usage?period=YYYY-MM` | view | usage and remaining allowances |
+| `GET /v1/invoice?period=YYYY-MM` | view | charges for the month |
+| `POST /v1/billing/checkout` | manage_billing | hosted checkout URL for a plan |
+| `POST /v1/billing/webhook` | public | signed payment-provider events |
 
 ```bash
-# B2C: sign up and run a model
 curl -s localhost:8000/v1/signup -H 'Content-Type: application/json' \
-  -d '{"email":"ada@example.com","password":"correct horse"}'
-#  -> {"api_key": "fm_1a2b3c4d_...", "tenant": {"plan": "free", ...}}
+  -d '{"email":"ada@example.com","password":"correct horse"}'     # -> {"api_key": "fm_..."}
 python3 -c 'import sys,yaml,json;print(json.dumps({"config": yaml.safe_load(open(sys.argv[1]))}))' \
   config/b2c_subscription.yaml > request.json
 curl -s localhost:8000/calculate -H "X-API-Key: $KEY" -H 'Content-Type: application/json' -d @request.json
-curl -s localhost:8000/v1/usage -H "X-API-Key: $KEY"
-
-# B2B: log in, create an organisation, add a colleague, issue a service key
-TOKEN=$(curl -s localhost:8000/v1/login -d '{"email":"ada@example.com","password":"correct horse"}' \
-  -H 'Content-Type: application/json' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
-curl -s localhost:8000/v1/organizations -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' -d '{"name":"Acme Finance"}'
-# log in again with {"tenant_id": "<org id>"} to act for the organisation, then:
-curl -s localhost:8000/v1/members -H "Authorization: Bearer $ORG_TOKEN" \
-  -H 'Content-Type: application/json' -d '{"email":"analyst@acme.com","role":"member"}'
-curl -s localhost:8000/v1/keys -H "Authorization: Bearer $ORG_TOKEN" \
-  -H 'Content-Type: application/json' -d '{"name":"erp-sync"}'
+curl -s localhost:8000/v1/invoice -H "X-API-Key: $KEY"
 ```
-
-| Endpoint | Who | Purpose |
-|---|---|---|
-| `GET /v1/plans` | public | plan catalogue |
-| `POST /v1/signup` | public | B2C account + first key |
-| `POST /v1/login` | public | session token (optionally for a given `tenant_id`) |
-| `GET /v1/me` | any | user, current account, plan, usage, other accounts |
-| `POST /v1/organizations` | user | create a B2B organisation (caller becomes owner) |
-| `GET/POST /v1/members`, `DELETE /v1/members/{id}` | admin | manage members and roles |
-| `GET/POST /v1/keys`, `DELETE /v1/keys/{id}` | admin (owner for individuals) | API keys |
-| `GET /v1/usage?period=YYYY-MM` | any | runs and other metrics this month |
-| `POST /v1/billing/checkout` | admin | hosted checkout URL for a plan |
-| `POST /v1/billing/webhook` | payment provider | signed subscription events |
 
 ## Billing
 
-Billing is a plug-in, so the platform is not tied to one payment company.
+The provider is chosen by `platform.billing.provider`; each reads the block named after it.
 
-* **`manual`** (default): no online payment. Sell by quote and invoice (usual for B2B and
-  Enterprise) and apply the plan with `financial-model platform set-plan <tenant> <plan>`.
-  `financial-model platform usage <tenant>` gives the month's usage as JSON for
-  usage-based or overage invoices.
-* **`stripe`**: `POST /v1/billing/checkout` returns a Stripe Checkout URL for the plan
-  (quantity = seats for per-seat plans). Stripe calls `POST /v1/billing/webhook`; the
-  signature is verified with your webhook secret, events are applied once each, and the
-  account's plan and status follow the subscription (`active`, `past_due` blocks runs,
-  `canceled` drops to free-tier limits while keeping the account and its keys). No Stripe
-  SDK is needed.
+* **`manual`** (default): sell by quote and invoice. `financial-model platform invoice`
+  gives each account's charges as JSON; apply plans with `platform set-plan`.
+* **`stripe`**: Checkout for fixed fees (`prices: {plan: price_id}`), signed webhooks for
+  subscription changes, and billing-meter events for pay-to-use (`meters: {metric:
+  meter_event_name}`; run `financial-model platform sync-usage` on a schedule; it sends
+  only units beyond each plan's allowance, once). The API base URL, timeout, signature
+  tolerance, extra checkout fields, Stripe-status-to-account-status map and the handling
+  of each webhook event type are settings:
 
   ```yaml
   platform:
     billing:
       provider: stripe
       stripe:
-        secret_key: sk_live_...        # FIN_PLATFORM_BILLING_STRIPE_SECRET_KEY
-        webhook_secret: whsec_...      # FIN_PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET
-        prices: {pro: price_..., team: price_..., business: price_...}
+        secret_key: sk_live_...              # FIN_PLATFORM_BILLING_STRIPE_SECRET_KEY
+        webhook_secret: whsec_...            # FIN_PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET
+        prices: {pro: price_..., team: price_...}
+        meters: {runs: model_runs}
+        checkout: {mode: subscription, allow_promotion_codes: "true"}
+        events:
+          charge.refunded: {status: past_due, tenant_from: metadata}
   ```
 
-  Subscribe the webhook to `checkout.session.completed`, `customer.subscription.updated`,
-  `customer.subscription.deleted` and `invoice.payment_failed`.
-
-* **Other providers** (Paddle, Lemon Squeezy, Chargebee, your ERP): subclass
-  `financial_model.platform.BillingProvider` (`checkout_url`, `parse_webhook`) and register
-  it with `register_billing_provider("paddle", PaddleBilling)` or the
-  `financial_model.billing_providers` entry point; select it with `billing.provider`.
+* **Other providers** (Paddle, Lemon Squeezy, Chargebee, an ERP): subclass
+  `financial_model.platform.BillingProvider` (`checkout_url`, `parse_webhook`,
+  `report_usage`) and register it with `register_billing_provider` or the
+  `financial_model.billing_providers` entry point.
 
 ## Operator CLI
 
 ```bash
-financial-model platform plans                                   # effective catalogue
-financial-model platform create-org "Acme Capital" --owner cfo@acme.com --plan business
-financial-model platform add-member <tenant> analyst@acme.com --role admin
-financial-model platform issue-key <tenant> --name erp-sync      # printed once
-financial-model platform set-plan <tenant> enterprise            # after an invoice is paid
-financial-model platform tenants                                 # accounts, plans, runs this month
-financial-model platform usage <tenant> --period 2026-10         # JSON for invoicing
-financial-model platform create-user solo@example.com --individual --password '...'
+financial-model platform plans                       # effective catalogue, prices and pay-to-use rates
+financial-model platform create-account "Acme Capital" --owner cfo@acme.com --plan business
+financial-model platform add-member <account> analyst@acme.com --role admin
+financial-model platform issue-key <account> --name erp-sync
+financial-model platform set-plan <account> enterprise [--status active]
+financial-model platform tenants                     # accounts, plans, usage this month
+financial-model platform usage <account> --period 2026-10
+financial-model platform invoice [<account>] --period 2026-10
+financial-model platform sync-usage                  # push pay-to-use usage to the billing provider
+financial-model platform create-user solo@example.com --signup --password '...'
 ```
 
 All commands take `--settings financial.yaml` and `--database sqlite:///...`.
 
 ## Storage and scaling
 
-Accounts, keys and usage live in SQLite (standard library, one file, WAL mode). That is
-enough for a single node with several workers. For several nodes, use a shared database:
-implement `financial_model.platform.Store` and register a URL scheme with
-`register_store("postgres", factory)` or the `financial_model.platform_stores` entry point,
-then set `database: postgres://...`. Login tokens are signed, not stored, so any replica
-with the same `secret_key` accepts them.
+Accounts, keys and usage live in SQLite (standard library, one file, WAL mode): enough
+for one node with several workers. For several nodes, implement
+`financial_model.platform.Store` and register a URL scheme with `register_store` or the
+`financial_model.platform_stores` entry point. Login tokens are signed, not stored, so
+any replica with the same `secret_key` accepts them.
 
 ## Before charging customers
 
-The code handles accounts, entitlements, metering and payments. Selling it also needs
-decisions the code cannot make for you:
-
-* **Licence.** The repository is MIT. Anyone may self-host it, including the platform
-  code. If you want an open-core split (paid features under a commercial licence), move
-  `financial_model/platform/` to a separately licensed package before you publish it.
-* **Terms of service, privacy policy, data-processing agreement** (B2B buyers ask for a
-  DPA), and sales tax / VAT handling. Stripe Tax or a merchant of record can cover tax.
+* **Licence.** The repository is MIT, so anyone may self-host it, platform included. For
+  an open-core split, move `financial_model/platform/` to a separately licensed package.
+* **Terms of service, privacy policy, data-processing agreement**, and sales tax / VAT
+  (Stripe Tax or a merchant of record can cover tax).
 * **Financial-advice disclaimer.** Model outputs are projections, not advice.
 * **Operations:** TLS, backups of the platform database, monitoring of `/health`.
 * **Not built in yet:** email delivery (verification, invitations, password reset), SSO /
-  SAML for Enterprise, and a web front end. Users authenticate with API keys or
-  `/v1/login`; a front end can be built on the `/v1` API.
+  SAML, and a web front end (one can be built on the `/v1` API).
