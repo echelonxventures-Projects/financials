@@ -33,22 +33,19 @@ MODEL_CLASSES: dict[str, type[FinancialModel]] = {
 # Composite models built from other models' configs (not FinancialModel subclasses).
 COMPOSITE_TYPES = ("ma",)
 
-ALIASES = {
-    "three": "three-statement",
-    "3-statement": "three-statement",
-    "3s": "three-statement",
-    "ts": "three-statement",
-    "m&a": "ma",
-    "m-a": "ma",
-    "merger": "ma",
-    "b2b": "b2b-saas",
-    "saas-b2b": "b2b-saas",
-    "b2c": "b2c-subscription",
-    "consumer": "b2c-subscription",
-    "subscription": "b2c-subscription",
-    "platform": "paas",
-    "usage-based": "paas",
-}
+
+def _definition_aliases() -> dict[str, str]:
+    """Alternative names of model types, from each definition's ``aliases`` list."""
+    from financial_model.core.definitions import available_definitions, load_definition
+
+    out: dict[str, str] = {}
+    for key in available_definitions():
+        for alias in load_definition(key).get("aliases") or []:
+            out[str(alias).strip().lower()] = key
+    return out
+
+
+ALIASES: dict[str, str] = _definition_aliases()
 
 
 _plugins_loaded = False

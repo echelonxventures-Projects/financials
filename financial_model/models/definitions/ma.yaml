@@ -1,0 +1,373 @@
+# Defaults of the `ma` (merger) model: deal terms, which model types may be the acquirer or
+# target, the share-price fallback for a loss-making acquirer, and the `init` starter deal.
+model_type: ma
+aliases: [m&a, m-a, merger]
+name: M&A Model
+description: Accretion / dilution, synergy phase-in and contribution analysis of two models
+side_model_types:
+- three-statement
+- dcf
+- lbo
+deal:
+  offer_price_per_share: 0.0
+  target_shares: 1000000
+  cash_consideration_pct: 0.5
+  stock_consideration_pct: 0.5
+  synergies: 0.0
+  synergy_phase_in:
+  - 0.3
+  - 0.6
+  - 0.8
+  - 1.0
+  - 1.0
+  financing_rate: 0.06
+  tax_rate: 0.21
+  acquirer_shares: 10000000
+  acquirer_share_price: null
+  acquirer_pe: 20.0
+loss_making_acquirer:
+  revenue_multiple: 5.0
+  min_share_price: 1.0
+# Starter config written by `financial-model init --type ma [--industry <variant>]`.
+# period_paths get start_year/years; truncate_to_years lists are cut to the year count;
+# cap_at_years values are capped at it. Unknown industries use fallback_variant.
+starter:
+  fallback_variant: other
+  period_paths:
+  - acquirer.periods
+  - target.periods
+  truncate_to_years:
+  - deal.synergy_phase_in
+  variants:
+    saas:
+      name: M&A Model
+      model_type: ma
+      acquirer:
+        name: Acquirer
+        model_type: three-statement
+        periods:
+          type: annual
+        assumptions:
+          drivers:
+            revenue:
+              value: 40000000
+              description: Starting revenue
+              unit: $
+            revenue_growth:
+              value: 0.15
+              description: YoY growth
+              unit: '%'
+            cogs_pct:
+              value: 0.22
+              description: COGS % of revenue
+              unit: '%'
+            rd_pct:
+              value: 0.2
+              description: R&D % of revenue
+              unit: '%'
+            sm_pct:
+              value: 0.25
+              description: S&M % of revenue
+              unit: '%'
+            gna_pct:
+              value: 0.12
+              description: G&A % of revenue
+              unit: '%'
+            sbc:
+              value: 800000
+              description: Stock-based compensation
+              unit: $
+            tax_rate:
+              value: 0.21
+              description: Tax rate
+              unit: '%'
+            ar_days:
+              value: 45
+              description: AR days
+              unit: days
+            ap_days:
+              value: 60
+              description: AP days
+              unit: days
+            deferred_rev_pct:
+              value: 0.3
+              description: Deferred revenue % of revenue
+              unit: '%'
+            ppe_gross:
+              value: 1000000
+              description: Opening gross PP&E
+              unit: $
+            capex:
+              value: -500000
+              description: Annual CapEx
+              unit: $
+            depreciation_rate:
+              value: 0.2
+              description: Depreciation rate on gross PP&E
+              unit: '%'
+            beginning_cash:
+              value: 500000
+              description: Opening cash
+              unit: $
+            apic:
+              value: 5000000
+              description: Opening paid-in capital
+              unit: $
+          scenarios:
+            base: {}
+            upside:
+              revenue_growth: 0.4
+              cogs_pct: 0.2
+            downside:
+              revenue_growth: 0.15
+              cogs_pct: 0.25
+      target:
+        name: Target
+        model_type: three-statement
+        periods:
+          type: annual
+        assumptions:
+          drivers:
+            revenue:
+              value: 10000000
+              description: Starting revenue
+              unit: $
+            revenue_growth:
+              value: 0.15
+              description: YoY growth
+              unit: '%'
+            cogs_pct:
+              value: 0.22
+              description: COGS % of revenue
+              unit: '%'
+            rd_pct:
+              value: 0.2
+              description: R&D % of revenue
+              unit: '%'
+            sm_pct:
+              value: 0.25
+              description: S&M % of revenue
+              unit: '%'
+            gna_pct:
+              value: 0.12
+              description: G&A % of revenue
+              unit: '%'
+            sbc:
+              value: 800000
+              description: Stock-based compensation
+              unit: $
+            tax_rate:
+              value: 0.21
+              description: Tax rate
+              unit: '%'
+            ar_days:
+              value: 45
+              description: AR days
+              unit: days
+            ap_days:
+              value: 60
+              description: AP days
+              unit: days
+            deferred_rev_pct:
+              value: 0.3
+              description: Deferred revenue % of revenue
+              unit: '%'
+            ppe_gross:
+              value: 1000000
+              description: Opening gross PP&E
+              unit: $
+            capex:
+              value: -500000
+              description: Annual CapEx
+              unit: $
+            depreciation_rate:
+              value: 0.2
+              description: Depreciation rate on gross PP&E
+              unit: '%'
+            beginning_cash:
+              value: 500000
+              description: Opening cash
+              unit: $
+            apic:
+              value: 5000000
+              description: Opening paid-in capital
+              unit: $
+          scenarios:
+            base: {}
+            upside:
+              revenue_growth: 0.4
+              cogs_pct: 0.2
+            downside:
+              revenue_growth: 0.15
+              cogs_pct: 0.25
+      deal:
+        offer_price_per_share: 18.0
+        target_shares: 2000000
+        cash_consideration_pct: 0.5
+        financing_rate: 0.065
+        synergies: 1500000
+        synergy_phase_in:
+        - 0.3
+        - 0.6
+        - 0.8
+        - 1.0
+        - 1.0
+        tax_rate: 0.21
+        acquirer_shares: 10000000
+        acquirer_pe: 25.0
+    other:
+      name: M&A Model
+      model_type: ma
+      acquirer:
+        name: Acquirer
+        model_type: three-statement
+        periods:
+          type: annual
+        assumptions:
+          drivers:
+            revenue:
+              value: 40000000
+              description: Starting revenue
+              unit: $
+            revenue_growth:
+              value: 0.15
+              description: YoY growth
+              unit: '%'
+            cogs_pct:
+              value: 0.6
+              description: COGS % of revenue
+              unit: '%'
+            rd_pct:
+              value: 0.05
+              description: R&D % of revenue
+              unit: '%'
+            sm_pct:
+              value: 0.25
+              description: S&M % of revenue
+              unit: '%'
+            gna_pct:
+              value: 0.08
+              description: G&A % of revenue
+              unit: '%'
+            tax_rate:
+              value: 0.21
+              description: Tax rate
+              unit: '%'
+            inventory_days:
+              value: 60
+              description: Inventory days
+              unit: days
+            ppe_gross:
+              value: 20000000
+              description: Opening gross PP&E
+              unit: $
+            capex:
+              value: -3000000
+              description: Annual CapEx
+              unit: $
+            depreciation_rate:
+              value: 0.08
+              description: Depreciation rate on gross PP&E
+              unit: '%'
+            beginning_cash:
+              value: 2000000
+              description: Opening cash
+              unit: $
+            apic:
+              value: 15000000
+              description: Opening paid-in capital
+              unit: $
+          scenarios:
+            base: {}
+            upside:
+              revenue_growth: 0.4
+              cogs_pct: 0.2
+            downside:
+              revenue_growth: 0.15
+              cogs_pct: 0.25
+      target:
+        name: Target
+        model_type: three-statement
+        periods:
+          type: annual
+        assumptions:
+          drivers:
+            revenue:
+              value: 50000000
+              description: Starting revenue
+              unit: $
+            revenue_growth:
+              value: 0.15
+              description: YoY growth
+              unit: '%'
+            cogs_pct:
+              value: 0.6
+              description: COGS % of revenue
+              unit: '%'
+            rd_pct:
+              value: 0.05
+              description: R&D % of revenue
+              unit: '%'
+            sm_pct:
+              value: 0.25
+              description: S&M % of revenue
+              unit: '%'
+            gna_pct:
+              value: 0.08
+              description: G&A % of revenue
+              unit: '%'
+            tax_rate:
+              value: 0.21
+              description: Tax rate
+              unit: '%'
+            inventory_days:
+              value: 60
+              description: Inventory days
+              unit: days
+            ppe_gross:
+              value: 20000000
+              description: Opening gross PP&E
+              unit: $
+            capex:
+              value: -3000000
+              description: Annual CapEx
+              unit: $
+            depreciation_rate:
+              value: 0.08
+              description: Depreciation rate on gross PP&E
+              unit: '%'
+            beginning_cash:
+              value: 2000000
+              description: Opening cash
+              unit: $
+            apic:
+              value: 15000000
+              description: Opening paid-in capital
+              unit: $
+          scenarios:
+            base: {}
+            upside:
+              revenue_growth: 0.4
+              cogs_pct: 0.2
+            downside:
+              revenue_growth: 0.15
+              cogs_pct: 0.25
+      deal:
+        offer_price_per_share: 18.0
+        target_shares: 2000000
+        cash_consideration_pct: 0.5
+        financing_rate: 0.065
+        synergies: 1500000
+        synergy_phase_in:
+        - 0.3
+        - 0.6
+        - 0.8
+        - 1.0
+        - 1.0
+        tax_rate: 0.21
+        acquirer_shares: 10000000
+        acquirer_pe: 25.0
+# Descriptions of the deal terms (JSON Schema, docs).
+deal_descriptions:
+  synergies: Annual run-rate pre-tax synergies
+  acquirer_share_price: "Default: acquirer year-1 EPS x acquirer_pe"

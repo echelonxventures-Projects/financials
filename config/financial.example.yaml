@@ -21,10 +21,11 @@ data:
 logging:
   level: INFO
 
-# Business-model templates (paas, b2b-saas, b2c-subscription): extra directories
-# searched first for `<model_type>.yaml`, to ship your own default drivers and scenarios.
+# Model definitions: every model's defaults, starters and labels (and whole new model types)
+# are YAML files `<model_type>.yaml`. Directories listed here are searched before the built-in
+# financial_model/models/definitions, so a file here replaces or extends a built-in one.
 models:
-  template_paths: []
+  definition_paths: []
 
 # Commercial multi-tenant mode: hosted PaaS API, B2B organisations, B2C self-serve.
 # Off by default. Every default lives in financial_model/platform/settings.yaml (runtime)

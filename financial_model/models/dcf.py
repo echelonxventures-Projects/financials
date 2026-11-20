@@ -57,45 +57,14 @@ class DCFModel(ThreeStatementModel):
 
     def __init__(
         self,
-        name: str = "DCF Model",
+        name: str | None = None,
         periods: PeriodIndex | None = None,
         assumptions: Assumptions | None = None,
-        risk_free_rate: float = 0.045,
-        equity_risk_premium: float = 0.055,
-        beta: float = 1.2,
-        cost_of_debt: float = 0.06,
-        tax_rate: float = 0.21,
-        target_debt_ratio: float = 0.20,
-        terminal_growth: float = 0.025,
-        exit_multiple: float = 12.0,
-        projection_years: int = 5,
+        **overrides: Any,
     ):
+        """Defaults come from models/definitions/dcf.yaml; keyword arguments override drivers by name."""
         super().__init__(name=name, periods=periods, assumptions=assumptions)
-        self.risk_free_rate = risk_free_rate
-        self.equity_risk_premium = equity_risk_premium
-        self.beta = beta
-        self.cost_of_debt = cost_of_debt
-        self.tax_rate = tax_rate
-        self.target_debt_ratio = target_debt_ratio
-        self.terminal_growth = terminal_growth
-        self.exit_multiple = exit_multiple
-        self.projection_years = projection_years
-        self._add_dcf_assumptions()
-
-    def _add_dcf_assumptions(self) -> None:
-        """Add DCF-specific drivers to assumptions."""
-        dcf_drivers = [
-            Driver("risk_free_rate", self.risk_free_rate, "Risk-free rate", "%"),
-            Driver("equity_risk_premium", self.equity_risk_premium, "Equity risk premium", "%"),
-            Driver("beta", self.beta, "Levered beta", "x"),
-            Driver("cost_of_debt", self.cost_of_debt, "Pre-tax cost of debt", "%"),
-            Driver("tax_rate", self.tax_rate, "Tax rate", "%"),
-            Driver("target_debt_ratio", self.target_debt_ratio, "Target D/(D+E)", "%"),
-            Driver("terminal_growth", self.terminal_growth, "Terminal growth rate", "%"),
-            Driver("exit_multiple", self.exit_multiple, "Exit EV/EBITDA multiple", "x"),
-        ]
-        for driver in dcf_drivers:
-            self.assumptions.set_driver(driver)
+        self._apply_overrides(overrides)
 
     # ------------------------------------------------------------------ #
     # Valuation
@@ -194,7 +163,7 @@ class DCFModel(ThreeStatementModel):
         equity_gordon = ev_gordon - net_debt
         equity_multiple = ev_multiple - net_debt
 
-        shares = dv("shares_outstanding") or 1_000_000
+        shares = dv("shares_outstanding")
         price_gordon = equity_gordon / shares if shares > 0 else 0.0
         price_multiple = equity_multiple / shares if shares > 0 else 0.0
 
@@ -236,13 +205,20 @@ class DCFModel(ThreeStatementModel):
     def sensitivity_analysis(
         self,
         result: ModelResult | None = None,
-        wacc_range: tuple[float, float] = (0.07, 0.13),
-        growth_range: tuple[float, float] = (0.01, 0.04),
-        steps: int = 5,
+        wacc_range: tuple[float, float] | None = None,
+        growth_range: tuple[float, float] | None = None,
+        steps: int | None = None,
     ) -> pd.DataFrame:
-        """Equity value (Gordon growth) for a grid of WACC (columns) x terminal growth (rows)."""
+        """Equity value (Gordon growth) for a grid of WACC (columns) x terminal growth (rows).
+
+        Ranges and steps default to the definition's ``sensitivity`` section.
+        """
         if result is None:
             result = self.calculate()
+        grid = self.setting("sensitivity", {})
+        wacc_range = wacc_range or tuple(grid["wacc_range"])
+        growth_range = growth_range or tuple(grid["growth_range"])
+        steps = int(steps or grid["steps"])
 
         base_dcf = self.calculate_dcf(result)
         fcf = base_dcf["fcf"]

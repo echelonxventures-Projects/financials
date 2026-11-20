@@ -5,6 +5,7 @@ Coordinates statements, assumptions, periods, and balancing.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ import yaml
 
 from financial_model.core.assumptions import Assumptions
 from financial_model.core.balancer import BalanceResult, BalanceSheetBalancer, CashFlowBalancer
+from financial_model.core.definitions import DefinitionError, definition_drivers, load_definition
 from financial_model.core.line_item import Driver, LineItem, LineItemType
 from financial_model.core.period import PeriodIndex, PeriodType
 from financial_model.core.statement import Statement, StatementType
@@ -60,11 +62,11 @@ class FinancialModel:
 
     def __init__(
         self,
-        name: str = "Financial Model",
+        name: str | None = None,
         periods: PeriodIndex | None = None,
         assumptions: Assumptions | None = None,
     ):
-        self.name = name
+        self.name = name or ""
         self.periods = periods or PeriodIndex()
         self.assumptions = assumptions or Assumptions()
 
@@ -75,6 +77,61 @@ class FinancialModel:
         self.bs_balancer = BalanceSheetBalancer()
         self.cf_balancer = CashFlowBalancer()
         self.last_passes = 0
+
+        # Defaults are data: models/definitions/<model_type>.yaml (see core/definitions.py).
+        # Drivers already in `assumptions` win over the definition's defaults.
+        # A subclass without its own definition file (e.g. a plugin) inherits its parent's.
+        self.definition: dict[str, Any] = {}
+        for klass in type(self).__mro__:
+            if klass is FinancialModel or not issubclass(klass, FinancialModel):
+                break
+            key = klass.__dict__.get("model_type")
+            if key:
+                self.definition = load_definition(key, missing_ok=True)
+                if self.definition:
+                    break
+        self._default_drivers = definition_drivers(self.definition)
+        for driver_name, driver in self._default_drivers.items():
+            if driver_name not in self.assumptions.drivers:
+                self.assumptions.set_driver(copy.deepcopy(driver))
+        if name is None:
+            self.name = str(self.definition.get("name") or type(self).__name__)
+
+    # ------------------------------------------------------------------ #
+    # Definition access
+    # ------------------------------------------------------------------ #
+    def ref(self, driver_name: str) -> Driver:
+        """The definition's default for ``driver_name`` (for line items that carry a driver)."""
+        driver = self._default_drivers.get(driver_name)
+        if driver is None:
+            raise DefinitionError(
+                f"{self.model_type}: driver '{driver_name}' has no default in "
+                f"{self.definition.get('_source', 'its definition file')}"
+            )
+        return copy.deepcopy(driver)
+
+    def __getattr__(self, attr: str) -> Any:
+        """Drivers read as attributes (``dcf.risk_free_rate``); only consulted when normal lookup fails."""
+        if attr.startswith("_"):
+            raise AttributeError(attr)
+        assumptions = self.__dict__.get("assumptions")
+        if assumptions is not None and attr in assumptions.drivers:
+            return assumptions.drivers[attr].value
+        raise AttributeError(f"{type(self).__name__!s} has no attribute or driver '{attr}'")
+
+    def _apply_overrides(self, overrides: dict[str, Any]) -> None:
+        """Keyword overrides of definition drivers (``DCFModel(beta=1.1)``); ``None`` keeps the default."""
+        for key, value in overrides.items():
+            if value is None:
+                continue
+            current = self.assumptions.drivers.get(key)
+            if current is None:
+                raise TypeError(f"{type(self).__name__}: unknown driver '{key}'")
+            self.assumptions.set_driver(Driver(key, value, current.description, current.unit))
+
+    def setting(self, key: str, default: Any = None) -> Any:
+        """Any other section of the model's definition (labels, starters, departments...)."""
+        return copy.deepcopy(self.definition.get(key, default))
 
     # ------------------------------------------------------------------ #
     # Topology
@@ -342,7 +399,7 @@ class FinancialModel:
     @classmethod
     def from_config(cls, config: dict[str, Any], base_dir: Path | None = None) -> FinancialModel:
         """Build a model from a parsed YAML mapping. YAML assumptions overlay the class defaults."""
-        model = cls(name=config.get("name", cls.__name__))
+        model = cls(name=config.get("name"))
 
         period_config = config.get("periods", {}) or {}
         periods = PeriodIndex.generate(

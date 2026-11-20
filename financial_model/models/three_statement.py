@@ -71,12 +71,11 @@ class ThreeStatementModel(FinancialModel):
 
     def __init__(
         self,
-        name: str = "Three Statement Model",
+        name: str | None = None,
         periods: PeriodIndex | None = None,
         assumptions: Assumptions | None = None,
     ):
         super().__init__(name=name, periods=periods, assumptions=assumptions)
-        self._setup_default_assumptions()
         self._setup_default_structure()
 
     # ------------------------------------------------------------------ #
@@ -137,7 +136,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.GROWTH_RATE,
                 calculation_params={"driver": "revenue_growth", "base_line": "Revenue"},
-                driver=Driver("revenue", [10_000_000], "Starting revenue", "$"),
+                driver=self.ref("revenue"),
                 is_total=True,
                 description="Total revenue",
             ),
@@ -148,7 +147,7 @@ class ThreeStatementModel(FinancialModel):
                 order=11,
                 unit="%",
                 format="{:.1%}",
-                driver=Driver("revenue_growth", [0.20], "YoY revenue growth", "%"),
+                driver=self.ref("revenue_growth"),
                 description="Revenue growth rate",
             ),
             LineItem(
@@ -159,7 +158,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.PCT_OF_REVENUE,
                 calculation_params={"driver": "cogs_pct", "sign": -1},
-                driver=Driver("cogs_pct", [0.35], "COGS as % of revenue", "%"),
+                driver=self.ref("cogs_pct"),
                 description="Cost of goods sold",
             ),
             LineItem(
@@ -181,7 +180,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.PCT_OF_REVENUE,
                 calculation_params={"driver": "rd_pct", "sign": -1},
-                driver=Driver("rd_pct", [0.15], "R&D as % of revenue", "%"),
+                driver=self.ref("rd_pct"),
                 description="Research & development",
             ),
             LineItem(
@@ -192,7 +191,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.PCT_OF_REVENUE,
                 calculation_params={"driver": "sm_pct", "sign": -1},
-                driver=Driver("sm_pct", [0.25], "S&M as % of revenue", "%"),
+                driver=self.ref("sm_pct"),
                 description="Sales & marketing",
             ),
             LineItem(
@@ -203,7 +202,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.PCT_OF_REVENUE,
                 calculation_params={"driver": "gna_pct", "sign": -1},
-                driver=Driver("gna_pct", [0.10], "G&A as % of revenue", "%"),
+                driver=self.ref("gna_pct"),
                 description="General & administrative",
             ),
             LineItem(
@@ -214,7 +213,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=lambda df, idx, drivers: -abs(_dv(drivers, "sbc", idx)),
-                driver=Driver("sbc", [0], "Stock-based compensation", "$"),
+                driver=self.ref("sbc"),
                 description="Non-cash SBC expense",
             ),
             LineItem(
@@ -225,7 +224,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=lambda df, idx, drivers: -self.depreciation(drivers, idx),
-                driver=Driver("depreciation_rate", [0.10], "Depreciation rate on gross PP&E", "%"),
+                driver=self.ref("depreciation_rate"),
                 description="Depreciation & amortization expense",
             ),
             LineItem(
@@ -263,7 +262,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=lambda df, idx, drivers: -abs(_dv(drivers, "interest_expense", idx)),
-                driver=Driver("interest_expense", [0], "Interest expense", "$"),
+                driver=self.ref("interest_expense"),
                 description="Interest expense",
             ),
             LineItem(
@@ -272,7 +271,7 @@ class ThreeStatementModel(FinancialModel):
                 IS,
                 order=61,
                 unit="$",
-                driver=Driver("other_income", [0], "Other income/expense", "$"),
+                driver=self.ref("other_income"),
                 description="Other non-operating items",
             ),
             LineItem(
@@ -294,7 +293,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.PCT_OF_LINE,
                 calculation_params={"base_line": "Pre-Tax Income", "driver": "tax_rate", "sign": -1},
-                driver=Driver("tax_rate", [0.21], "Effective tax rate", "%"),
+                driver=self.ref("tax_rate"),
                 description="Income tax expense (benefit when pre-tax income is negative)",
             ),
             LineItem(
@@ -346,7 +345,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.DAYS_OUTSTANDING,
                 calculation_params={"driver": "ar_days", "base_line": "Revenue"},
-                driver=Driver("ar_days", [45], "Accounts receivable days", "days"),
+                driver=self.ref("ar_days"),
                 description="Accounts receivable",
             ),
             LineItem(
@@ -357,7 +356,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.DAYS_OUTSTANDING,
                 calculation_params={"driver": "inventory_days", "base_line": "COGS"},
-                driver=Driver("inventory_days", [0], "Inventory days", "days"),
+                driver=self.ref("inventory_days"),
                 description="Inventory",
             ),
             LineItem(
@@ -368,7 +367,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.PCT_OF_REVENUE,
                 calculation_params={"driver": "prepaid_pct"},
-                driver=Driver("prepaid_pct", [0.02], "Prepaid as % of revenue", "%"),
+                driver=self.ref("prepaid_pct"),
                 description="Prepaid expenses",
             ),
             LineItem(
@@ -389,7 +388,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=lambda df, idx, drivers: self.ppe_gross(drivers, idx),
-                driver=Driver("ppe_gross", [1_000_000], "Opening gross PP&E", "$"),
+                driver=self.ref("ppe_gross"),
                 description="Gross PP&E (opening + cumulative capex)",
             ),
             LineItem(
@@ -418,7 +417,7 @@ class ThreeStatementModel(FinancialModel):
                 BS,
                 order=80,
                 unit="$",
-                driver=Driver("intangibles", [0], "Intangible assets", "$"),
+                driver=self.ref("intangibles"),
                 description="Intangible assets",
             ),
             LineItem(
@@ -429,7 +428,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=goodwill,
-                driver=Driver("goodwill", [0], "Opening goodwill", "$"),
+                driver=self.ref("goodwill"),
                 description="Goodwill (opening + cumulative acquisitions)",
             ),
             LineItem(
@@ -450,7 +449,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.DAYS_OUTSTANDING,
                 calculation_params={"driver": "ap_days", "base_line": "COGS"},
-                driver=Driver("ap_days", [60], "Accounts payable days", "days"),
+                driver=self.ref("ap_days"),
                 description="Accounts payable",
             ),
             LineItem(
@@ -461,7 +460,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.PCT_OF_REVENUE,
                 calculation_params={"driver": "accrued_pct"},
-                driver=Driver("accrued_pct", [0.05], "Accrued as % of revenue", "%"),
+                driver=self.ref("accrued_pct"),
                 description="Accrued expenses",
             ),
             LineItem(
@@ -472,7 +471,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.PCT_OF_REVENUE,
                 calculation_params={"driver": "deferred_rev_pct"},
-                driver=Driver("deferred_rev_pct", [0.15], "Deferred revenue as % of revenue", "%"),
+                driver=self.ref("deferred_rev_pct"),
                 description="Deferred revenue",
             ),
             LineItem(
@@ -481,7 +480,7 @@ class ThreeStatementModel(FinancialModel):
                 BS,
                 order=140,
                 unit="$",
-                driver=Driver("current_debt", [0], "Current portion of debt", "$"),
+                driver=self.ref("current_debt"),
                 description="Current debt portion",
             ),
             LineItem(
@@ -513,7 +512,7 @@ class ThreeStatementModel(FinancialModel):
                 BS,
                 order=170,
                 unit="$",
-                driver=Driver("long_term_debt", [0], "Long-term debt", "$"),
+                driver=self.ref("long_term_debt"),
                 description="Long-term debt",
             ),
             LineItem(
@@ -522,7 +521,7 @@ class ThreeStatementModel(FinancialModel):
                 BS,
                 order=180,
                 unit="$",
-                driver=Driver("dlt", [0], "Deferred tax liability", "$"),
+                driver=self.ref("dlt"),
                 description="Deferred tax liability",
             ),
             LineItem(
@@ -543,7 +542,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=lambda df, idx, drivers: self.opening_balance("Common Stock", drivers),
-                driver=Driver("common_stock", [1_000], "Common stock (par)", "$"),
+                driver=self.ref("common_stock"),
                 description="Common stock",
             ),
             LineItem(
@@ -554,7 +553,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=apic,
-                driver=Driver("apic", [5_000_000], "Opening APIC", "$"),
+                driver=self.ref("apic"),
                 description="APIC (opening + cumulative SBC and equity issuance)",
             ),
             LineItem(
@@ -715,7 +714,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=lambda df, idx, drivers: -abs(_dv(drivers, "capex", idx)),
-                driver=Driver("capex", [-500_000], "Annual CapEx", "$"),
+                driver=self.ref("capex"),
                 description="Capital expenditures",
             ),
             LineItem(
@@ -726,7 +725,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=lambda df, idx, drivers: -abs(_dv(drivers, "acquisitions", idx)),
-                driver=Driver("acquisitions", [0], "Acquisitions", "$"),
+                driver=self.ref("acquisitions"),
                 description="Acquisitions (added to goodwill)",
             ),
             LineItem(
@@ -777,7 +776,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=lambda df, idx, drivers: _dv(drivers, "equity_issuance", idx),
-                driver=Driver("equity_issuance", [0], "Equity issuance (+) / repurchase (-)", "$"),
+                driver=self.ref("equity_issuance"),
                 description="Equity financing",
             ),
             LineItem(
@@ -788,7 +787,7 @@ class ThreeStatementModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=lambda df, idx, drivers: -abs(_dv(drivers, "dividends", idx)),
-                driver=Driver("dividends", [0], "Dividends paid", "$"),
+                driver=self.ref("dividends"),
                 description="Dividends",
             ),
             LineItem(
@@ -820,7 +819,7 @@ class ThreeStatementModel(FinancialModel):
                 CF,
                 order=150,
                 unit="$",
-                driver=Driver("beginning_cash", [500_000], "Opening cash", "$"),
+                driver=self.ref("beginning_cash"),
                 description="Beginning cash",
             ),
             LineItem(
@@ -836,45 +835,6 @@ class ThreeStatementModel(FinancialModel):
         ]
         for item in items:
             self.add_cash_flow_item(item)
-
-    def _setup_default_assumptions(self) -> None:
-        """Set default drivers for the model (overridden by YAML / API config)."""
-        default_drivers = [
-            Driver("revenue", [10_000_000], "Starting revenue", "$"),
-            Driver("revenue_growth", [0.20], "YoY revenue growth", "%"),
-            Driver("cogs_pct", [0.35], "COGS as % of revenue", "%"),
-            Driver("rd_pct", [0.15], "R&D as % of revenue", "%"),
-            Driver("sm_pct", [0.25], "S&M as % of revenue", "%"),
-            Driver("gna_pct", [0.10], "G&A as % of revenue", "%"),
-            Driver("sbc", [0], "Stock-based compensation", "$"),
-            Driver("tax_rate", [0.21], "Effective tax rate", "%"),
-            Driver("interest_expense", [0], "Interest expense (non-modelled debt)", "$"),
-            Driver("other_income", [0], "Other income/expense", "$"),
-            Driver("ar_days", [45], "Accounts receivable days", "days"),
-            Driver("inventory_days", [0], "Inventory days", "days"),
-            Driver("prepaid_pct", [0.02], "Prepaid as % of revenue", "%"),
-            Driver("ppe_gross", [1_000_000], "Opening gross PP&E", "$"),
-            Driver("capex", [-500_000], "Annual CapEx", "$"),
-            Driver("depreciation_rate", [0.10], "Depreciation rate on gross PP&E", "%"),
-            Driver("intangibles", [0], "Intangible assets", "$"),
-            Driver("goodwill", [0], "Opening goodwill", "$"),
-            Driver("acquisitions", [0], "Acquisitions", "$"),
-            Driver("ap_days", [60], "Accounts payable days", "days"),
-            Driver("accrued_pct", [0.05], "Accrued as % of revenue", "%"),
-            Driver("deferred_rev_pct", [0.15], "Deferred revenue as % of revenue", "%"),
-            Driver("current_debt", [0], "Current portion of debt", "$"),
-            Driver("long_term_debt", [0], "Long-term debt", "$"),
-            Driver("dlt", [0], "Deferred tax liability", "$"),
-            Driver("common_stock", [1_000], "Common stock (par)", "$"),
-            Driver("apic", [5_000_000], "Opening APIC", "$"),
-            Driver("equity_issuance", [0], "Equity issuance (+) / repurchase (-)", "$"),
-            Driver("dividends", [0], "Dividends paid", "$"),
-            Driver("beginning_cash", [500_000], "Opening cash", "$"),
-            Driver("min_cash", [0], "Minimum cash balance before drawing the revolver", "$"),
-            Driver("shares_outstanding", [1_000_000], "Diluted shares outstanding", "#"),
-        ]
-        for driver in default_drivers:
-            self.assumptions.set_driver(driver)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> ThreeStatementModel:

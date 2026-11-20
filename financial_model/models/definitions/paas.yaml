@@ -1,0 +1,222 @@
+# Defaults of the `paas` model (extends business -> three-statement): its own drivers, the three-statement
+# defaults it changes, starter drivers and scenarios for `financial-model init`, and the rows and
+# labels of its Unit Economics table. Override any of it, or ship your own copy via
+# `models.definition_paths`.
+model_type: paas
+aliases: [platform, usage-based]
+extends: business
+name: PaaS (usage-based platform) Model
+description: Usage-based platform - sign-ups convert to paying accounts whose usage grows
+drivers:
+  starting_accounts:
+    value: 1000
+    description: Paying accounts at the start
+    unit: '#'
+  new_signups:
+    value: 20000
+    description: Developer sign-ups per period
+    unit: '#'
+  signup_conversion:
+    value: 0.03
+    description: Share of sign-ups that become paying accounts
+    unit: '%'
+  annual_account_churn:
+    value: 0.15
+    description: Annual churn of paying accounts
+    unit: '%'
+  usage_per_account:
+    value: 5000
+    description: Starting monthly usage per paying account (units)
+    unit: units/mo
+  usage_growth:
+    value: 0.3
+    description: Annual growth in usage per surviving account
+    unit: '%'
+  free_units:
+    value: 500
+    description: Monthly free allowance per paying account (units, unbilled)
+    unit: units/mo
+  price_per_unit:
+    value: 0.1
+    description: List price per billable unit
+    unit: $
+  discount_pct:
+    value: 0.05
+    description: Average committed-use / volume discount
+    unit: '%'
+  platform_fee:
+    value: 100
+    description: Monthly platform (seat / plan) fee per paying account
+    unit: $/mo
+  free_accounts:
+    value: 10000
+    description: Active free-tier accounts (average in period)
+    unit: '#'
+  free_account_usage:
+    value: 300
+    description: Monthly usage per free-tier account (units)
+    unit: units/mo
+  infra_cost_per_unit:
+    value: 0.03
+    description: Infrastructure cost per unit served
+    unit: $
+  marketing_spend:
+    value: 1000000
+    description: Developer marketing / DevRel spend per period
+    unit: $
+  cogs_pct:
+    value: 0.05
+    description: COGS as % of revenue
+    unit: '%'
+  sm_pct:
+    value: 0.1
+    description: S&M as % of revenue
+    unit: '%'
+  ar_days:
+    value: 30
+    description: Accounts receivable days
+    unit: days
+  deferred_rev_pct:
+    value: 0.05
+    description: Deferred revenue as % of revenue
+    unit: '%'
+kpi_rows:
+- key: end_customers
+  label: Paying Accounts (end of period)
+- key: new_customers
+  label: New Paying Accounts
+- key: churned_customers
+  label: Churned Accounts
+- key: usage_per_account
+  label: Usage per Account (units / month)
+- key: billable_units
+  label: Billable Units
+- key: total_units
+  label: Total Units Served (incl. free)
+- key: usage_revenue
+  label: Usage Revenue
+- key: platform_revenue
+  label: Platform Fee Revenue
+- key: infra_cost
+  label: Infrastructure Cost
+- key: infra_margin
+  label: Infrastructure Margin
+- key: net_revenue_retention
+  label: Net Revenue Retention (annualised)
+- key: end_arr
+  label: Annualised Run-Rate Revenue (end)
+starter:
+  fallback_variant: default
+  period_paths:
+  - periods
+  truncate_to_years:
+  - assumptions.drivers.*.value
+  variants:
+    default:
+      name: PaaS (usage-based platform) Model
+      model_type: paas
+      periods:
+        type: annual
+      assumptions:
+        metadata:
+          business_model: paas
+          currency: USD
+        drivers:
+          starting_accounts:
+            value: 1000
+            description: Paying accounts at the start
+            unit: '#'
+          new_signups:
+            value: 20000
+            description: Developer sign-ups per period
+            unit: '#'
+          signup_conversion:
+            value: 0.03
+            description: Share of sign-ups that become paying accounts
+            unit: '%'
+          annual_account_churn:
+            value: 0.15
+            description: Annual churn of paying accounts
+            unit: '%'
+          usage_per_account:
+            value: 5000
+            description: Starting monthly usage per paying account (units)
+            unit: units/mo
+          usage_growth:
+            value: 0.3
+            description: Annual growth in usage per surviving account
+            unit: '%'
+          free_units:
+            value: 500
+            description: Monthly free allowance per paying account (units, unbilled)
+            unit: units/mo
+          price_per_unit:
+            value: 0.1
+            description: List price per billable unit
+            unit: $
+          discount_pct:
+            value: 0.05
+            description: Average committed-use / volume discount
+            unit: '%'
+          platform_fee:
+            value: 100
+            description: Monthly platform (seat / plan) fee per paying account
+            unit: $/mo
+          free_accounts:
+            value: 10000
+            description: Active free-tier accounts (average in period)
+            unit: '#'
+          free_account_usage:
+            value: 300
+            description: Monthly usage per free-tier account (units)
+            unit: units/mo
+          infra_cost_per_unit:
+            value: 0.03
+            description: Infrastructure cost per unit served
+            unit: $
+          marketing_spend:
+            value: 1000000
+            description: Developer marketing / DevRel spend per period
+            unit: $
+          cogs_pct:
+            value: 0.05
+            description: COGS as % of revenue
+            unit: '%'
+          sm_pct:
+            value: 0.1
+            description: S&M as % of revenue
+            unit: '%'
+          ar_days:
+            value: 30
+            description: Accounts receivable days
+            unit: days
+          deferred_rev_pct:
+            value: 0.05
+            description: Deferred revenue as % of revenue
+            unit: '%'
+          rd_pct:
+            value: 0.18
+            description: R&D as % of revenue
+            unit: '%'
+          gna_pct:
+            value: 0.1
+            description: G&A as % of revenue
+            unit: '%'
+          beginning_cash:
+            value: 5000000
+            description: Opening cash
+            unit: $
+          apic:
+            value: 10000000
+            description: Opening paid-in capital
+            unit: $
+        scenarios:
+          base: {}
+          upside:
+            signup_conversion: 0.04
+            usage_growth: 0.4
+            annual_account_churn: 0.1
+          downside:
+            signup_conversion: 0.02
+            usage_growth: 0.15
+            infra_cost_per_unit: 0.04

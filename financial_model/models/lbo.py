@@ -28,6 +28,7 @@ from typing import Any
 import pandas as pd
 
 from financial_model.core.assumptions import Assumptions
+from financial_model.core.definitions import load_definition
 from financial_model.core.line_item import (
     CalculationRule,
     Driver,
@@ -40,19 +41,18 @@ from financial_model.core.model import ModelResult
 from financial_model.core.period import PeriodIndex
 from financial_model.models.three_statement import BS, CF, IS, ThreeStatementModel, _dv
 
-TRANCHES: dict[str, str] = {
-    "Term Loan A": "tla",
-    "Term Loan B": "tlb",
-    "Subordinated Debt": "sub",
-    "Mezzanine Debt": "mezz",
-}
-AMORTIZING = ("Term Loan A", "Term Loan B")
-INTEREST_LINES = {
-    "Term Loan A": "TLA Interest",
-    "Term Loan B": "TLB Interest",
-    "Subordinated Debt": "Sub Interest",
-    "Mezzanine Debt": "Mezz Interest",
-}
+
+def _tranche_tables(spec: list[dict[str, Any]]) -> tuple[dict[str, str], tuple[str, ...], dict[str, str]]:
+    """Definition ``tranches`` -> (name -> driver key, amortising names, name -> interest line)."""
+    tranches = {str(t["name"]): str(t["key"]) for t in spec}
+    amortizing = tuple(str(t["name"]) for t in spec if t.get("amortizing"))
+    interest = {str(t["name"]): str(t.get("interest_line") or f"{t['name']} Interest") for t in spec}
+    return tranches, amortizing, interest
+
+
+# The built-in tranche set (models/definitions/lbo.yaml). Instances read their own definition,
+# so a definition override can add, remove or rename tranches.
+TRANCHES, AMORTIZING, INTEREST_LINES = _tranche_tables(load_definition("lbo").get("tranches") or [])
 
 
 def _row(df: pd.DataFrame, line: str, idx: int, default: float = 0.0) -> float:
@@ -75,82 +75,17 @@ class LBOModel(ThreeStatementModel):
 
     def __init__(
         self,
-        name: str = "LBO Model",
+        name: str | None = None,
         periods: PeriodIndex | None = None,
         assumptions: Assumptions | None = None,
-        entry_multiple: float = 10.0,
-        entry_ebitda: float | None = None,
-        equity_contribution: float = 0.40,
-        tla_pct: float = 0.30,
-        tla_rate: float = 0.065,
-        tla_amort: float = 0.05,
-        tlb_pct: float = 0.20,
-        tlb_rate: float = 0.085,
-        tlb_amort: float = 0.01,
-        revolver_pct: float = 0.10,
-        revolver_rate: float = 0.07,
-        sub_pct: float = 0.10,
-        sub_rate: float = 0.11,
-        mezz_pct: float = 0.05,
-        mezz_rate: float = 0.13,
-        sweep_pct: float = 0.50,
-        exit_multiple: float = 11.0,
-        hold_years: int = 5,
-        fees_pct: float = 0.02,
+        **overrides: Any,
     ):
+        """Defaults come from models/definitions/lbo.yaml; keyword arguments override drivers by name."""
         super().__init__(name=name, periods=periods, assumptions=assumptions)
-        self.entry_multiple = entry_multiple
-        self.entry_ebitda = entry_ebitda
-        self.equity_contribution = equity_contribution
-        self.tla_pct = tla_pct
-        self.tla_rate = tla_rate
-        self.tla_amort = tla_amort
-        self.tlb_pct = tlb_pct
-        self.tlb_rate = tlb_rate
-        self.tlb_amort = tlb_amort
-        self.revolver_pct = revolver_pct
-        self.revolver_rate = revolver_rate
-        self.sub_pct = sub_pct
-        self.sub_rate = sub_rate
-        self.mezz_pct = mezz_pct
-        self.mezz_rate = mezz_rate
-        self.sweep_pct = sweep_pct
-        self.exit_multiple = exit_multiple
-        self.hold_years = hold_years
-        self.fees_pct = fees_pct
         self._ebitda0_cache: float | None = None
-        self._add_lbo_assumptions()
+        self.tranches, self.amortizing, self.interest_lines = _tranche_tables(self.setting("tranches") or [])
+        self._apply_overrides(overrides)
         self._add_lbo_line_items()
-
-    # ------------------------------------------------------------------ #
-    # Assumptions
-    # ------------------------------------------------------------------ #
-    def _add_lbo_assumptions(self) -> None:
-        lbo_drivers = [
-            Driver("entry_multiple", self.entry_multiple, "Entry EV/EBITDA", "x"),
-            Driver(
-                "entry_ebitda", self.entry_ebitda or 0.0, "LTM EBITDA at entry (0 = model's first-year EBITDA)", "$"
-            ),
-            Driver("equity_contribution", self.equity_contribution, "Sponsor equity % of total uses", "%"),
-            Driver("fees_pct", self.fees_pct, "Transaction fees % of EV", "%"),
-            Driver("tla_pct", self.tla_pct, "Term Loan A % of funded debt", "%"),
-            Driver("tla_rate", self.tla_rate, "TLA interest rate", "%"),
-            Driver("tla_amort", self.tla_amort, "TLA annual amortisation % of original principal", "%"),
-            Driver("tlb_pct", self.tlb_pct, "Term Loan B % of funded debt", "%"),
-            Driver("tlb_rate", self.tlb_rate, "TLB interest rate", "%"),
-            Driver("tlb_amort", self.tlb_amort, "TLB annual amortisation % of original principal", "%"),
-            Driver("revolver_pct", self.revolver_pct, "Revolver commitment % of funded debt (undrawn at close)", "%"),
-            Driver("revolver_rate", self.revolver_rate, "Revolver rate", "%"),
-            Driver("sub_pct", self.sub_pct, "Subordinated debt % of funded debt", "%"),
-            Driver("sub_rate", self.sub_rate, "Sub debt rate", "%"),
-            Driver("mezz_pct", self.mezz_pct, "Mezzanine % of funded debt", "%"),
-            Driver("mezz_rate", self.mezz_rate, "Mezz rate", "%"),
-            Driver("sweep_pct", self.sweep_pct, "Cash sweep % of excess cash", "%"),
-            Driver("exit_multiple", self.exit_multiple, "Exit EV/EBITDA", "x"),
-            Driver("hold_years", self.hold_years, "Hold period", "years"),
-        ]
-        for driver in lbo_drivers:
-            self.assumptions.set_driver(driver)
 
     # ------------------------------------------------------------------ #
     # Deal maths
@@ -191,7 +126,7 @@ class LBOModel(ThreeStatementModel):
         equity = total_uses * equity_pct
         debt = total_uses - equity
 
-        weights = {name: abs(_dv(drivers, f"{key}_pct", 0)) for name, key in TRANCHES.items()}
+        weights = {name: abs(_dv(drivers, f"{key}_pct", 0)) for name, key in self.tranches.items()}
         weight_sum = sum(weights.values())
         inits = {name: (debt * w / weight_sum if weight_sum > 0 else 0.0) for name, w in weights.items()}
         revolver_commitment = debt * abs(_dv(drivers, "revolver_pct", 0))
@@ -218,7 +153,7 @@ class LBOModel(ThreeStatementModel):
     def opening_balance(self, line: str, drivers: dict[str, Driver], df: pd.DataFrame | None = None) -> float:
         if line in ("Long-Term Debt", "Current Portion of Long-Term Debt", "Common Stock"):
             return 0.0
-        if line in TRANCHES:
+        if line in self.tranches:
             return self.deal(drivers, df)["tranches"][line]
         if line == "Additional Paid-In Capital":
             return self.deal(drivers, df)["equity"]
@@ -245,10 +180,10 @@ class LBOModel(ThreeStatementModel):
         deal = self.deal(drivers, df)
         schedule: dict[str, Any] = {}
         mandatory_total = 0.0
-        for name, key in TRANCHES.items():
+        for name, key in self.tranches.items():
             opening = self._opening_tranche(df, name, idx, drivers)
             amort = 0.0
-            if name in AMORTIZING:
+            if name in self.amortizing:
                 amort = min(opening, deal["tranches"][name] * abs(_dv(drivers, f"{key}_amort", idx)))
             schedule[name] = {
                 "opening": opening,
@@ -285,7 +220,7 @@ class LBOModel(ThreeStatementModel):
         excess = max(0.0, cash_before_sweep - _dv(drivers, "min_cash", idx))
         sweep_available = excess * min(max(_dv(drivers, "sweep_pct", idx), 0.0), 1.0)
 
-        for name in AMORTIZING:
+        for name in self.amortizing:
             tranche = schedule[name]
             sweep = min(sweep_available, max(0.0, tranche["closing"]))
             tranche["sweep"] = sweep
@@ -294,7 +229,7 @@ class LBOModel(ThreeStatementModel):
 
         schedule["_cash_before_sweep"] = cash_before_sweep
         schedule["_mandatory_total"] = mandatory_total
-        schedule["_sweep_total"] = sum(schedule[n]["sweep"] for n in TRANCHES)
+        schedule["_sweep_total"] = sum(schedule[n]["sweep"] for n in self.tranches)
         return schedule
 
     # ------------------------------------------------------------------ #
@@ -312,7 +247,7 @@ class LBOModel(ThreeStatementModel):
             )
 
         order = 165
-        for name, key in TRANCHES.items():
+        for name, key in self.tranches.items():
             self.add_balance_sheet_item(
                 LineItem(
                     name,
@@ -328,10 +263,10 @@ class LBOModel(ThreeStatementModel):
             order += 1
             self.add_income_statement_item(
                 LineItem(
-                    INTEREST_LINES[name],
+                    self.interest_lines[name],
                     LineItemType.CALCULATED,
                     IS,
-                    order=62 + list(TRANCHES).index(name),
+                    order=62 + list(self.tranches).index(name) / max(len(self.tranches), 1),
                     unit="$",
                     calculation_rule=CalculationRule.CUSTOM,
                     custom_formula=tranche_interest(name, key),
@@ -363,7 +298,7 @@ class LBOModel(ThreeStatementModel):
                 order=67,
                 unit="$",
                 calculation_rule=CalculationRule.SUM_CHILDREN,
-                children=[*INTEREST_LINES.values(), "Revolver Interest"],
+                children=[*self.interest_lines.values(), "Revolver Interest"],
                 is_total=True,
                 description="Total interest expense",
             )
@@ -371,7 +306,7 @@ class LBOModel(ThreeStatementModel):
 
         total_liabilities = self.balance_sheet.get_line_item("Total Liabilities")
         if total_liabilities is not None:
-            for name in TRANCHES:
+            for name in self.tranches:
                 if name not in total_liabilities.children:
                     total_liabilities.children.append(name)
 
@@ -380,7 +315,7 @@ class LBOModel(ThreeStatementModel):
 
         def sweep_repayment(df: pd.DataFrame, idx: int, drivers: dict[str, Driver]) -> float:
             # Residual of the balance-sheet movement so the cash flow ties exactly
-            total_change = sum(self._delta(df, name, idx, drivers) for name in TRANCHES)
+            total_change = sum(self._delta(df, name, idx, drivers) for name in self.tranches)
             return total_change + self.debt_schedule_for_period(df, idx, drivers)["_mandatory_total"]
 
         self.add_cash_flow_item(
@@ -435,9 +370,13 @@ class LBOModel(ThreeStatementModel):
 
         sources = pd.DataFrame(
             {
-                "Source": [*TRANCHES.keys(), "Revolver (undrawn)", "Sponsor Equity"],
-                "Amount": [*(deal["tranches"][n] for n in TRANCHES), 0.0, deal["equity"]],
-                "Commitment": [*(deal["tranches"][n] for n in TRANCHES), deal["revolver_commitment"], deal["equity"]],
+                "Source": [*self.tranches.keys(), "Revolver (undrawn)", "Sponsor Equity"],
+                "Amount": [*(deal["tranches"][n] for n in self.tranches), 0.0, deal["equity"]],
+                "Commitment": [
+                    *(deal["tranches"][n] for n in self.tranches),
+                    deal["revolver_commitment"],
+                    deal["equity"],
+                ],
             }
         )
         sources["% of Total"] = sources["Amount"] / total
@@ -468,13 +407,13 @@ class LBOModel(ThreeStatementModel):
         rows = []
         for i, period in enumerate(result.periods):
             row: dict[str, Any] = {"period": period.label}
-            for name in TRANCHES:
+            for name in self.tranches:
                 row[f"{name}"] = _row(bs, name, i)
-                row[f"{INTEREST_LINES[name]}"] = _row(is_, INTEREST_LINES[name], i)
+                row[f"{self.interest_lines[name]}"] = _row(is_, self.interest_lines[name], i)
             row["Revolver"] = _row(bs, "Revolver", i)
             row["Mandatory Debt Amortization"] = _row(cf, "Mandatory Debt Amortization", i)
             row["Cash Sweep Repayment"] = _row(cf, "Cash Sweep Repayment", i)
-            row["Total Debt"] = sum(_row(bs, n, i) for n in TRANCHES) + _row(bs, "Revolver", i)
+            row["Total Debt"] = sum(_row(bs, n, i) for n in self.tranches) + _row(bs, "Revolver", i)
             row["Cash"] = _row(bs, "Cash & Cash Equivalents", i)
             rows.append(row)
         return pd.DataFrame(rows).set_index("period")
@@ -502,7 +441,7 @@ class LBOModel(ThreeStatementModel):
         exit_ev = exit_ebitda * exit_mult
 
         cash = _row(bs_data, "Cash & Cash Equivalents", exit_idx)
-        debt = sum(_row(bs_data, n, exit_idx) for n in TRANCHES) + _row(bs_data, "Revolver", exit_idx)
+        debt = sum(_row(bs_data, n, exit_idx) for n in self.tranches) + _row(bs_data, "Revolver", exit_idx)
         debt += _row(bs_data, "Long-Term Debt", exit_idx) + _row(bs_data, "Current Portion of Long-Term Debt", exit_idx)
         net_debt = debt - cash
         equity_value = exit_ev - net_debt

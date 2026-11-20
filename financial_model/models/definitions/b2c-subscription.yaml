@@ -1,0 +1,178 @@
+# Defaults of the `b2c-subscription` model (extends business -> three-statement): its own drivers, the three-statement
+# defaults it changes, starter drivers and scenarios for `financial-model init`, and the rows and
+# labels of its Unit Economics table. Override any of it, or ship your own copy via
+# `models.definition_paths`.
+model_type: b2c-subscription
+aliases: [b2c, consumer, subscription]
+extends: business
+name: B2C Subscription Model
+description: Consumer subscription app - paid and organic acquisition, monthly churn, ARPU
+drivers:
+  starting_subscribers:
+    value: 100000
+    description: Paying subscribers at the start
+    unit: '#'
+  marketing_spend:
+    value: 4000000
+    description: Paid acquisition spend per period
+    unit: $
+  paid_cac:
+    value: 40
+    description: Cost to acquire one paying subscriber through paid channels
+    unit: $
+  organic_ratio:
+    value: 0.6
+    description: Organic / referral subscribers per paid subscriber
+    unit: x
+  monthly_churn:
+    value: 0.05
+    description: Monthly subscriber churn
+    unit: '%'
+  monthly_arpu:
+    value: 9.99
+    description: Average revenue per subscriber per month (net of discounts)
+    unit: $/mo
+  payment_fee_pct:
+    value: 0.15
+    description: Payment processor / app-store fees as % of revenue
+    unit: '%'
+  new_subscriber_churn_exposure:
+    value: 0.5
+    description: Share of a period that subscribers added in it are exposed to churn
+    unit: x
+  cogs_pct:
+    value: 0.1
+    description: COGS as % of revenue
+    unit: '%'
+  sm_pct:
+    value: 0.05
+    description: S&M as % of revenue
+    unit: '%'
+  ar_days:
+    value: 5
+    description: Accounts receivable days
+    unit: days
+  deferred_rev_pct:
+    value: 0.1
+    description: Deferred revenue as % of revenue
+    unit: '%'
+  inventory_days:
+    value: 0
+    description: Inventory days
+    unit: days
+kpi_rows:
+- key: end_customers
+  label: Subscribers (end of period)
+- key: paid_new
+  label: New Subscribers - Paid
+- key: organic_new
+  label: New Subscribers - Organic
+- key: new_customers
+  label: New Subscribers - Total
+- key: churned_customers
+  label: Churned Subscribers
+- key: net_adds
+  label: Net Adds
+- key: monthly_churn
+  label: Monthly Churn
+- key: arpu
+  label: ARPU (monthly)
+- key: end_arr
+  label: Annualised Run-Rate Revenue (end)
+- key: payment_fees
+  label: Payment / App-Store Fees
+starter:
+  fallback_variant: default
+  period_paths:
+  - periods
+  truncate_to_years:
+  - assumptions.drivers.*.value
+  variants:
+    default:
+      name: B2C Subscription Model
+      model_type: b2c-subscription
+      periods:
+        type: annual
+      assumptions:
+        metadata:
+          business_model: b2c-subscription
+          currency: USD
+        drivers:
+          starting_subscribers:
+            value: 100000
+            description: Paying subscribers at the start
+            unit: '#'
+          marketing_spend:
+            value: 4000000
+            description: Paid acquisition spend per period
+            unit: $
+          paid_cac:
+            value: 40
+            description: Cost to acquire one paying subscriber through paid channels
+            unit: $
+          organic_ratio:
+            value: 0.6
+            description: Organic / referral subscribers per paid subscriber
+            unit: x
+          monthly_churn:
+            value: 0.05
+            description: Monthly subscriber churn
+            unit: '%'
+          monthly_arpu:
+            value: 9.99
+            description: Average revenue per subscriber per month (net of discounts)
+            unit: $/mo
+          payment_fee_pct:
+            value: 0.15
+            description: Payment processor / app-store fees as % of revenue
+            unit: '%'
+          new_subscriber_churn_exposure:
+            value: 0.5
+            description: Share of a period that subscribers added in it are exposed to churn
+            unit: x
+          cogs_pct:
+            value: 0.1
+            description: COGS as % of revenue
+            unit: '%'
+          sm_pct:
+            value: 0.05
+            description: S&M as % of revenue
+            unit: '%'
+          ar_days:
+            value: 5
+            description: Accounts receivable days
+            unit: days
+          deferred_rev_pct:
+            value: 0.1
+            description: Deferred revenue as % of revenue
+            unit: '%'
+          inventory_days:
+            value: 0
+            description: Inventory days
+            unit: days
+          rd_pct:
+            value: 0.18
+            description: R&D as % of revenue
+            unit: '%'
+          gna_pct:
+            value: 0.1
+            description: G&A as % of revenue
+            unit: '%'
+          beginning_cash:
+            value: 5000000
+            description: Opening cash
+            unit: $
+          apic:
+            value: 10000000
+            description: Opening paid-in capital
+            unit: $
+        scenarios:
+          base: {}
+          upside:
+            paid_cac: 32
+            monthly_churn: 0.04
+            organic_ratio: 0.8
+          downside:
+            paid_cac: 55
+            monthly_churn: 0.065
+            organic_ratio: 0.4

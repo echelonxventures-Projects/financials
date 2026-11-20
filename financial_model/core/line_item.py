@@ -125,7 +125,7 @@ class LineItem:
     driver: Driver | None = None
     format: str = "{:,.0f}"  # Display format
     unit: str = "$"  # $, %, x, days
-    order: int = 0
+    order: float = 0
     is_total: bool = False
     description: str = ""
 

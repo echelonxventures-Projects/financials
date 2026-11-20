@@ -1,0 +1,413 @@
+# Defaults of the `lbo` model: only what differs from `three-statement`.
+model_type: lbo
+extends: three-statement
+name: LBO Model
+description: Three-statement model plus sources & uses, multi-tranche debt schedule and returns
+drivers:
+  entry_multiple:
+    value: 10.0
+    description: Entry EV/EBITDA
+    unit: x
+  entry_ebitda:
+    value: 0.0
+    description: LTM EBITDA at entry (0 = model's first-year EBITDA)
+    unit: $
+  equity_contribution:
+    value: 0.4
+    description: Sponsor equity % of total uses
+    unit: '%'
+  fees_pct:
+    value: 0.02
+    description: Transaction fees % of EV
+    unit: '%'
+  tla_pct:
+    value: 0.3
+    description: Term Loan A % of funded debt
+    unit: '%'
+  tla_rate:
+    value: 0.065
+    description: TLA interest rate
+    unit: '%'
+  tla_amort:
+    value: 0.05
+    description: TLA annual amortisation % of original principal
+    unit: '%'
+  tlb_pct:
+    value: 0.2
+    description: Term Loan B % of funded debt
+    unit: '%'
+  tlb_rate:
+    value: 0.085
+    description: TLB interest rate
+    unit: '%'
+  tlb_amort:
+    value: 0.01
+    description: TLB annual amortisation % of original principal
+    unit: '%'
+  revolver_pct:
+    value: 0.1
+    description: Revolver commitment % of funded debt (undrawn at close)
+    unit: '%'
+  revolver_rate:
+    value: 0.07
+    description: Revolver rate
+    unit: '%'
+  sub_pct:
+    value: 0.1
+    description: Subordinated debt % of funded debt
+    unit: '%'
+  sub_rate:
+    value: 0.11
+    description: Sub debt rate
+    unit: '%'
+  mezz_pct:
+    value: 0.05
+    description: Mezzanine % of funded debt
+    unit: '%'
+  mezz_rate:
+    value: 0.13
+    description: Mezz rate
+    unit: '%'
+  sweep_pct:
+    value: 0.5
+    description: Cash sweep % of excess cash
+    unit: '%'
+  exit_multiple:
+    value: 11.0
+    description: Exit EV/EBITDA
+    unit: x
+  hold_years:
+    value: 5
+    description: Hold period
+    unit: years
+starter_scenarios: {}
+# Debt tranches, in seniority order. Each needs `<key>_pct`, `<key>_rate` (and `<key>_amort` when
+# amortizing) drivers. Add, remove or rename tranches here; the schedule, interest lines, balance
+# sheet, sources & uses and charts follow.
+tranches:
+- {name: Term Loan A, key: tla, amortizing: true, interest_line: TLA Interest}
+- {name: Term Loan B, key: tlb, amortizing: true, interest_line: TLB Interest}
+- {name: Subordinated Debt, key: sub, amortizing: false, interest_line: Sub Interest}
+- {name: Mezzanine Debt, key: mezz, amortizing: false, interest_line: Mezz Interest}
+# Starter config written by `financial-model init --type lbo [--industry <variant>]`.
+# period_paths get start_year/years; truncate_to_years lists are cut to the year count;
+# cap_at_years values are capped at it. Unknown industries use fallback_variant.
+starter:
+  fallback_variant: other
+  period_paths:
+  - periods
+  cap_at_years:
+  - assumptions.drivers.hold_years.value
+  variants:
+    saas:
+      name: Lbo Model
+      model_type: lbo
+      periods:
+        type: annual
+      assumptions:
+        drivers:
+          revenue:
+            value: 10000000
+            description: Starting revenue
+            unit: $
+          revenue_growth:
+            value: 0.15
+            description: YoY growth (post-buyout)
+            unit: '%'
+          cogs_pct:
+            value: 0.22
+            description: COGS % of revenue
+            unit: '%'
+          rd_pct:
+            value: 0.12
+            description: R&D % of revenue
+            unit: '%'
+          sm_pct:
+            value: 0.25
+            description: S&M % of revenue
+            unit: '%'
+          gna_pct:
+            value: 0.08
+            description: G&A % of revenue
+            unit: '%'
+          sbc:
+            value: 200000
+            description: Stock-based compensation
+            unit: $
+          tax_rate:
+            value: 0.21
+            description: Tax rate
+            unit: '%'
+          ar_days:
+            value: 45
+            description: AR days
+            unit: days
+          ap_days:
+            value: 60
+            description: AP days
+            unit: days
+          deferred_rev_pct:
+            value: 0.3
+            description: Deferred revenue % of revenue
+            unit: '%'
+          ppe_gross:
+            value: 1000000
+            description: Opening gross PP&E
+            unit: $
+          capex:
+            value: -500000
+            description: Annual CapEx
+            unit: $
+          depreciation_rate:
+            value: 0.2
+            description: Depreciation rate on gross PP&E
+            unit: '%'
+          beginning_cash:
+            value: 500000
+            description: Opening cash
+            unit: $
+          apic:
+            value: 5000000
+            description: Opening paid-in capital
+            unit: $
+          min_cash:
+            value: 250000
+            description: Minimum cash before drawing the revolver
+            unit: $
+          entry_multiple:
+            value: 10.0
+            description: Entry EV/EBITDA multiple
+            unit: x
+          entry_ebitda:
+            value: 0
+            description: LTM EBITDA at entry (0 = use first-year model EBITDA)
+            unit: $
+          equity_contribution:
+            value: 0.4
+            description: Sponsor equity % of total uses
+            unit: '%'
+          fees_pct:
+            value: 0.02
+            description: Transaction fees % of EV
+            unit: '%'
+          tla_pct:
+            value: 0.3
+            description: Term Loan A % of funded debt
+            unit: '%'
+          tla_rate:
+            value: 0.065
+            description: TLA interest rate
+            unit: '%'
+          tla_amort:
+            value: 0.05
+            description: TLA amortization % of original principal
+            unit: '%'
+          tlb_pct:
+            value: 0.2
+            description: Term Loan B % of funded debt
+            unit: '%'
+          tlb_rate:
+            value: 0.085
+            description: TLB interest rate
+            unit: '%'
+          tlb_amort:
+            value: 0.01
+            description: TLB amortization % of original principal
+            unit: '%'
+          revolver_pct:
+            value: 0.1
+            description: Revolver commitment % of funded debt
+            unit: '%'
+          revolver_rate:
+            value: 0.07
+            description: Revolver interest rate
+            unit: '%'
+          sub_pct:
+            value: 0.1
+            description: Sub debt % of funded debt
+            unit: '%'
+          sub_rate:
+            value: 0.11
+            description: Sub debt interest rate
+            unit: '%'
+          mezz_pct:
+            value: 0.05
+            description: Mezzanine % of funded debt
+            unit: '%'
+          mezz_rate:
+            value: 0.13
+            description: Mezzanine interest rate
+            unit: '%'
+          sweep_pct:
+            value: 0.5
+            description: Cash sweep % of excess cash
+            unit: '%'
+          exit_multiple:
+            value: 11.0
+            description: Exit EV/EBITDA multiple
+            unit: x
+          hold_years:
+            value: 5
+            description: Hold period years
+            unit: years
+        scenarios:
+          base: {}
+          upside:
+            revenue_growth: 0.4
+            cogs_pct: 0.2
+          downside:
+            revenue_growth: 0.15
+            cogs_pct: 0.25
+      statements: []
+    other:
+      name: Lbo Model
+      model_type: lbo
+      periods:
+        type: annual
+      assumptions:
+        drivers:
+          revenue:
+            value: 50000000
+            description: Starting revenue
+            unit: $
+          revenue_growth:
+            value: 0.15
+            description: YoY growth (post-buyout)
+            unit: '%'
+          cogs_pct:
+            value: 0.6
+            description: COGS % of revenue
+            unit: '%'
+          rd_pct:
+            value: 0.12
+            description: R&D % of revenue
+            unit: '%'
+          sm_pct:
+            value: 0.25
+            description: S&M % of revenue
+            unit: '%'
+          gna_pct:
+            value: 0.08
+            description: G&A % of revenue
+            unit: '%'
+          tax_rate:
+            value: 0.21
+            description: Tax rate
+            unit: '%'
+          inventory_days:
+            value: 60
+            description: Inventory days
+            unit: days
+          ppe_gross:
+            value: 20000000
+            description: Opening gross PP&E
+            unit: $
+          capex:
+            value: -3000000
+            description: Annual CapEx
+            unit: $
+          depreciation_rate:
+            value: 0.08
+            description: Depreciation rate on gross PP&E
+            unit: '%'
+          beginning_cash:
+            value: 2000000
+            description: Opening cash
+            unit: $
+          apic:
+            value: 15000000
+            description: Opening paid-in capital
+            unit: $
+          sbc:
+            value: 200000
+            description: Stock-based compensation
+            unit: $
+          min_cash:
+            value: 250000
+            description: Minimum cash before drawing the revolver
+            unit: $
+          entry_multiple:
+            value: 10.0
+            description: Entry EV/EBITDA multiple
+            unit: x
+          entry_ebitda:
+            value: 0
+            description: LTM EBITDA at entry (0 = use first-year model EBITDA)
+            unit: $
+          equity_contribution:
+            value: 0.4
+            description: Sponsor equity % of total uses
+            unit: '%'
+          fees_pct:
+            value: 0.02
+            description: Transaction fees % of EV
+            unit: '%'
+          tla_pct:
+            value: 0.3
+            description: Term Loan A % of funded debt
+            unit: '%'
+          tla_rate:
+            value: 0.065
+            description: TLA interest rate
+            unit: '%'
+          tla_amort:
+            value: 0.05
+            description: TLA amortization % of original principal
+            unit: '%'
+          tlb_pct:
+            value: 0.2
+            description: Term Loan B % of funded debt
+            unit: '%'
+          tlb_rate:
+            value: 0.085
+            description: TLB interest rate
+            unit: '%'
+          tlb_amort:
+            value: 0.01
+            description: TLB amortization % of original principal
+            unit: '%'
+          revolver_pct:
+            value: 0.1
+            description: Revolver commitment % of funded debt
+            unit: '%'
+          revolver_rate:
+            value: 0.07
+            description: Revolver interest rate
+            unit: '%'
+          sub_pct:
+            value: 0.1
+            description: Sub debt % of funded debt
+            unit: '%'
+          sub_rate:
+            value: 0.11
+            description: Sub debt interest rate
+            unit: '%'
+          mezz_pct:
+            value: 0.05
+            description: Mezzanine % of funded debt
+            unit: '%'
+          mezz_rate:
+            value: 0.13
+            description: Mezzanine interest rate
+            unit: '%'
+          sweep_pct:
+            value: 0.5
+            description: Cash sweep % of excess cash
+            unit: '%'
+          exit_multiple:
+            value: 11.0
+            description: Exit EV/EBITDA multiple
+            unit: x
+          hold_years:
+            value: 5
+            description: Hold period years
+            unit: years
+        scenarios:
+          base: {}
+          upside:
+            revenue_growth: 0.4
+            cogs_pct: 0.2
+          downside:
+            revenue_growth: 0.15
+            cogs_pct: 0.25
+      statements: []

@@ -149,6 +149,13 @@
           "type": "number"
         },
         "synergy_phase_in": {
+          "default": [
+            0.3,
+            0.6,
+            0.8,
+            1.0,
+            1.0
+          ],
           "items": {
             "type": "number"
           },

@@ -248,10 +248,12 @@ class ChartBuilder:
     def lbo_charts(self, model: Any, result: ModelResult) -> dict[str, go.Figure]:
         from financial_model.models.lbo import TRANCHES
 
+        tranches = getattr(model, "tranches", TRANCHES)
+
         schedule = model.debt_schedule(result)
         labels = list(schedule.index)
         charts: dict[str, go.Figure] = {}
-        series = {name: schedule[name].tolist() for name in [*TRANCHES, "Revolver"] if name in schedule}
+        series = {name: schedule[name].tolist() for name in [*tranches, "Revolver"] if name in schedule}
         fig = self.bar_chart(labels, series, "Debt Paydown by Tranche", "$", barmode="stack")
         if fig is not None:
             fig.add_trace(

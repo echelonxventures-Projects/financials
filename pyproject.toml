@@ -54,7 +54,7 @@ include = ["financial_model*"]
 
 [tool.setuptools.package-data]
 # Data files that hold defaults instead of code (catalogue, settings, model templates).
-financial_model = ["platform/*.yaml", "models/templates/*.yaml"]
+financial_model = ["platform/*.yaml", "models/definitions/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -40,7 +40,7 @@ def _platform_defaults() -> dict[str, Any]:
 
 # Every key here is read somewhere: api.* by the API app and `financial-model serve`,
 # data.* by the data providers (rate limits apply to remote ones), logging.level by both entry points,
-# models.template_paths by the business models, platform.* by the multi-tenant mode of the API and `financial-model platform`.
+# models.definition_paths by every model, platform.* by the multi-tenant mode of the API and `financial-model platform`.
 _BUILTIN_DEFAULTS: dict[str, Any] = {
     "app": {
         "name": "Financial Model",
@@ -72,8 +72,9 @@ _BUILTIN_DEFAULTS: dict[str, Any] = {
         "level": "INFO",
     },
     "models": {
-        # Extra directories searched (first) for business-model templates `<model_type>.yaml`.
-        "template_paths": [],
+        # Extra directories searched first for model definitions `<model_type>.yaml`
+        # (defaults, starters, labels, or whole new declarative model types).
+        "definition_paths": [],
     },
     # Commercial multi-tenant mode (PaaS / B2B / B2C), off by default: see docs/commercial.md.
     # Its defaults are data (platform/settings.yaml); prices and plans are in platform/catalog.yaml.

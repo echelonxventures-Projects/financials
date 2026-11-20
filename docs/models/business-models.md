@@ -18,11 +18,10 @@ financial-model run b2b.yaml --scenario downside -o b2b.xlsx
 
 Example configs: `config/paas.yaml`, `config/b2b_saas.yaml`, `config/b2c_subscription.yaml`.
 
-Every default (drivers, the three-statement defaults each type changes, scenarios, the
-template name) is data in `financial_model/models/templates/<model_type>.yaml`, not code.
-Override per model in the model YAML, or ship your own defaults: put a
-`<model_type>.yaml` in a directory listed in the settings key `models.template_paths`
-(or `FIN_MODELS_TEMPLATE_PATHS`); it is used instead of the built-in one.
+Every default (drivers, the three-statement defaults each type changes, starter configs,
+KPI rows and labels) is data in `financial_model/models/definitions/<model_type>.yaml`
+(each `extends: business`, which `extends: three-statement`). See
+[Model definitions](definitions.md) to change them or add your own model types.
 
 ## What the engine replaces
 

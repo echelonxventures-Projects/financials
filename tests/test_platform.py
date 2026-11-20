@@ -3,6 +3,7 @@ Tests for the platform layer added on top of the engine: model registry, M&A con
 guarded data fetching, the CLI's ma/chart/serve/init commands and the API's security,
 M&A, charts and export endpoints.
 """
+
 from __future__ import annotations
 
 import json
@@ -59,19 +60,30 @@ def limiter():
 class TestRegistry:
     @pytest.mark.parametrize(
         "raw,key",
-        [(None, "three-statement"), ("3s", "three-statement"), ("DCF", "dcf"), ("three_statement", "three-statement"),
-         ("M&A", "ma"), ("merger", "ma"), (" lbo ", "lbo")],
+        [
+            (None, "three-statement"),
+            ("3s", "three-statement"),
+            ("DCF", "dcf"),
+            ("three_statement", "three-statement"),
+            ("M&A", "ma"),
+            ("merger", "ma"),
+            (" lbo ", "lbo"),
+        ],
     )
     def test_normalize(self, raw, key):
         assert normalize_model_type(raw) == key
 
     def test_unknown_type_lists_choices(self):
-        with pytest.raises(ValueError, match="Choose from: three-statement, dcf, lbo, budget, paas, b2b-saas, b2c-subscription, ma"):
+        with pytest.raises(
+            ValueError, match="Choose from: three-statement, dcf, lbo, budget, paas, b2b-saas, b2c-subscription, ma"
+        ):
             normalize_model_type("nope")
 
     def test_build_model_dispatch(self):
         assert isinstance(build_model(_yaml("lbo_saas.yaml"), CONFIG_DIR), LBOModel)
-        assert isinstance(build_model(_yaml("lbo_saas.yaml"), CONFIG_DIR, model_type="three-statement"), ThreeStatementModel)
+        assert isinstance(
+            build_model(_yaml("lbo_saas.yaml"), CONFIG_DIR, model_type="three-statement"), ThreeStatementModel
+        )
         assert isinstance(build_model(_yaml("ma_saas.yaml"), CONFIG_DIR), MergerModel)
 
     def test_register_model(self):
@@ -123,7 +135,7 @@ class TestMergerConfig:
 
     def test_budget_side_rejected(self):
         cfg = {**_yaml("ma_saas.yaml"), "target": _yaml("budget_saas.yaml")}
-        with pytest.raises(ValueError, match="three-statement, dcf or lbo"):
+        with pytest.raises(ValueError, match="three-statement, dcf, lbo"):
             MergerModel.from_config(cfg, CONFIG_DIR)
 
     def test_missing_side_and_unknown_terms(self):
@@ -256,7 +268,9 @@ class TestCLI:
         r = runner.invoke(cli_app, ["ma", str(out)])
         assert r.exit_code == 0, r.output
 
-    @pytest.mark.parametrize("cfg", ["three_statement_saas.yaml", "dcf_saas.yaml", "lbo_saas.yaml", "budget_saas.yaml", "ma_saas.yaml"])
+    @pytest.mark.parametrize(
+        "cfg", ["three_statement_saas.yaml", "dcf_saas.yaml", "lbo_saas.yaml", "budget_saas.yaml", "ma_saas.yaml"]
+    )
     def test_chart_dashboard_for_every_example(self, tmp_path, cfg):
         out = tmp_path / "c.html"
         r = runner.invoke(cli_app, ["chart", str(CONFIG_DIR / cfg), "-o", str(out), "--cdn"])
@@ -265,7 +279,9 @@ class TestCLI:
 
     def test_chart_directory_output(self, tmp_path):
         out = tmp_path / "charts"
-        r = runner.invoke(cli_app, ["chart", str(CONFIG_DIR / "dcf_saas.yaml"), "-o", str(out), "--cdn", "--theme", "dark"])
+        r = runner.invoke(
+            cli_app, ["chart", str(CONFIG_DIR / "dcf_saas.yaml"), "-o", str(out), "--cdn", "--theme", "dark"]
+        )
         assert r.exit_code == 0, r.output
         assert (out / "dcf_bridge.html").exists()
 
@@ -345,7 +361,16 @@ class TestAPISecurity:
 
 class TestAPIEndpoints:
     def test_models_lists_ma(self, client):
-        assert client.get("/models").json()["model_types"] == ["three-statement", "dcf", "lbo", "budget", "paas", "b2b-saas", "b2c-subscription", "ma"]
+        assert client.get("/models").json()["model_types"] == [
+            "three-statement",
+            "dcf",
+            "lbo",
+            "budget",
+            "paas",
+            "b2b-saas",
+            "b2c-subscription",
+            "ma",
+        ]
 
     def test_health_version(self, client):
         assert client.get("/health").json() == {"status": "healthy", "version": __version__}
@@ -396,8 +421,13 @@ class TestAPIEndpoints:
 
     @pytest.mark.parametrize(
         "exc,status",
-        [(ValidationError("ticker", "bad"), 422), (RateLimitExceeded("slow down"), 429),
-         (CircuitBreakerOpen("open"), 503), (DataFetchError("down"), 502), (RuntimeError("x"), 400)],
+        [
+            (ValidationError("ticker", "bad"), 422),
+            (RateLimitExceeded("slow down"), 429),
+            (CircuitBreakerOpen("open"), 503),
+            (DataFetchError("down"), 502),
+            (RuntimeError("x"), 400),
+        ],
     )
     def test_fetch_error_mapping(self, client, exc, status):
         with patch("financial_model.api.main.fetch_statements", side_effect=exc):

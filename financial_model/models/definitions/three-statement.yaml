@@ -1,0 +1,292 @@
+# Defaults of the `three-statement` model: every driver's starting value, description and unit.
+# Model YAMLs overlay these; other definitions `extends: three-statement` and change only what differs.
+model_type: three-statement
+aliases: [three, 3-statement, 3s, ts]
+name: Three Statement Model
+description: Integrated income statement, balance sheet and cash flow (FAST sign conventions)
+drivers:
+  revenue:
+    value: 10000000
+    description: Starting revenue
+    unit: $
+  revenue_growth:
+    value: 0.2
+    description: YoY revenue growth
+    unit: '%'
+  cogs_pct:
+    value: 0.35
+    description: COGS as % of revenue
+    unit: '%'
+  rd_pct:
+    value: 0.15
+    description: R&D as % of revenue
+    unit: '%'
+  sm_pct:
+    value: 0.25
+    description: S&M as % of revenue
+    unit: '%'
+  gna_pct:
+    value: 0.1
+    description: G&A as % of revenue
+    unit: '%'
+  sbc:
+    value: 0
+    description: Stock-based compensation
+    unit: $
+  tax_rate:
+    value: 0.21
+    description: Effective tax rate
+    unit: '%'
+  interest_expense:
+    value: 0
+    description: Interest expense (non-modelled debt)
+    unit: $
+  other_income:
+    value: 0
+    description: Other income/expense
+    unit: $
+  ar_days:
+    value: 45
+    description: Accounts receivable days
+    unit: days
+  inventory_days:
+    value: 0
+    description: Inventory days
+    unit: days
+  prepaid_pct:
+    value: 0.02
+    description: Prepaid as % of revenue
+    unit: '%'
+  ppe_gross:
+    value: 1000000
+    description: Opening gross PP&E
+    unit: $
+  capex:
+    value: -500000
+    description: Annual CapEx
+    unit: $
+  depreciation_rate:
+    value: 0.1
+    description: Depreciation rate on gross PP&E
+    unit: '%'
+  intangibles:
+    value: 0
+    description: Intangible assets
+    unit: $
+  goodwill:
+    value: 0
+    description: Opening goodwill
+    unit: $
+  acquisitions:
+    value: 0
+    description: Acquisitions
+    unit: $
+  ap_days:
+    value: 60
+    description: Accounts payable days
+    unit: days
+  accrued_pct:
+    value: 0.05
+    description: Accrued as % of revenue
+    unit: '%'
+  deferred_rev_pct:
+    value: 0.15
+    description: Deferred revenue as % of revenue
+    unit: '%'
+  current_debt:
+    value: 0
+    description: Current portion of debt
+    unit: $
+  long_term_debt:
+    value: 0
+    description: Long-term debt
+    unit: $
+  dlt:
+    value: 0
+    description: Deferred tax liability
+    unit: $
+  common_stock:
+    value: 1000
+    description: Common stock (par)
+    unit: $
+  apic:
+    value: 5000000
+    description: Opening APIC
+    unit: $
+  equity_issuance:
+    value: 0
+    description: Equity issuance (+) / repurchase (-)
+    unit: $
+  dividends:
+    value: 0
+    description: Dividends paid
+    unit: $
+  beginning_cash:
+    value: 500000
+    description: Opening cash
+    unit: $
+  min_cash:
+    value: 0
+    description: Minimum cash balance before drawing the revolver
+    unit: $
+  shares_outstanding:
+    value: 1000000
+    description: Diluted shares outstanding
+    unit: '#'
+starter_scenarios: {}
+# Starter config written by `financial-model init --type three-statement [--industry <variant>]`.
+# period_paths get start_year/years; truncate_to_years lists are cut to the year count;
+# cap_at_years values are capped at it. Unknown industries use fallback_variant.
+starter:
+  fallback_variant: other
+  period_paths:
+  - periods
+  variants:
+    saas:
+      name: Three Statement Model
+      model_type: three-statement
+      periods:
+        type: annual
+      assumptions:
+        drivers:
+          revenue:
+            value: 10000000
+            description: Starting revenue
+            unit: $
+          revenue_growth:
+            value: 0.3
+            description: YoY growth
+            unit: '%'
+          cogs_pct:
+            value: 0.22
+            description: COGS % of revenue
+            unit: '%'
+          rd_pct:
+            value: 0.2
+            description: R&D % of revenue
+            unit: '%'
+          sm_pct:
+            value: 0.4
+            description: S&M % of revenue
+            unit: '%'
+          gna_pct:
+            value: 0.12
+            description: G&A % of revenue
+            unit: '%'
+          sbc:
+            value: 800000
+            description: Stock-based compensation
+            unit: $
+          tax_rate:
+            value: 0.21
+            description: Tax rate
+            unit: '%'
+          ar_days:
+            value: 45
+            description: AR days
+            unit: days
+          ap_days:
+            value: 60
+            description: AP days
+            unit: days
+          deferred_rev_pct:
+            value: 0.3
+            description: Deferred revenue % of revenue
+            unit: '%'
+          ppe_gross:
+            value: 1000000
+            description: Opening gross PP&E
+            unit: $
+          capex:
+            value: -500000
+            description: Annual CapEx
+            unit: $
+          depreciation_rate:
+            value: 0.2
+            description: Depreciation rate on gross PP&E
+            unit: '%'
+          beginning_cash:
+            value: 500000
+            description: Opening cash
+            unit: $
+          apic:
+            value: 5000000
+            description: Opening paid-in capital
+            unit: $
+        scenarios:
+          base: {}
+          upside:
+            revenue_growth: 0.4
+            cogs_pct: 0.2
+          downside:
+            revenue_growth: 0.15
+            cogs_pct: 0.25
+      statements: []
+    other:
+      name: Three Statement Model
+      model_type: three-statement
+      periods:
+        type: annual
+      assumptions:
+        drivers:
+          revenue:
+            value: 50000000
+            description: Starting revenue
+            unit: $
+          revenue_growth:
+            value: 0.1
+            description: YoY growth
+            unit: '%'
+          cogs_pct:
+            value: 0.6
+            description: COGS % of revenue
+            unit: '%'
+          rd_pct:
+            value: 0.05
+            description: R&D % of revenue
+            unit: '%'
+          sm_pct:
+            value: 0.15
+            description: S&M % of revenue
+            unit: '%'
+          gna_pct:
+            value: 0.08
+            description: G&A % of revenue
+            unit: '%'
+          tax_rate:
+            value: 0.21
+            description: Tax rate
+            unit: '%'
+          inventory_days:
+            value: 60
+            description: Inventory days
+            unit: days
+          ppe_gross:
+            value: 20000000
+            description: Opening gross PP&E
+            unit: $
+          capex:
+            value: -3000000
+            description: Annual CapEx
+            unit: $
+          depreciation_rate:
+            value: 0.08
+            description: Depreciation rate on gross PP&E
+            unit: '%'
+          beginning_cash:
+            value: 2000000
+            description: Opening cash
+            unit: $
+          apic:
+            value: 15000000
+            description: Opening paid-in capital
+            unit: $
+        scenarios:
+          base: {}
+          upside:
+            revenue_growth: 0.4
+            cogs_pct: 0.2
+          downside:
+            revenue_growth: 0.15
+            cogs_pct: 0.25
+      statements: []

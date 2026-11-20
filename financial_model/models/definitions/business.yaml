@@ -1,0 +1,19 @@
+# Shared base of the business-model types (paas, b2b-saas, b2c-subscription): extends three-statement
+# and holds the Unit Economics table's name and generic row labels. Each business type extends this.
+model_type: business
+extends: three-statement
+abstract: true
+description: Base for customer-engine business models
+analysis_table: Unit Economics
+unit_economics_labels:
+  gross_margin: Gross Margin
+  operating_margin: Operating Margin
+  revenue_growth: Revenue Growth (annualised)
+  rule_of_40: Rule of 40
+  blended_cac: Blended CAC (total S&M / new customers)
+  revenue_per_customer: Revenue per Customer per Month
+  lifetime_value: Lifetime Value (gross-margin basis)
+  ltv_cac: LTV / CAC
+  cac_payback: CAC Payback (months)
+# Business types bring their own starters; do not inherit the three-statement ones.
+starter: null

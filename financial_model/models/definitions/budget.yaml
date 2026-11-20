@@ -1,0 +1,220 @@
+# Defaults of the `budget` model. `departments` lists the departments built by default;
+# `department_defaults` seeds the drivers of any department added without its own values.
+model_type: budget
+name: Budget Model
+description: 'Driver-based budget: ARR roll-forward and headcount x cost by department'
+departments:
+- Engineering
+- Sales
+- Marketing
+- G&A
+- R&D
+department_defaults:
+  headcount:
+    value: 10
+    unit: FTE
+  cost_per_head:
+    value: 150000
+    unit: $
+drivers:
+  tax_rate:
+    value: 0.21
+    description: Tax rate
+    unit: '%'
+  starting_arr:
+    value: 10000000
+    description: Beginning ARR
+    unit: $
+  new_arr:
+    value: 3000000
+    description: New ARR booked
+    unit: $
+  expansion_arr:
+    value: 1500000
+    description: Expansion ARR
+    unit: $
+  churned_arr:
+    value: -500000
+    description: Churned ARR (negative)
+    unit: $
+  engineering_headcount:
+    value: 10
+    description: Engineering headcount
+    unit: FTE
+  engineering_cost_per_head:
+    value: 150000
+    description: Engineering fully loaded cost
+    unit: $
+  sales_headcount:
+    value: 10
+    description: Sales headcount
+    unit: FTE
+  sales_cost_per_head:
+    value: 150000
+    description: Sales fully loaded cost
+    unit: $
+  marketing_headcount:
+    value: 10
+    description: Marketing headcount
+    unit: FTE
+  marketing_cost_per_head:
+    value: 150000
+    description: Marketing fully loaded cost
+    unit: $
+  gna_headcount:
+    value: 10
+    description: G&A headcount
+    unit: FTE
+  gna_cost_per_head:
+    value: 150000
+    description: G&A fully loaded cost
+    unit: $
+  rd_headcount:
+    value: 10
+    description: R&D headcount
+    unit: FTE
+  rd_cost_per_head:
+    value: 150000
+    description: R&D fully loaded cost
+    unit: $
+  beginning_cash:
+    value: 0
+    description: Beginning cash
+    unit: $
+starter_scenarios: {}
+# Starter config written by `financial-model init --type budget [--industry <variant>]`.
+# period_paths get start_year/years; truncate_to_years lists are cut to the year count;
+# cap_at_years values are capped at it. Unknown industries use fallback_variant.
+starter:
+  fallback_variant: default
+  period_paths:
+  - periods
+  variants:
+    default:
+      name: Budget Model
+      model_type: budget
+      periods:
+        type: quarterly
+      assumptions:
+        drivers:
+          starting_arr:
+            value:
+            - 10000000
+            - 11500000
+            - 13225000
+            - 15208750
+            description: Beginning ARR each quarter
+            unit: $
+          new_arr:
+            value:
+            - 1200000
+            - 1380000
+            - 1587000
+            - 1825050
+            description: New logo ARR
+            unit: $
+          expansion_arr:
+            value:
+            - 300000
+            - 345000
+            - 396750
+            - 456263
+            description: Expansion ARR
+            unit: $
+          churned_arr:
+            value:
+            - -250000
+            - -287500
+            - -330625
+            - -380219
+            description: Churned ARR (negative)
+            unit: $
+          engineering_headcount:
+            value:
+            - 50
+            - 55
+            - 60
+            - 65
+            description: Engineering FTEs
+            unit: FTE
+          engineering_cost_per_head:
+            value: 180000
+            description: Fully loaded cost per engineer
+            unit: $
+          sales_headcount:
+            value:
+            - 30
+            - 35
+            - 40
+            - 45
+            description: Sales FTEs
+            unit: FTE
+          sales_cost_per_head:
+            value: 150000
+            description: Fully loaded cost per sales rep
+            unit: $
+          marketing_headcount:
+            value:
+            - 15
+            - 17
+            - 19
+            - 21
+            description: Marketing FTEs
+            unit: FTE
+          marketing_cost_per_head:
+            value: 130000
+            description: Fully loaded cost per marketer
+            unit: $
+          gna_headcount:
+            value:
+            - 20
+            - 22
+            - 24
+            - 26
+            description: G&A FTEs
+            unit: FTE
+          gna_cost_per_head:
+            value: 120000
+            description: Fully loaded cost per G&A FTE
+            unit: $
+          rd_headcount:
+            value:
+            - 25
+            - 28
+            - 31
+            - 34
+            description: R&D FTEs
+            unit: FTE
+          rd_cost_per_head:
+            value: 170000
+            description: Fully loaded cost per R&D FTE
+            unit: $
+          tax_rate:
+            value: 0.21
+            description: Tax rate
+            unit: '%'
+        scenarios:
+          base: {}
+          hiring_acceleration:
+            engineering_headcount:
+            - 50
+            - 60
+            - 70
+            - 80
+            sales_headcount:
+            - 30
+            - 40
+            - 50
+            - 60
+          hiring_freeze:
+            engineering_headcount:
+            - 50
+            - 50
+            - 50
+            - 50
+            sales_headcount:
+            - 30
+            - 30
+            - 30
+            - 30
+      statements: []

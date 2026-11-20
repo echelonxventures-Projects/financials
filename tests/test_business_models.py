@@ -163,25 +163,38 @@ def test_cli_init_and_run(key, tmp_path):
     assert "Unit Economics" in load_workbook(xlsx).sheetnames
 
 
-def test_defaults_come_from_template_files(tmp_path, monkeypatch):
+def test_defaults_come_from_definition_files(tmp_path, monkeypatch):
     from financial_model import config_loader
-    from financial_model.models.business import TEMPLATE_DIR, load_template
+    from financial_model.core.definitions import BUILTIN_DIR, clear_cache, load_definition
 
     for key in BUSINESS_MODELS:
-        assert (TEMPLATE_DIR / f"{key}.yaml").is_file()
-        assert load_template(key)["model_type"] == key
+        assert (BUILTIN_DIR / f"{key}.yaml").is_file()
+        assert load_definition(key)["_chain"] == [key, "business", "three-statement"]
 
-    custom = load_template("b2c-subscription")
-    custom["drivers"]["monthly_arpu"]["value"] = 4.99
-    custom["name"] = "My Consumer App"
-    (tmp_path / "b2c-subscription.yaml").write_text(yaml.safe_dump(custom), encoding="utf-8")
-    monkeypatch.setenv("FIN_MODELS_TEMPLATE_PATHS", str(tmp_path))
+    # An operator's copy replaces the built-in file; `extends` keeps everything else.
+    (tmp_path / "b2c-subscription.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "model_type": "b2c-subscription",
+                "extends": "business",
+                "name": "My Consumer App",
+                "drivers": {**load_definition("b2c-subscription")["drivers"], "monthly_arpu": {"value": 4.99}},
+                "kpi_rows": load_definition("b2c-subscription")["kpi_rows"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("FIN_MODELS_DEFINITION_PATHS", str(tmp_path))
     config_loader._reset_cache()
+    clear_cache()
     try:
         model = B2CSubscriptionModel()
         assert model.name == "My Consumer App"
         assert model.assumptions.drivers["monthly_arpu"].get_value(0) == pytest.approx(4.99)
-        assert business_template("b2c-subscription")["assumptions"]["drivers"]["monthly_arpu"]["value"] == 4.99
+        assert model.assumptions.drivers["tax_rate"].get_value(0) == pytest.approx(0.21)  # inherited
+        model.set_periods(PeriodIndex.generate(2025, 3))
+        _ties(model.calculate())
     finally:
-        monkeypatch.delenv("FIN_MODELS_TEMPLATE_PATHS")
+        monkeypatch.delenv("FIN_MODELS_DEFINITION_PATHS")
         config_loader._reset_cache()
+        clear_cache()

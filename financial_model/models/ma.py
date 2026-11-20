@@ -5,12 +5,14 @@ Accretion/dilution, synergy analysis, pro forma combination.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
+import copy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from financial_model.core.definitions import load_definition
 from financial_model.models.three_statement import ThreeStatementModel
 
 
@@ -35,24 +37,29 @@ class MergerModel:
     acquirer: ThreeStatementModel
     target: ThreeStatementModel
 
-    offer_price_per_share: float = 0.0
-    target_shares: float = 1_000_000
-    cash_consideration_pct: float = 0.50
-    stock_consideration_pct: float = 0.50
-    synergies: float = 0.0  # Annual run-rate pre-tax synergies
-    synergy_phase_in: list[float] = field(default_factory=lambda: [0.3, 0.6, 0.8, 1.0, 1.0])
-    financing_rate: float = 0.06
-    tax_rate: float = 0.21
-    acquirer_shares: float = 10_000_000
-    acquirer_share_price: float | None = None
-    acquirer_pe: float = 20.0
+    # Deal terms: None = the default in models/definitions/ma.yaml (`deal`).
+    offer_price_per_share: Any = None
+    target_shares: Any = None
+    cash_consideration_pct: Any = None
+    stock_consideration_pct: Any = None
+    synergies: Any = None  # Annual run-rate pre-tax synergies
+    synergy_phase_in: Any = None
+    financing_rate: Any = None
+    tax_rate: Any = None
+    acquirer_shares: Any = None
+    acquirer_share_price: Any = None
+    acquirer_pe: Any = None
 
-    name: str = "M&A Model"
+    name: Any = None
     model_type = "ma"
 
     def __post_init__(self) -> None:
-        if self.synergy_phase_in is None:
-            self.synergy_phase_in = [0.3, 0.6, 0.8, 1.0, 1.0]
+        self.definition = load_definition(self.model_type)
+        for key, default in (self.definition.get("deal") or {}).items():
+            if getattr(self, key, None) is None:
+                setattr(self, key, copy.deepcopy(default))
+        if self.name is None:
+            self.name = str(self.definition.get("name") or type(self).__name__)
         if abs(self.cash_consideration_pct + self.stock_consideration_pct - 1.0) > 1e-9:
             raise ValueError("cash_consideration_pct + stock_consideration_pct must equal 1")
         if self.target_shares < 0 or self.acquirer_shares <= 0:
@@ -61,19 +68,10 @@ class MergerModel:
     # ------------------------------------------------------------------ #
     # Config
     # ------------------------------------------------------------------ #
-    DEAL_FIELDS = (
-        "offer_price_per_share",
-        "target_shares",
-        "cash_consideration_pct",
-        "stock_consideration_pct",
-        "synergies",
-        "synergy_phase_in",
-        "financing_rate",
-        "tax_rate",
-        "acquirer_shares",
-        "acquirer_share_price",
-        "acquirer_pe",
-    )
+    @classmethod
+    def deal_fields(cls) -> tuple[str, ...]:
+        """Deal terms a config may set: the keys of the definition's ``deal`` section."""
+        return tuple(load_definition(cls.model_type).get("deal") or {})
 
     @classmethod
     def from_config(cls, config: dict[str, Any], base_dir: Path | None = None) -> MergerModel:
@@ -102,24 +100,25 @@ class MergerModel:
                 sub_config, sub_base = spec, base
             else:
                 raise ValueError(f"'{side}' must be a path or a mapping")
-            if normalize_model_type(sub_config.get("model_type")) not in ("three-statement", "dcf", "lbo"):
-                raise ValueError(f"'{side}' must be a three-statement, dcf or lbo model")
+            allowed = load_definition(cls.model_type).get("side_model_types") or []
+            if normalize_model_type(sub_config.get("model_type")) not in allowed:
+                raise ValueError(f"'{side}' must be one of these model types: {', '.join(allowed)}")
             sides[side] = build_model(sub_config, base_dir=sub_base)
 
         deal = dict(config.get("deal") or {})
-        unknown = set(deal) - set(cls.DEAL_FIELDS)
+        allowed_terms = cls.deal_fields()
+        unknown = set(deal) - set(allowed_terms)
         if unknown:
-            raise ValueError(f"Unknown deal terms: {', '.join(sorted(unknown))}. Allowed: {', '.join(cls.DEAL_FIELDS)}")
+            raise ValueError(f"Unknown deal terms: {', '.join(sorted(unknown))}. Allowed: {', '.join(allowed_terms)}")
         if "cash_consideration_pct" in deal and "stock_consideration_pct" not in deal:
             deal["stock_consideration_pct"] = 1.0 - float(deal["cash_consideration_pct"])
         elif "stock_consideration_pct" in deal and "cash_consideration_pct" not in deal:
             deal["cash_consideration_pct"] = 1.0 - float(deal["stock_consideration_pct"])
-        known = {f.name for f in fields(cls)}
         return cls(
             acquirer=sides["acquirer"],
             target=sides["target"],
-            name=config.get("name", "M&A Model"),
-            **{k: v for k, v in deal.items() if k in known},
+            name=config.get("name"),
+            **{k: v for k, v in deal.items() if k in allowed_terms},
         )
 
     def _results(self, scenario: str | None) -> tuple[Any, Any]:
@@ -143,8 +142,9 @@ class MergerModel:
         if acq_eps > 0:
             return acq_eps * self.acquirer_pe
         # Loss-making acquirer: fall back to a revenue multiple
+        fallback = self.definition.get("loss_making_acquirer") or {}
         revenue_per_share = _row(acq_is, "Revenue", 0) / self.acquirer_shares if self.acquirer_shares else 0.0
-        return max(revenue_per_share * 5.0, 1.0)
+        return max(revenue_per_share * float(fallback["revenue_multiple"]), float(fallback["min_share_price"]))
 
     def calculate_accretion_dilution(self, scenario: str | None = None) -> dict[str, Any]:
         """Run accretion/dilution analysis for every projected period (year-1 keys kept for convenience)."""

@@ -11,6 +11,7 @@ from typing import Any
 import pandas as pd
 
 from financial_model.core.assumptions import Assumptions
+from financial_model.core.definitions import DefinitionError
 from financial_model.core.line_item import CalculationRule, Driver, LineItem, LineItemType, lookup_value
 from financial_model.core.model import FinancialModel
 from financial_model.core.period import PeriodIndex
@@ -45,13 +46,13 @@ class BudgetModel(FinancialModel):
 
     def __init__(
         self,
-        name: str = "Budget Model",
+        name: str | None = None,
         periods: PeriodIndex | None = None,
         assumptions: Assumptions | None = None,
         departments: list[str] | None = None,
     ):
         super().__init__(name=name, periods=periods, assumptions=assumptions)
-        self.departments = list(departments or ["Engineering", "Sales", "Marketing", "G&A", "R&D"])
+        self.departments = list(departments or self.setting("departments", []))
         self.headcount_by_dept: dict[str, list[float]] = {}
         self.cost_per_head: dict[str, float] = {}
         self._setup_budget_structure()
@@ -59,12 +60,26 @@ class BudgetModel(FinancialModel):
     # ------------------------------------------------------------------ #
     def _dept_items(self, dept: str, order: int, headcount: Any = None, cost: Any = None) -> list[LineItem]:
         key = department_key(dept)
+        seeds = self.setting("department_defaults", {})
+
+        def driver(suffix: str, given: Any, label: str) -> Driver:
+            name = f"{key}_{suffix}"
+            if given is not None:
+                return Driver(name, given, f"{dept} {label}", seeds.get(suffix, {}).get("unit", ""))
+            if name in self._default_drivers:
+                return self.ref(name)
+            seed = seeds.get(suffix)
+            if seed is None:
+                raise DefinitionError(f"budget: no default for '{name}' and no department_defaults.{suffix}")
+            return Driver(name, seed["value"], f"{dept} {label}", seed.get("unit", ""))
 
         def expense(df: pd.DataFrame, idx: int, d: str = dept) -> float:
             hc = lookup_value(df, f"{d} Headcount", idx, statement=IS)
             cph = lookup_value(df, f"{d} Cost per Head", idx, statement=IS)
             return -hc * cph
 
+        headcount_driver = driver("headcount", headcount, "headcount")
+        cost_driver = driver("cost_per_head", cost, "fully loaded cost")
         return [
             LineItem(
                 f"{dept} Headcount",
@@ -73,9 +88,7 @@ class BudgetModel(FinancialModel):
                 order=order,
                 unit="FTE",
                 format="{:,.1f}",
-                driver=Driver(
-                    f"{key}_headcount", headcount if headcount is not None else [10], f"{dept} headcount", "FTE"
-                ),
+                driver=headcount_driver,
             ),
             LineItem(
                 f"{dept} Cost per Head",
@@ -83,9 +96,7 @@ class BudgetModel(FinancialModel):
                 IS,
                 order=order + 1,
                 unit="$",
-                driver=Driver(
-                    f"{key}_cost_per_head", cost if cost is not None else [150_000], f"{dept} fully loaded cost", "$"
-                ),
+                driver=cost_driver,
             ),
             LineItem(
                 f"{dept} Expense",
@@ -101,7 +112,6 @@ class BudgetModel(FinancialModel):
 
     def _setup_budget_structure(self) -> None:
         """Set up driver-based budget line items."""
-        self.assumptions.set_driver(Driver("tax_rate", [0.21], "Tax rate", "%"))
 
         def revenue(df: pd.DataFrame, idx: int) -> float:
             start = lookup_value(df, "Starting ARR", idx, statement=IS)
@@ -115,7 +125,7 @@ class BudgetModel(FinancialModel):
                 IS,
                 order=1,
                 unit="$",
-                driver=Driver("starting_arr", [10_000_000], "Beginning ARR", "$"),
+                driver=self.ref("starting_arr"),
             ),
             LineItem(
                 "New ARR",
@@ -123,7 +133,7 @@ class BudgetModel(FinancialModel):
                 IS,
                 order=2,
                 unit="$",
-                driver=Driver("new_arr", [3_000_000], "New ARR booked", "$"),
+                driver=self.ref("new_arr"),
             ),
             LineItem(
                 "Expansion ARR",
@@ -131,7 +141,7 @@ class BudgetModel(FinancialModel):
                 IS,
                 order=3,
                 unit="$",
-                driver=Driver("expansion_arr", [1_500_000], "Expansion ARR", "$"),
+                driver=self.ref("expansion_arr"),
             ),
             LineItem(
                 "Churned ARR",
@@ -139,7 +149,7 @@ class BudgetModel(FinancialModel):
                 IS,
                 order=4,
                 unit="$",
-                driver=Driver("churned_arr", [-500_000], "Churned ARR (negative)", "$"),
+                driver=self.ref("churned_arr"),
             ),
             LineItem(
                 "Ending ARR",
@@ -197,7 +207,7 @@ class BudgetModel(FinancialModel):
 
         def net_income(df: pd.DataFrame, idx: int, drivers: dict[str, Driver]) -> float:
             op_income = lookup_value(df, "Operating Income", idx, statement=IS)
-            tax_rate = drivers["tax_rate"].get_value(idx) if "tax_rate" in drivers else 0.21
+            tax_rate = drivers["tax_rate"].get_value(idx)
             return op_income * (1 - tax_rate)
 
         self.add_income_statement_item(
@@ -209,7 +219,7 @@ class BudgetModel(FinancialModel):
                 unit="$",
                 calculation_rule=CalculationRule.CUSTOM,
                 custom_formula=net_income,
-                driver=Driver("tax_rate", [0.21], "Tax rate", "%"),
+                driver=self.ref("tax_rate"),
                 is_total=True,
                 description="Operating income x (1 - tax rate)",
             )
@@ -269,7 +279,7 @@ class BudgetModel(FinancialModel):
                 CF,
                 order=91,
                 unit="$",
-                driver=Driver("beginning_cash", 0, "Beginning cash", "$"),
+                driver=self.ref("beginning_cash"),
             ),
             LineItem(
                 "Ending Cash Balance",
@@ -296,8 +306,13 @@ class BudgetModel(FinancialModel):
         self.cost_per_head[name] = cost_per_head
 
         key = department_key(name)
-        self.assumptions.set_driver(Driver(f"{key}_headcount", list(headcount), f"{name} headcount", "FTE"))
-        self.assumptions.set_driver(Driver(f"{key}_cost_per_head", cost_per_head, f"{name} cost per head", "$"))
+        units = {k: v.get("unit", "") for k, v in self.setting("department_defaults", {}).items()}
+        self.assumptions.set_driver(
+            Driver(f"{key}_headcount", list(headcount), f"{name} headcount", units.get("headcount", ""))
+        )
+        self.assumptions.set_driver(
+            Driver(f"{key}_cost_per_head", cost_per_head, f"{name} cost per head", units.get("cost_per_head", ""))
+        )
 
         order = 20 + (self.departments.index(name)) * 10
         for item in self._dept_items(name, order, headcount=list(headcount), cost=cost_per_head):

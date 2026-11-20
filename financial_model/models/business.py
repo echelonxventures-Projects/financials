@@ -24,11 +24,9 @@ return next to the statements.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 import pandas as pd
-import yaml
 
 from financial_model.core.line_item import CalculationRule, Driver, LineItem, LineItemType
 from financial_model.core.model import ModelResult
@@ -63,24 +61,10 @@ class BusinessModel(ThreeStatementModel):
     model_type = "business"
 
     def __init__(self, name: str | None = None, periods: Any = None, assumptions: Any = None):
-        template = load_template(self.model_type)
-        super().__init__(
-            name=name or str(template.get("name") or type(self).__name__), periods=periods, assumptions=assumptions
-        )
+        # Drivers, labels and KPI rows: models/definitions/<model_type>.yaml (extends business.yaml).
+        super().__init__(name=name, periods=periods, assumptions=assumptions)
         self._engine_cache: tuple[dict[str, Driver], int, Engine] | None = None
-        # Business drivers, then the three-statement defaults this business model changes.
-        for section in ("drivers", "default_overrides"):
-            for driver_name, spec in (template.get(section) or {}).items():
-                existing = self.assumptions.drivers.get(driver_name)
-                spec = spec if isinstance(spec, dict) else {"value": spec}
-                self.assumptions.set_driver(
-                    Driver(
-                        driver_name,
-                        spec.get("value", 0),
-                        spec.get("description") or (existing.description if existing else ""),
-                        spec.get("unit") or (existing.unit if existing else ""),
-                    )
-                )
+        self.labels: dict[str, str] = self.setting("unit_economics_labels", {})
         self._wire_income_statement()
 
     # ------------------------------------------------------------------ #
@@ -164,13 +148,14 @@ class BusinessModel(ThreeStatementModel):
         sm = -is_df.loc["Sales & Marketing Expense"].to_numpy(dtype=float)
 
         rows: dict[str, list[float | None]] = {}
-        for key, label in self.KPI_ROWS:
-            rows[label] = list(eng[key])
+        for row in self.setting("kpi_rows", []):
+            rows[str(row["label"])] = list(eng[row["key"]])
 
         ppy = self.periods_per_year
         gm = [_safe_div(g, r) for g, r in zip(gross, revenue)]
-        rows["Gross Margin"] = gm
-        rows["Operating Margin"] = [_safe_div(o, r) for o, r in zip(op_income, revenue)]
+        rows[self.labels["gross_margin"]] = gm
+        op_margin = [_safe_div(o, r) for o, r in zip(op_income, revenue)]
+        rows[self.labels["operating_margin"]] = op_margin
         growth: list[float | None] = [None]
         for i in range(1, len(revenue)):
             # Year-over-year when there is a year of history, else period-over-period annualised.
@@ -181,21 +166,18 @@ class BusinessModel(ThreeStatementModel):
                 growth.append((revenue[i] / revenue[i - 1]) ** ppy - 1)
             else:
                 growth.append(None)
-        rows["Revenue Growth (annualised)"] = growth
-        rows["Rule of 40"] = [
-            (g + m) if g is not None and m is not None else None for g, m in zip(growth, rows["Operating Margin"])
+        rows[self.labels["revenue_growth"]] = growth
+        rows[self.labels["rule_of_40"]] = [
+            (g + m) if g is not None and m is not None else None for g, m in zip(growth, op_margin)
         ]
         new = eng["new_customers"]
         cac = [_safe_div(s, c) for s, c in zip(sm, new)]
-        rows["Blended CAC (total S&M / new customers)"] = cac
+        rows[self.labels["blended_cac"]] = cac
         rows.update(self.lifetime_value_rows(eng, gm, cac))
 
         table = pd.DataFrame(rows, index=result.labels).T
         table.index.name = "Metric"
         return table
-
-    #: (engine key, row label) pairs shown first in the Unit Economics table.
-    KPI_ROWS: ClassVar[list[tuple[str, str]]] = []
 
     def monthly_value_per_customer(self, eng: Engine, idx: int) -> float:
         """Revenue per average customer per month (ARPA / ARPU)."""
@@ -223,14 +205,14 @@ class BusinessModel(ThreeStatementModel):
             ratio.append(_safe_div(value, c) if value is not None and c else None)
             payback.append(_safe_div(c, monthly_gp) if c is not None and monthly_gp else None)
         return {
-            "Revenue per Customer per Month": arpa,
-            "Lifetime Value (gross-margin basis)": ltv,
-            "LTV / CAC": ratio,
-            "CAC Payback (months)": payback,
+            self.labels["revenue_per_customer"]: arpa,
+            self.labels["lifetime_value"]: ltv,
+            self.labels["ltv_cac"]: ratio,
+            self.labels["cac_payback"]: payback,
         }
 
     def analysis_tables(self, result: ModelResult) -> dict[str, Any]:
-        return {"Unit Economics": self.unit_economics(result)}
+        return {str(self.setting("analysis_table")): self.unit_economics(result)}
 
 
 # ====================================================================== #
@@ -246,21 +228,6 @@ class B2BSaaSModel(BusinessModel):
     """
 
     model_type = "b2b-saas"
-    KPI_ROWS: ClassVar[list[tuple[str, str]]] = [
-        ("end_customers", "Customers (end of period)"),
-        ("new_customers", "New Logos"),
-        ("churned_customers", "Churned Logos"),
-        ("begin_arr", "Beginning ARR"),
-        ("new_arr", "New ARR"),
-        ("expansion_arr", "Expansion ARR"),
-        ("churned_arr", "Churned ARR"),
-        ("end_arr", "Ending ARR"),
-        ("net_revenue_retention", "Net Revenue Retention (annualised)"),
-        ("gross_revenue_retention", "Gross Revenue Retention (annualised)"),
-        ("subscription_revenue", "Subscription Revenue"),
-        ("services_revenue", "Services Revenue"),
-        ("magic_number", "Magic Number (net new ARR / S&M)"),
-    ]
 
     def run_engine(self, drivers: dict[str, Driver], n: int) -> Engine:
         ppy = self.periods_per_year
@@ -335,18 +302,6 @@ class B2CSubscriptionModel(BusinessModel):
     """
 
     model_type = "b2c-subscription"
-    KPI_ROWS: ClassVar[list[tuple[str, str]]] = [
-        ("end_customers", "Subscribers (end of period)"),
-        ("paid_new", "New Subscribers - Paid"),
-        ("organic_new", "New Subscribers - Organic"),
-        ("new_customers", "New Subscribers - Total"),
-        ("churned_customers", "Churned Subscribers"),
-        ("net_adds", "Net Adds"),
-        ("monthly_churn", "Monthly Churn"),
-        ("arpu", "ARPU (monthly)"),
-        ("end_arr", "Annualised Run-Rate Revenue (end)"),
-        ("payment_fees", "Payment / App-Store Fees"),
-    ]
 
     def run_engine(self, drivers: dict[str, Driver], n: int) -> Engine:
         ppy = self.periods_per_year
@@ -412,20 +367,6 @@ class PaaSModel(BusinessModel):
     """
 
     model_type = "paas"
-    KPI_ROWS: ClassVar[list[tuple[str, str]]] = [
-        ("end_customers", "Paying Accounts (end of period)"),
-        ("new_customers", "New Paying Accounts"),
-        ("churned_customers", "Churned Accounts"),
-        ("usage_per_account", "Usage per Account (units / month)"),
-        ("billable_units", "Billable Units"),
-        ("total_units", "Total Units Served (incl. free)"),
-        ("usage_revenue", "Usage Revenue"),
-        ("platform_revenue", "Platform Fee Revenue"),
-        ("infra_cost", "Infrastructure Cost"),
-        ("infra_margin", "Infrastructure Margin"),
-        ("net_revenue_retention", "Net Revenue Retention (annualised)"),
-        ("end_arr", "Annualised Run-Rate Revenue (end)"),
-    ]
 
     def run_engine(self, drivers: dict[str, Driver], n: int) -> Engine:
         ppy = self.periods_per_year
@@ -486,54 +427,10 @@ BUSINESS_MODELS: dict[str, type[BusinessModel]] = {
 }
 
 
-TEMPLATE_DIR = Path(__file__).with_name("templates")
-
-
-def template_dirs() -> list[Path]:
-    """Directories searched for ``<model_type>.yaml``: settings ``models.template_paths``, then the built-ins."""
-    from financial_model.config_loader import get_config
-
-    extra = (get_config().get("models") or {}).get("template_paths") or []
-    if isinstance(extra, (str, Path)):
-        extra = [extra]
-    return [*(Path(p).expanduser() for p in extra), TEMPLATE_DIR]
-
-
-def load_template(model_type: str) -> dict[str, Any]:
-    """The defaults file of a business-model type (first match in :func:`template_dirs`)."""
-    for directory in template_dirs():
-        path = directory / f"{model_type}.yaml"
-        if path.is_file():
-            with path.open(encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-            if not isinstance(data, dict):
-                raise ValueError(f"{path}: a model template must be a mapping")
-            return data
-    raise FileNotFoundError(f"no template '{model_type}.yaml' in {', '.join(str(d) for d in template_dirs())}")
-
-
-def _truncate(spec: Any, years: int) -> Any:
-    if isinstance(spec, dict) and isinstance(spec.get("value"), list):
-        return {**spec, "value": spec["value"][: max(1, years)]}
-    return spec
-
-
 def business_template(model_type: str, years: int = 5, start_year: int = 2025) -> dict[str, Any]:
-    """Starter model config for a business-model type, built from its template file."""
+    """Starter model config for a business-model type (see :func:`financial_model.core.starters.starter_config`)."""
     if model_type not in BUSINESS_MODELS:
         raise ValueError(f"'{model_type}' is not a business-model type")
-    t = load_template(model_type)
-    drivers: dict[str, Any] = {}
-    for section in ("drivers", "default_overrides", "template_drivers"):
-        for name, spec in (t.get(section) or {}).items():
-            drivers[name] = _truncate(spec, years)
-    return {
-        "name": t.get("name", model_type),
-        "model_type": model_type,
-        "periods": {**(t.get("periods") or {}), "start_year": start_year, "years": years},
-        "assumptions": {
-            "metadata": dict(t.get("metadata") or {}),
-            "drivers": drivers,
-            "scenarios": dict(t.get("scenarios") or {}),
-        },
-    }
+    from financial_model.core.starters import starter_config
+
+    return starter_config(model_type, years=years, start_year=start_year)

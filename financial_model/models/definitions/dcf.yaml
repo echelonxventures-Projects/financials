@@ -1,0 +1,264 @@
+# Defaults of the `dcf` model: only what differs from `three-statement`.
+model_type: dcf
+extends: three-statement
+name: DCF Model
+description: Three-statement model plus WACC, terminal value and sensitivity valuation
+drivers:
+  tax_rate:
+    value: 0.21
+    description: Tax rate
+    unit: '%'
+  risk_free_rate:
+    value: 0.045
+    description: Risk-free rate
+    unit: '%'
+  equity_risk_premium:
+    value: 0.055
+    description: Equity risk premium
+    unit: '%'
+  beta:
+    value: 1.2
+    description: Levered beta
+    unit: x
+  cost_of_debt:
+    value: 0.06
+    description: Pre-tax cost of debt
+    unit: '%'
+  target_debt_ratio:
+    value: 0.2
+    description: Target D/(D+E)
+    unit: '%'
+  terminal_growth:
+    value: 0.025
+    description: Terminal growth rate
+    unit: '%'
+  exit_multiple:
+    value: 12.0
+    description: Exit EV/EBITDA multiple
+    unit: x
+starter_scenarios: {}
+# Default WACC x terminal-growth grid of the sensitivity table.
+sensitivity:
+  wacc_range: [0.07, 0.13]
+  growth_range: [0.01, 0.04]
+  steps: 5
+# Starter config written by `financial-model init --type dcf [--industry <variant>]`.
+# period_paths get start_year/years; truncate_to_years lists are cut to the year count;
+# cap_at_years values are capped at it. Unknown industries use fallback_variant.
+starter:
+  fallback_variant: other
+  period_paths:
+  - periods
+  variants:
+    saas:
+      name: Dcf Model
+      model_type: dcf
+      periods:
+        type: annual
+      assumptions:
+        drivers:
+          revenue:
+            value: 10000000
+            description: Starting revenue
+            unit: $
+          revenue_growth:
+            value: 0.3
+            description: YoY growth
+            unit: '%'
+          cogs_pct:
+            value: 0.22
+            description: COGS % of revenue
+            unit: '%'
+          rd_pct:
+            value: 0.2
+            description: R&D % of revenue
+            unit: '%'
+          sm_pct:
+            value: 0.4
+            description: S&M % of revenue
+            unit: '%'
+          gna_pct:
+            value: 0.12
+            description: G&A % of revenue
+            unit: '%'
+          sbc:
+            value: 800000
+            description: Stock-based compensation
+            unit: $
+          tax_rate:
+            value: 0.21
+            description: Tax rate
+            unit: '%'
+          ar_days:
+            value: 45
+            description: AR days
+            unit: days
+          ap_days:
+            value: 60
+            description: AP days
+            unit: days
+          deferred_rev_pct:
+            value: 0.3
+            description: Deferred revenue % of revenue
+            unit: '%'
+          ppe_gross:
+            value: 1000000
+            description: Opening gross PP&E
+            unit: $
+          capex:
+            value: -500000
+            description: Annual CapEx
+            unit: $
+          depreciation_rate:
+            value: 0.2
+            description: Depreciation rate on gross PP&E
+            unit: '%'
+          beginning_cash:
+            value: 500000
+            description: Opening cash
+            unit: $
+          apic:
+            value: 5000000
+            description: Opening paid-in capital
+            unit: $
+          risk_free_rate:
+            value: 0.045
+            description: Risk-free rate
+            unit: '%'
+          equity_risk_premium:
+            value: 0.055
+            description: Equity risk premium
+            unit: '%'
+          beta:
+            value: 1.2
+            description: Levered beta
+            unit: x
+          cost_of_debt:
+            value: 0.06
+            description: Pre-tax cost of debt
+            unit: '%'
+          target_debt_ratio:
+            value: 0.1
+            description: Target D/(D+E)
+            unit: '%'
+          terminal_growth:
+            value: 0.03
+            description: Terminal growth
+            unit: '%'
+          exit_multiple:
+            value: 12.0
+            description: Exit EV/EBITDA multiple
+            unit: x
+          shares_outstanding:
+            value: 1000000
+            description: Diluted shares
+            unit: '#'
+        scenarios:
+          base: {}
+          upside:
+            revenue_growth: 0.4
+            cogs_pct: 0.2
+          downside:
+            revenue_growth: 0.15
+            cogs_pct: 0.25
+      statements: []
+    other:
+      name: Dcf Model
+      model_type: dcf
+      periods:
+        type: annual
+      assumptions:
+        drivers:
+          revenue:
+            value: 50000000
+            description: Starting revenue
+            unit: $
+          revenue_growth:
+            value: 0.1
+            description: YoY growth
+            unit: '%'
+          cogs_pct:
+            value: 0.6
+            description: COGS % of revenue
+            unit: '%'
+          rd_pct:
+            value: 0.05
+            description: R&D % of revenue
+            unit: '%'
+          sm_pct:
+            value: 0.15
+            description: S&M % of revenue
+            unit: '%'
+          gna_pct:
+            value: 0.08
+            description: G&A % of revenue
+            unit: '%'
+          tax_rate:
+            value: 0.21
+            description: Tax rate
+            unit: '%'
+          inventory_days:
+            value: 60
+            description: Inventory days
+            unit: days
+          ppe_gross:
+            value: 20000000
+            description: Opening gross PP&E
+            unit: $
+          capex:
+            value: -3000000
+            description: Annual CapEx
+            unit: $
+          depreciation_rate:
+            value: 0.08
+            description: Depreciation rate on gross PP&E
+            unit: '%'
+          beginning_cash:
+            value: 2000000
+            description: Opening cash
+            unit: $
+          apic:
+            value: 15000000
+            description: Opening paid-in capital
+            unit: $
+          risk_free_rate:
+            value: 0.045
+            description: Risk-free rate
+            unit: '%'
+          equity_risk_premium:
+            value: 0.055
+            description: Equity risk premium
+            unit: '%'
+          beta:
+            value: 1.2
+            description: Levered beta
+            unit: x
+          cost_of_debt:
+            value: 0.06
+            description: Pre-tax cost of debt
+            unit: '%'
+          target_debt_ratio:
+            value: 0.1
+            description: Target D/(D+E)
+            unit: '%'
+          terminal_growth:
+            value: 0.03
+            description: Terminal growth
+            unit: '%'
+          exit_multiple:
+            value: 12.0
+            description: Exit EV/EBITDA multiple
+            unit: x
+          shares_outstanding:
+            value: 1000000
+            description: Diluted shares
+            unit: '#'
+        scenarios:
+          base: {}
+          upside:
+            revenue_growth: 0.4
+            cogs_pct: 0.2
+          downside:
+            revenue_growth: 0.15
+            cogs_pct: 0.25
+      statements: []

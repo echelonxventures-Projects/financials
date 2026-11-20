@@ -70,7 +70,12 @@ def _fail(message: str) -> NoReturn:
 # --------------------------------------------------------------------------- #
 @app.command()
 def init(
-    model_type: str = typer.Option("three-statement", "--type", "-t", help="three-statement | dcf | lbo | budget | paas | b2b-saas | b2c-subscription | ma"),
+    model_type: str = typer.Option(
+        "three-statement",
+        "--type",
+        "-t",
+        help="three-statement | dcf | lbo | budget | paas | b2b-saas | b2c-subscription | ma",
+    ),
     output: Path = typer.Option(Path("model.yaml"), "--output", "-o", help="Output config file"),
     industry: str = typer.Option("saas", "--industry", "-i", help="Industry template (saas or other)"),
     years: int = typer.Option(5, "--years", "-y", help="Projection years"),
@@ -246,7 +251,9 @@ def chart(
 def serve(
     host: Optional[str] = typer.Option(None, "--host", help="Bind address (default: settings api.host, 127.0.0.1)"),
     port: Optional[int] = typer.Option(None, "--port", "-p", help="Port (default: settings api.port, 8000)"),
-    settings: Optional[Path] = typer.Option(None, "--settings", help="Runtime settings YAML (see docs/self-hosting.md)"),
+    settings: Optional[Path] = typer.Option(
+        None, "--settings", help="Runtime settings YAML (see docs/self-hosting.md)"
+    ),
     reload: bool = typer.Option(False, "--reload", help="Auto-reload on code changes (development)"),
 ) -> None:
     """Start the REST API server (any ASGI server also works: see docs/deployment.md)."""
@@ -422,186 +429,10 @@ app.add_typer(platform_app, name="platform")
 # Helpers
 # --------------------------------------------------------------------------- #
 def _generate_config(model_type: str, industry: str, years: int, start_year: int) -> dict[str, Any]:
-    """Generate a starter YAML config."""
-    model_type = _normalize_type(model_type)
-    periods: dict[str, Any] = {"start_year": start_year, "years": years, "type": "annual"}
+    """Starter config from the model's definition (``starter`` section of models/definitions/<type>.yaml)."""
+    from financial_model.core.starters import starter_config
 
-    if industry == "saas":
-        drivers: dict[str, Any] = {
-            "revenue": {"value": 10_000_000, "description": "Starting revenue", "unit": "$"},
-            "revenue_growth": {"value": 0.30, "description": "YoY growth", "unit": "%"},
-            "cogs_pct": {"value": 0.22, "description": "COGS % of revenue", "unit": "%"},
-            "rd_pct": {"value": 0.20, "description": "R&D % of revenue", "unit": "%"},
-            "sm_pct": {"value": 0.40, "description": "S&M % of revenue", "unit": "%"},
-            "gna_pct": {"value": 0.12, "description": "G&A % of revenue", "unit": "%"},
-            "sbc": {"value": 800_000, "description": "Stock-based compensation", "unit": "$"},
-            "tax_rate": {"value": 0.21, "description": "Tax rate", "unit": "%"},
-            "ar_days": {"value": 45, "description": "AR days", "unit": "days"},
-            "ap_days": {"value": 60, "description": "AP days", "unit": "days"},
-            "deferred_rev_pct": {"value": 0.30, "description": "Deferred revenue % of revenue", "unit": "%"},
-            "ppe_gross": {"value": 1_000_000, "description": "Opening gross PP&E", "unit": "$"},
-            "capex": {"value": -500_000, "description": "Annual CapEx", "unit": "$"},
-            "depreciation_rate": {"value": 0.20, "description": "Depreciation rate on gross PP&E", "unit": "%"},
-            "beginning_cash": {"value": 500_000, "description": "Opening cash", "unit": "$"},
-            "apic": {"value": 5_000_000, "description": "Opening paid-in capital", "unit": "$"},
-        }
-    else:
-        drivers = {
-            "revenue": {"value": 50_000_000, "description": "Starting revenue", "unit": "$"},
-            "revenue_growth": {"value": 0.10, "description": "YoY growth", "unit": "%"},
-            "cogs_pct": {"value": 0.60, "description": "COGS % of revenue", "unit": "%"},
-            "rd_pct": {"value": 0.05, "description": "R&D % of revenue", "unit": "%"},
-            "sm_pct": {"value": 0.15, "description": "S&M % of revenue", "unit": "%"},
-            "gna_pct": {"value": 0.08, "description": "G&A % of revenue", "unit": "%"},
-            "tax_rate": {"value": 0.21, "description": "Tax rate", "unit": "%"},
-            "inventory_days": {"value": 60, "description": "Inventory days", "unit": "days"},
-            "ppe_gross": {"value": 20_000_000, "description": "Opening gross PP&E", "unit": "$"},
-            "capex": {"value": -3_000_000, "description": "Annual CapEx", "unit": "$"},
-            "depreciation_rate": {"value": 0.08, "description": "Depreciation rate on gross PP&E", "unit": "%"},
-            "beginning_cash": {"value": 2_000_000, "description": "Opening cash", "unit": "$"},
-            "apic": {"value": 15_000_000, "description": "Opening paid-in capital", "unit": "$"},
-        }
-
-    scenarios: dict[str, Any] = {
-        "base": {},
-        "upside": {"revenue_growth": 0.40, "cogs_pct": 0.20},
-        "downside": {"revenue_growth": 0.15, "cogs_pct": 0.25},
-    }
-
-    if model_type == "dcf":
-        drivers.update(
-            {
-                "risk_free_rate": {"value": 0.045, "description": "Risk-free rate", "unit": "%"},
-                "equity_risk_premium": {"value": 0.055, "description": "Equity risk premium", "unit": "%"},
-                "beta": {"value": 1.2, "description": "Levered beta", "unit": "x"},
-                "cost_of_debt": {"value": 0.06, "description": "Pre-tax cost of debt", "unit": "%"},
-                "target_debt_ratio": {"value": 0.10, "description": "Target D/(D+E)", "unit": "%"},
-                "terminal_growth": {"value": 0.03, "description": "Terminal growth", "unit": "%"},
-                "exit_multiple": {"value": 12.0, "description": "Exit EV/EBITDA multiple", "unit": "x"},
-                "shares_outstanding": {"value": 1_000_000, "description": "Diluted shares", "unit": "#"},
-            }
-        )
-
-    if model_type == "lbo":
-        # Buyout targets are profitable: trim growth spend relative to the SaaS growth template
-        drivers.update(
-            {
-                "revenue_growth": {"value": 0.15, "description": "YoY growth (post-buyout)", "unit": "%"},
-                "rd_pct": {"value": 0.12, "description": "R&D % of revenue", "unit": "%"},
-                "sm_pct": {"value": 0.25, "description": "S&M % of revenue", "unit": "%"},
-                "gna_pct": {"value": 0.08, "description": "G&A % of revenue", "unit": "%"},
-                "sbc": {"value": 200_000, "description": "Stock-based compensation", "unit": "$"},
-                "min_cash": {"value": 250_000, "description": "Minimum cash before drawing the revolver", "unit": "$"},
-                "entry_multiple": {"value": 10.0, "description": "Entry EV/EBITDA multiple", "unit": "x"},
-                "entry_ebitda": {
-                    "value": 0,
-                    "description": "LTM EBITDA at entry (0 = use first-year model EBITDA)",
-                    "unit": "$",
-                },
-                "equity_contribution": {"value": 0.40, "description": "Sponsor equity % of total uses", "unit": "%"},
-                "fees_pct": {"value": 0.02, "description": "Transaction fees % of EV", "unit": "%"},
-                "tla_pct": {"value": 0.30, "description": "Term Loan A % of funded debt", "unit": "%"},
-                "tla_rate": {"value": 0.065, "description": "TLA interest rate", "unit": "%"},
-                "tla_amort": {"value": 0.05, "description": "TLA amortization % of original principal", "unit": "%"},
-                "tlb_pct": {"value": 0.20, "description": "Term Loan B % of funded debt", "unit": "%"},
-                "tlb_rate": {"value": 0.085, "description": "TLB interest rate", "unit": "%"},
-                "tlb_amort": {"value": 0.01, "description": "TLB amortization % of original principal", "unit": "%"},
-                "revolver_pct": {"value": 0.10, "description": "Revolver commitment % of funded debt", "unit": "%"},
-                "revolver_rate": {"value": 0.07, "description": "Revolver interest rate", "unit": "%"},
-                "sub_pct": {"value": 0.10, "description": "Sub debt % of funded debt", "unit": "%"},
-                "sub_rate": {"value": 0.11, "description": "Sub debt interest rate", "unit": "%"},
-                "mezz_pct": {"value": 0.05, "description": "Mezzanine % of funded debt", "unit": "%"},
-                "mezz_rate": {"value": 0.13, "description": "Mezzanine interest rate", "unit": "%"},
-                "sweep_pct": {"value": 0.50, "description": "Cash sweep % of excess cash", "unit": "%"},
-                "exit_multiple": {"value": 11.0, "description": "Exit EV/EBITDA multiple", "unit": "x"},
-                "hold_years": {"value": min(5, years), "description": "Hold period years", "unit": "years"},
-            }
-        )
-
-    if model_type == "ma":
-        acquirer = _generate_config("three-statement", industry, years, start_year)
-        target = _generate_config("three-statement", industry, years, start_year)
-        acquirer["name"], target["name"] = "Acquirer", "Target"
-        acquirer["assumptions"]["drivers"]["revenue"]["value"] = 40_000_000
-        for side in (acquirer, target):
-            side["assumptions"]["drivers"]["sm_pct"]["value"] = 0.25
-            side["assumptions"]["drivers"]["revenue_growth"]["value"] = 0.15
-            side.pop("statements", None)
-        return {
-            "name": "M&A Model",
-            "model_type": "ma",
-            "acquirer": acquirer,
-            "target": target,
-            "deal": {
-                "offer_price_per_share": 18.0,
-                "target_shares": 2_000_000,
-                "cash_consideration_pct": 0.5,
-                "financing_rate": 0.065,
-                "synergies": 1_500_000,
-                "synergy_phase_in": [0.3, 0.6, 0.8, 1.0, 1.0][: max(1, years)],
-                "tax_rate": 0.21,
-                "acquirer_shares": 10_000_000,
-                "acquirer_pe": 25.0,
-            },
-        }
-
-    from financial_model.models.business import BUSINESS_MODELS, business_template
-
-    if model_type in BUSINESS_MODELS:
-        return business_template(model_type, years, start_year)
-
-    if model_type == "budget":
-        periods = {"start_year": start_year, "years": max(1, years), "type": "quarterly"}
-        drivers = {
-            "starting_arr": {
-                "value": [10_000_000, 11_500_000, 13_225_000, 15_208_750],
-                "description": "Beginning ARR each quarter",
-                "unit": "$",
-            },
-            "new_arr": {
-                "value": [1_200_000, 1_380_000, 1_587_000, 1_825_050],
-                "description": "New logo ARR",
-                "unit": "$",
-            },
-            "expansion_arr": {
-                "value": [300_000, 345_000, 396_750, 456_263],
-                "description": "Expansion ARR",
-                "unit": "$",
-            },
-            "churned_arr": {
-                "value": [-250_000, -287_500, -330_625, -380_219],
-                "description": "Churned ARR (negative)",
-                "unit": "$",
-            },
-            "engineering_headcount": {"value": [50, 55, 60, 65], "description": "Engineering FTEs", "unit": "FTE"},
-            "engineering_cost_per_head": {
-                "value": 180_000,
-                "description": "Fully loaded cost per engineer",
-                "unit": "$",
-            },
-            "sales_headcount": {"value": [30, 35, 40, 45], "description": "Sales FTEs", "unit": "FTE"},
-            "sales_cost_per_head": {"value": 150_000, "description": "Fully loaded cost per sales rep", "unit": "$"},
-            "marketing_headcount": {"value": [15, 17, 19, 21], "description": "Marketing FTEs", "unit": "FTE"},
-            "marketing_cost_per_head": {"value": 130_000, "description": "Fully loaded cost per marketer", "unit": "$"},
-            "gna_headcount": {"value": [20, 22, 24, 26], "description": "G&A FTEs", "unit": "FTE"},
-            "gna_cost_per_head": {"value": 120_000, "description": "Fully loaded cost per G&A FTE", "unit": "$"},
-            "rd_headcount": {"value": [25, 28, 31, 34], "description": "R&D FTEs", "unit": "FTE"},
-            "rd_cost_per_head": {"value": 170_000, "description": "Fully loaded cost per R&D FTE", "unit": "$"},
-            "tax_rate": {"value": 0.21, "description": "Tax rate", "unit": "%"},
-        }
-        scenarios = {
-            "base": {},
-            "hiring_acceleration": {"engineering_headcount": [50, 60, 70, 80], "sales_headcount": [30, 40, 50, 60]},
-            "hiring_freeze": {"engineering_headcount": [50, 50, 50, 50], "sales_headcount": [30, 30, 30, 30]},
-        }
-
-    return {
-        "name": f"{model_type.replace('-', ' ').title()} Model",
-        "model_type": model_type,
-        "periods": periods,
-        "assumptions": {"drivers": drivers, "scenarios": scenarios},
-        "statements": [],
-    }
+    return starter_config(_normalize_type(model_type), years=years, start_year=start_year, variant=industry)
 
 
 def _load_any(config_path: Path, model_type: str | None = None) -> Any:
