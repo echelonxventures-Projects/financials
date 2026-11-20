@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=../schemas/config.schema.json
+name: B2B SaaS (sales-led) Model
+model_type: b2b-saas
+periods:
+  start_year: 2025
+  years: 5
+  type: annual
+assumptions:
+  metadata:
+    business_model: b2b-saas
+    currency: USD
+  drivers:
+    starting_customers:
+      value: 200
+      description: Customers at the start of the first period
+      unit: '#'
+    starting_acv:
+      value: 50000
+      description: Average ACV of the starting customer base
+      unit: $/yr
+    sales_reps:
+      value:
+      - 10
+      - 14
+      - 18
+      - 22
+      - 26
+      description: Ramped quota-carrying reps (average in period)
+      unit: '#'
+    quota_per_rep:
+      value: 700000
+      description: Annual new-ARR quota per ramped rep
+      unit: $/yr
+    quota_attainment:
+      value: 0.7
+      description: Average quota attainment
+      unit: '%'
+    new_acv:
+      value: 55000
+      description: ACV of newly won customers
+      unit: $/yr
+    rep_cost:
+      value: 250000
+      description: Fully loaded annual cost per rep (OTE, SE and SDR support)
+      unit: $/yr
+    marketing_spend:
+      value: 1500000
+      description: Demand-generation spend per period
+      unit: $
+    annual_logo_churn:
+      value: 0.1
+      description: Annual logo (and ARR) churn
+      unit: '%'
+    annual_expansion:
+      value: 0.18
+      description: Annual expansion on existing ARR (upsell, seats, price)
+      unit: '%'
+    services_pct:
+      value: 0.05
+      description: Professional services revenue as % of subscription revenue
+      unit: '%'
+    services_cogs_pct:
+      value: 0.8
+      description: Cost of services as % of services revenue
+      unit: '%'
+    cogs_pct:
+      value: 0.2
+      description: COGS as % of revenue
+      unit: '%'
+    sm_pct:
+      value: 0.05
+      description: S&M as % of revenue
+      unit: '%'
+    deferred_rev_pct:
+      value: 0.4
+      description: Deferred revenue as % of revenue
+      unit: '%'
+    ar_days:
+      value: 60
+      description: Accounts receivable days
+      unit: days
+    rd_pct:
+      value: 0.18
+      description: R&D as % of revenue
+      unit: '%'
+    gna_pct:
+      value: 0.1
+      description: G&A as % of revenue
+      unit: '%'
+    beginning_cash:
+      value: 5000000
+      description: Opening cash
+      unit: $
+    apic:
+      value: 10000000
+      description: Opening paid-in capital
+      unit: $
+  scenarios:
+    base: {}
+    upside:
+      quota_attainment: 0.8
+      annual_expansion: 0.25
+      annual_logo_churn: 0.07
+    downside:
+      quota_attainment: 0.55
+      annual_expansion: 0.1
+      annual_logo_churn: 0.15

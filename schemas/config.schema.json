@@ -327,7 +327,7 @@
       "type": "object"
     },
     "ModelConfig": {
-      "description": "A single-entity model: three-statement, dcf, lbo, budget (or a plugin model type).",
+      "description": "A single-entity model: three-statement, dcf, lbo, budget, paas, b2b-saas, b2c-subscription (or a plugin type).",
       "properties": {
         "name": {
           "default": "Financial Model",
@@ -341,7 +341,10 @@
             "three-statement",
             "dcf",
             "lbo",
-            "budget"
+            "budget",
+            "paas",
+            "b2b-saas",
+            "b2c-subscription"
           ],
           "title": "Model Type",
           "type": "string"

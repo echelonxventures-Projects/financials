@@ -4,6 +4,7 @@ Pre-built model implementations.
 from __future__ import annotations
 
 from financial_model.models.budget import BudgetModel
+from financial_model.models.business import B2BSaaSModel, B2CSubscriptionModel, BusinessModel, PaaSModel
 from financial_model.models.dcf import DCFModel
 from financial_model.models.lbo import LBOModel
 from financial_model.models.ma import MergerModel
@@ -22,6 +23,10 @@ __all__ = [
     "LBOModel",
     "MergerModel",
     "BudgetModel",
+    "BusinessModel",
+    "PaaSModel",
+    "B2BSaaSModel",
+    "B2CSubscriptionModel",
     "MODEL_CLASSES",
     "available_model_types",
     "build_model",

@@ -9,6 +9,7 @@ Extensible, config-driven financial modeling in Python. Build three-statement mo
 - **LBO Model**: Sources & uses, multi-tranche debt schedule (interest, amortization, cash sweep), IRR/MOIC
 - **M&A Model**: Accretion/dilution by year, synergy phase-in, contribution analysis
 - **Budget Model**: Bottom-up driver trees (ARR, headcount, departments), quarterly granularity
+- **Business Models**: PaaS (usage-based), B2B SaaS (sales-led) and B2C subscription companies, forecast from customer acquisition, churn, expansion and pricing into tied three statements, with a Unit Economics table (CAC, LTV, NRR, payback, rule of 40). See `docs/models/business-models.md`
 - **Config-Driven**: All assumptions, line items, and topology in YAML — no code changes needed
 - **Data Pipeline**: Derive drivers from your own CSV / Excel / JSON statements (offline), from Yahoo Finance (optional), or from any plugin provider; or generate synthetic data
 - **Multi-Format Export**: Excel (formatted), CSV, JSON — including each model's analysis tables (DCF valuation & sensitivity, LBO sources/uses, debt schedule & returns, M&A accretion)
@@ -27,6 +28,9 @@ pip install -e ".[all]"
 
 # Generate a SaaS three-statement model config
 financial-model init --type three-statement --industry saas --years 5 -o my_model.yaml
+
+# Or a PaaS / B2B SaaS / B2C subscription business from go-to-market drivers
+financial-model init --type b2b-saas -o b2b.yaml   # paas | b2b-saas | b2c-subscription
 
 # Run the model
 financial-model run my_model.yaml --output model.xlsx

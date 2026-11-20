@@ -70,7 +70,7 @@ def _fail(message: str) -> NoReturn:
 # --------------------------------------------------------------------------- #
 @app.command()
 def init(
-    model_type: str = typer.Option("three-statement", "--type", "-t", help="three-statement | dcf | lbo | budget | ma"),
+    model_type: str = typer.Option("three-statement", "--type", "-t", help="three-statement | dcf | lbo | budget | paas | b2b-saas | b2c-subscription | ma"),
     output: Path = typer.Option(Path("model.yaml"), "--output", "-o", help="Output config file"),
     industry: str = typer.Option("saas", "--industry", "-i", help="Industry template (saas or other)"),
     years: int = typer.Option(5, "--years", "-y", help="Projection years"),
@@ -540,6 +540,11 @@ def _generate_config(model_type: str, industry: str, years: int, start_year: int
             },
         }
 
+    from financial_model.models.business import BUSINESS_MODELS, business_template
+
+    if model_type in BUSINESS_MODELS:
+        return business_template(model_type, years, start_year)
+
     if model_type == "budget":
         periods = {"start_year": start_year, "years": max(1, years), "type": "quarterly"}
         drivers = {
@@ -612,7 +617,7 @@ def _load_any(config_path: Path, model_type: str | None = None) -> Any:
     if (key == "ma") != (declared == "ma"):
         raise typer.BadParameter(
             f"{config_path} is a '{declared}' config; this command needs "
-            + ("an M&A deal config" if key == "ma" else "a three-statement, dcf, lbo or budget config")
+            + ("an M&A deal config" if key == "ma" else "a three-statement, dcf, lbo, budget or business-model config")
         )
     try:
         return build_model(config, base_dir=config_path.parent, model_type=key)
@@ -626,7 +631,7 @@ def _load_model(config_path: Path, model_type: str | None = None) -> FinancialMo
     """Load a single-entity model (three-statement / dcf / lbo / budget) from YAML."""
     model = _load_any(config_path, model_type)
     if not isinstance(model, FinancialModel):
-        raise typer.BadParameter("this command needs a three-statement, dcf, lbo or budget config")
+        raise typer.BadParameter("this command needs a three-statement, dcf, lbo, budget or business-model config")
     return model
 
 

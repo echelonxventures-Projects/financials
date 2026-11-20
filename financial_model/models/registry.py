@@ -13,6 +13,7 @@ from typing import Any
 
 from financial_model.core.model import FinancialModel
 from financial_model.models.budget import BudgetModel
+from financial_model.models.business import B2BSaaSModel, B2CSubscriptionModel, PaaSModel
 from financial_model.models.dcf import DCFModel
 from financial_model.models.lbo import LBOModel
 from financial_model.models.three_statement import ThreeStatementModel
@@ -23,6 +24,10 @@ MODEL_CLASSES: dict[str, type[FinancialModel]] = {
     "dcf": DCFModel,
     "lbo": LBOModel,
     "budget": BudgetModel,
+    # Business-model templates (customer engine -> three statements)
+    "paas": PaaSModel,
+    "b2b-saas": B2BSaaSModel,
+    "b2c-subscription": B2CSubscriptionModel,
 }
 
 # Composite models built from other models' configs (not FinancialModel subclasses).
@@ -36,6 +41,13 @@ ALIASES = {
     "m&a": "ma",
     "m-a": "ma",
     "merger": "ma",
+    "b2b": "b2b-saas",
+    "saas-b2b": "b2b-saas",
+    "b2c": "b2c-subscription",
+    "consumer": "b2c-subscription",
+    "subscription": "b2c-subscription",
+    "platform": "paas",
+    "usage-based": "paas",
 }
 
 

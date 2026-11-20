@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Business-model types `paas`, `b2b-saas` and `b2c-subscription` (aliases `platform`, `b2b`, `b2c`...): a customer engine drives revenue, COGS and S&M of a full three-statement model; a `Unit Economics` analysis table (customers, ARR, NRR/GRR, CAC, LTV, LTV/CAC, payback, rule of 40) in every export and the API; `financial-model init --type` templates and example configs in `config/`
 - Python 3.9+ with no upper bound (was 3.11+). CI tests 3.9 through 3.14, the newest stable `3.x` on Linux, macOS and Windows, the free-threaded 3.14t build, every dependency at its declared minimum, and (weekly) the newest pre-release dependencies. See `docs/compatibility.md`
 - `scripts/min_constraints.py`: pip constraints pinning each runtime dependency to its floor
 - Use from any language: `financial-model run - -o -` reads a JSON/YAML config on stdin and writes the result as JSON on stdout (`ma` and `validate` accept `-` too); config errors are a one-line `Error:` on stderr with exit 1 instead of a traceback

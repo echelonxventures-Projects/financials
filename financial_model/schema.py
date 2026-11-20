@@ -21,7 +21,7 @@ SCHEMA_URL = "https://raw.githubusercontent.com/echelonxventures-Projects/financ
 # typed as list[Any] so they fit pydantic's JsonValue in json_schema_extra
 PERIOD_TYPES: list[Any] = ["annual", "quarterly", "monthly"]
 STATEMENT_TYPES: list[Any] = ["income_statement", "balance_sheet", "cash_flow"]
-BUILTIN_MODEL_TYPES: list[Any] = ["three-statement", "dcf", "lbo", "budget", "ma"]
+BUILTIN_MODEL_TYPES: list[Any] = ["three-statement", "dcf", "lbo", "budget", "paas", "b2b-saas", "b2c-subscription", "ma"]
 DEAL_MODEL_TYPES: list[Any] = ["ma", *sorted(k for k, v in ALIASES.items() if v == "ma")]
 
 Number = Union[float, list[float]]
@@ -70,7 +70,7 @@ class StatementConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    """A single-entity model: three-statement, dcf, lbo, budget (or a plugin model type)."""
+    """A single-entity model: three-statement, dcf, lbo, budget, paas, b2b-saas, b2c-subscription (or a plugin type)."""
 
     name: str = "Financial Model"
     model_type: str = Field(

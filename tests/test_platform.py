@@ -66,7 +66,7 @@ class TestRegistry:
         assert normalize_model_type(raw) == key
 
     def test_unknown_type_lists_choices(self):
-        with pytest.raises(ValueError, match="Choose from: three-statement, dcf, lbo, budget, ma"):
+        with pytest.raises(ValueError, match="Choose from: three-statement, dcf, lbo, budget, paas, b2b-saas, b2c-subscription, ma"):
             normalize_model_type("nope")
 
     def test_build_model_dispatch(self):
@@ -345,7 +345,7 @@ class TestAPISecurity:
 
 class TestAPIEndpoints:
     def test_models_lists_ma(self, client):
-        assert client.get("/models").json()["model_types"] == ["three-statement", "dcf", "lbo", "budget", "ma"]
+        assert client.get("/models").json()["model_types"] == ["three-statement", "dcf", "lbo", "budget", "paas", "b2b-saas", "b2c-subscription", "ma"]
 
     def test_health_version(self, client):
         assert client.get("/health").json() == {"status": "healthy", "version": __version__}

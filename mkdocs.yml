@@ -16,6 +16,7 @@ nav:
       - LBO: models/lbo.md
       - M&A: models/ma.md
       - Budget: models/budget.md
+      - PaaS / B2B / B2C: models/business-models.md
   - CLI & API: interfaces.md
   - Other languages: other-languages.md
   - Data sources: data.md
