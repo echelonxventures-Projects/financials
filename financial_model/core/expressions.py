@@ -9,8 +9,9 @@ A formula is one arithmetic expression, evaluated once per period::
     formula: "max(line('Cash & Cash Equivalents') - min_cash, 0) if t > 0 else 0"
 
 Names
-    A bare name is a driver's value in the current period (``revenue_growth``), or one of
-    ``t`` (period index, 0-based), ``n_periods``, ``periods_per_year``, ``year``.
+    A bare name is a driver's value in the current period (``revenue_growth``), one of
+    ``t`` (period index, 0-based), ``n_periods``, ``periods_per_year``, ``year``, or a named
+    expression from the definition's ``expressions`` section (drivers win on a clash).
 Functions
     ``line(name, offset=0)``     a line's value (``offset=-1`` = previous period; 0 before the first)
     ``prev(name, default=0)``    previous period's value, ``default`` in the first period
@@ -19,6 +20,8 @@ Functions
     ``cumulative(name)``         sum of the line from the first period to this one
     ``driver(name, offset=0)``   a driver by name, optionally another period's value
     ``total(a, b, ...)``         sum of several lines
+    ``running(expr, start=0)``   ``start`` plus ``expr`` evaluated in every period up to this one
+                                 (e.g. ``running(abs(capex), opening('Goodwill'))``)
     ``safe_div(a, b, default=0)``, ``clamp(x, lo, hi)``, ``min``, ``max``, ``abs``, ``round``
 Operators
     ``+ - * / // % **``, comparisons, ``and`` / ``or`` / ``not``, ``a if cond else b``.
@@ -33,7 +36,7 @@ import ast
 import math
 import operator
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import Any
 
@@ -42,6 +45,7 @@ import pandas as pd
 from financial_model.core.line_item import Driver, lookup_value
 
 MAX_LENGTH = 4000  # characters per formula; guards against pathological inputs
+MAX_DEPTH = 32  # nesting of named expressions
 
 
 class FormulaError(ValueError):
@@ -75,6 +79,7 @@ FUNCTIONS = frozenset(
         "cumulative",
         "driver",
         "total",
+        "running",
         "safe_div",
         "clamp",
         "min",
@@ -143,6 +148,8 @@ class Context:
     periods_per_year: int = 1
     year: int = 0
     opening: Callable[[str], float] | None = None
+    expressions: dict[str, str] | None = None  # named expressions usable as bare names
+    depth: int = 0  # nesting of named expressions (guards against cycles)
 
 
 class _Evaluator:
@@ -232,6 +239,11 @@ class _Evaluator:
             }
             if node.id in special:
                 return float(special[node.id])
+            if node.id not in ctx.drivers and ctx.expressions and node.id in ctx.expressions:
+                if ctx.depth >= MAX_DEPTH:
+                    raise FormulaError(f"named expressions nested deeper than {MAX_DEPTH} (a cycle?): {self.source}")
+                sub = ctx.expressions[node.id]
+                return _Evaluator(replace(ctx, depth=ctx.depth + 1), sub).eval(compile_formula(sub))
             return self._driver(node.id, ctx.idx)
         if isinstance(node, ast.BinOp):
             left, right = self.eval(node.left), self.eval(node.right)
@@ -258,6 +270,13 @@ class _Evaluator:
             return self.eval(node.body) if self.eval(node.test) else self.eval(node.orelse)
         if isinstance(node, ast.Call):
             assert isinstance(node.func, ast.Name)
+            if node.func.id == "running":  # arguments evaluated lazily, once per period
+                if not 1 <= len(node.args) <= 2:
+                    raise FormulaError(f"running(expr[, start]) needs one or two arguments: {self.source}")
+                total = self.eval(node.args[1]) if len(node.args) > 1 else 0.0
+                for k in range(self.ctx.idx + 1):
+                    total += _Evaluator(replace(self.ctx, idx=k), self.source).eval(node.args[0])
+                return total
             return self.call(node.func.id, [self.eval(a) for a in node.args])
         raise FormulaError(f"unsupported expression: {self.source}")  # pragma: no cover
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import html
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -19,30 +19,48 @@ import plotly.graph_objects as go
 
 from financial_model.core.model import FinancialModel, ModelResult
 
-# Categorical palette, assigned in order; one meaning per colour within a chart.
-PALETTE = ["#2563eb", "#16a34a", "#ea580c", "#9333ea", "#0891b2", "#dc2626", "#ca8a04", "#64748b"]
-POSITIVE = "#16a34a"
-NEGATIVE = "#dc2626"
-TOTAL = "#2563eb"
 
-THEMES = {"light": "plotly_white", "dark": "plotly_dark"}
+def chart_style() -> dict[str, Any]:
+    """The ``presentation.charts`` settings (financial_model/settings.yaml, overridable)."""
+    from financial_model.config_loader import get_config
+
+    return dict((get_config().get("presentation") or {}).get("charts") or {})
 
 
 @dataclass
 class ChartConfig:
-    """Shared chart styling."""
+    """Shared chart styling. Unset fields come from the ``presentation.charts`` settings."""
 
     width: int | None = None  # None = responsive
-    height: int = 460
-    font_family: str = "Inter, system-ui, -apple-system, sans-serif"
-    font_size: int = 12
-    theme: str = "light"
+    height: int | None = None
+    font_family: str | None = None
+    font_size: int | None = None
+    theme: str | None = None
+    style: dict[str, Any] = field(default_factory=chart_style)
+
+    def __post_init__(self) -> None:
+        st = self.style
+        if self.width is None:
+            self.width = st.get("width")
+        self.height = self.height if self.height is not None else st.get("height")
+        self.font_family = self.font_family or st.get("font_family")
+        self.font_size = self.font_size if self.font_size is not None else st.get("font_size")
+        self.theme = self.theme or st.get("theme") or "light"
 
     @property
     def template(self) -> str:
-        return THEMES.get(self.theme, self.theme)
+        themes = self.style.get("themes") or {}
+        return str(themes.get(self.theme, self.theme))
 
-    def apply_layout(self, fig: go.Figure, title: str, yaxis_title: str = "", yformat: str = ",.0f") -> go.Figure:
+    @property
+    def palette(self) -> list[str]:
+        return list(self.style.get("palette") or [None])
+
+    def color(self, role: str) -> Any:
+        return self.style.get(role)
+
+    def apply_layout(self, fig: go.Figure, title: str, yaxis_title: str = "", yformat: str | None = None) -> go.Figure:
+        st = self.style
         fig.update_layout(
             title={"text": title, "x": 0.01, "xanchor": "left"},
             width=self.width,
@@ -50,11 +68,11 @@ class ChartConfig:
             autosize=self.width is None,
             font={"family": self.font_family, "size": self.font_size},
             template=self.template,
-            legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
-            margin={"l": 70, "r": 30, "t": 80, "b": 50},
-            hovermode="x unified",
+            legend=st.get("legend"),
+            margin=st.get("margin"),
+            hovermode=st.get("hovermode"),
         )
-        fig.update_yaxes(title_text=yaxis_title, tickformat=yformat, zeroline=True)
+        fig.update_yaxes(title_text=yaxis_title, tickformat=yformat or st.get("value_format"), zeroline=True)
         return fig
 
 
@@ -79,7 +97,7 @@ class ChartBuilder:
 
     @property
     def theme(self) -> str:
-        return self.config.theme
+        return str(self.config.theme)
 
     # ------------------------------------------------------------------ #
     # Entry point
@@ -150,7 +168,13 @@ class ChartBuilder:
         if fig is not None:
             if cash is not None:
                 fig.add_trace(
-                    go.Scatter(x=labels, y=cash, name="Ending Cash", mode="lines+markers", line={"color": "#0f172a"})
+                    go.Scatter(
+                        x=labels,
+                        y=cash,
+                        name="Ending Cash",
+                        mode="lines+markers",
+                        line={"color": self.config.color("overlay_line")},
+                    )
                 )
             charts["cash_flow"] = fig
 
@@ -232,7 +256,7 @@ class ChartBuilder:
                 z=sens.to_numpy(dtype=float),
                 x=[str(c) for c in sens.columns],
                 y=[str(i) for i in sens.index],
-                colorscale="Blues",
+                colorscale=self.config.color("heatmap_scale"),
                 text=[[f"{v:,.0f}" for v in row] for row in sens.to_numpy(dtype=float)],
                 texttemplate="%{text}",
                 hovertemplate="WACC %{x}<br>Growth %{y}<br>Equity %{z:,.0f}<extra></extra>",
@@ -258,7 +282,11 @@ class ChartBuilder:
         if fig is not None:
             fig.add_trace(
                 go.Scatter(
-                    x=labels, y=schedule["Cash"].tolist(), name="Cash", mode="lines+markers", line={"color": "#0f172a"}
+                    x=labels,
+                    y=schedule["Cash"].tolist(),
+                    name="Cash",
+                    mode="lines+markers",
+                    line={"color": self.config.color("overlay_line")},
                 )
             )
             charts["lbo_debt"] = fig
@@ -267,7 +295,13 @@ class ChartBuilder:
         sources = su["sources"]
         sources = sources[sources["Amount"] > 0]
         pie = go.Figure(
-            go.Pie(labels=sources["Source"], values=sources["Amount"], hole=0.5, marker={"colors": PALETTE}, sort=False)
+            go.Pie(
+                labels=sources["Source"],
+                values=sources["Amount"],
+                hole=0.5,
+                marker={"colors": self.config.palette},
+                sort=False,
+            )
         )
         self.config.apply_layout(pie, "Sources of Funds")
         charts["lbo_sources"] = pie
@@ -291,7 +325,7 @@ class ChartBuilder:
             go.Bar(
                 x=labels,
                 y=pct,
-                marker={"color": [POSITIVE if v >= 0 else NEGATIVE for v in pct]},
+                marker={"color": [self.config.color("positive" if v >= 0 else "negative") for v in pct]},
                 name="Accretion / (Dilution)",
                 text=[f"{v:+.1%}" for v in pct],
                 textposition="outside",
@@ -330,7 +364,7 @@ class ChartBuilder:
         title: str,
         yaxis_title: str = "",
         barmode: str = "group",
-        yformat: str = ",.0f",
+        yformat: str | None = None,
     ) -> go.Figure | None:
         """Bar chart of the non-empty series (None when there is nothing to plot)."""
         present = {k: v for k, v in series.items() if v}
@@ -338,7 +372,9 @@ class ChartBuilder:
             return None
         fig = go.Figure()
         for i, (name, values) in enumerate(present.items()):
-            fig.add_trace(go.Bar(x=x, y=values, name=name, marker_color=PALETTE[i % len(PALETTE)]))
+            fig.add_trace(
+                go.Bar(x=x, y=values, name=name, marker_color=self.config.palette[i % len(self.config.palette)])
+            )
         fig.update_layout(barmode=barmode)
         return self.config.apply_layout(fig, title, yaxis_title, yformat)
 
@@ -348,7 +384,7 @@ class ChartBuilder:
         series: Mapping[str, Sequence[Any] | None],
         title: str,
         yaxis_title: str = "",
-        yformat: str = ",.0f",
+        yformat: str | None = None,
     ) -> go.Figure | None:
         present = {k: v for k, v in series.items() if v}
         if not present:
@@ -356,7 +392,13 @@ class ChartBuilder:
         fig = go.Figure()
         for i, (name, values) in enumerate(present.items()):
             fig.add_trace(
-                go.Scatter(x=x, y=values, name=name, mode="lines+markers", line={"color": PALETTE[i % len(PALETTE)]})
+                go.Scatter(
+                    x=x,
+                    y=values,
+                    name=name,
+                    mode="lines+markers",
+                    line={"color": self.config.palette[i % len(self.config.palette)]},
+                )
             )
         return self.config.apply_layout(fig, title, yaxis_title, yformat)
 
@@ -369,10 +411,10 @@ class ChartBuilder:
                 measure=[s[2] for s in steps],
                 text=[f"{s[1]:,.0f}" for s in steps],
                 textposition="outside",
-                increasing={"marker": {"color": POSITIVE}},
-                decreasing={"marker": {"color": NEGATIVE}},
-                totals={"marker": {"color": TOTAL}},
-                connector={"line": {"color": "#94a3b8"}},
+                increasing={"marker": {"color": self.config.color("positive")}},
+                decreasing={"marker": {"color": self.config.color("negative")}},
+                totals={"marker": {"color": self.config.color("total")}},
+                connector={"line": {"color": self.config.color("connector")}},
             )
         )
         self.config.apply_layout(fig, title, "$")
@@ -401,14 +443,17 @@ class ChartBuilder:
         for i, fig in enumerate(charts.values()):
             include = (True if offline else "cdn") if i == 0 else False
             parts.append(f'<section class="chart">{fig.to_html(full_html=False, include_plotlyjs=include)}</section>')
-        bg, fg = ("#0b1120", "#e2e8f0") if self.theme == "dark" else ("#f8fafc", "#0f172a")
+        page_style = self.config.style.get("page") or {}
+        colors = page_style.get(self.theme) or page_style.get("light") or {}
+        bg, fg = colors.get("background", "white"), colors.get("text", "black")
+        max_width, title_size = page_style.get("max_width", "100%"), page_style.get("title_size", "1.5em")
         page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)}</title>
 <style>
 body {{ margin: 0; padding: 24px 16px; background: {bg}; color: {fg}; font-family: {self.config.font_family}; }}
-h1 {{ font-size: 22px; margin: 0 auto 16px; max-width: 1100px; }}
-.chart {{ max-width: 1100px; margin: 0 auto 24px; }}
+h1 {{ font-size: {title_size}; margin: 0 auto 16px; max-width: {max_width}; }}
+.chart {{ max-width: {max_width}; margin: 0 auto 24px; }}
 </style></head>
 <body><h1>{html.escape(title)}</h1>
 {"".join(parts)}

@@ -13,9 +13,58 @@ department_defaults:
   headcount:
     value: 10
     unit: FTE
+    label: headcount
   cost_per_head:
     value: 150000
     unit: $
+    label: fully loaded cost
+# Driver prefix of a department whose name is not a plain word (others: lower-case, '_' for gaps).
+department_keys: {"g&a": gna, "r&d": rd, "s&m": sm}
+# Lines built for every department. Placeholders: {dept} (name) and {key} (driver prefix);
+# `driver: <suffix>` uses the department's `<key>_<suffix>` driver; `offset` adds to the
+# department's order (order_start + position x order_step). Each department's `rollup_line`
+# becomes a child of the `rollup` total.
+department_template:
+  order_start: 20
+  order_step: 10
+  rollup: Total Operating Expense
+  rollup_line: "{dept} Expense"
+  lines:
+    "{dept} Headcount": {line_type: input, offset: 0, unit: FTE, format: "{:,.1f}", driver: headcount}
+    "{dept} Cost per Head": {line_type: input, offset: 1, driver: cost_per_head}
+    "{dept} Expense":
+      formula: "-line('{dept} Headcount') * line('{dept} Cost per Head')"
+      offset: 2
+      description: "{dept} total expense (negative)"
+opening_balances:
+  Cash & Cash Equivalents: beginning_cash
+opening_retained_earnings: "opening('Cash & Cash Equivalents')"
+# Base layout (departments are added from department_template). Same fields as three-statement.
+structure:
+  income_statement:
+    Starting ARR: {line_type: input, order: 1, driver: starting_arr}
+    New ARR: {line_type: input, order: 2, driver: new_arr}
+    Expansion ARR: {line_type: input, order: 3, driver: expansion_arr}
+    Churned ARR: {line_type: input, order: 4, driver: churned_arr}
+    Ending ARR: {calculation_rule: sum_children, order: 5, children: [Starting ARR, New ARR, Expansion ARR, Churned ARR], is_total: true}
+    Revenue: {formula: "(line('Starting ARR') + line('Ending ARR')) / 2", order: 10, is_total: true, description: Recognized revenue (average ARR)}
+    Total Operating Expense: {line_type: aggregate, order: 100, is_total: true, description: Total OpEx (negative)}
+    Operating Income: {calculation_rule: sum_children, order: 110, children: [Revenue, Total Operating Expense], is_total: true}
+    Net Income: {formula: "line('Operating Income') * (1 - tax_rate)", order: 120, driver: tax_rate, is_total: true, description: Operating income x (1 - tax rate)}
+  balance_sheet:
+    Cash & Cash Equivalents: {line_type: plug, order: 1}
+    Total Assets: {line_type: aggregate, order: 100, children: [Cash & Cash Equivalents], is_total: true}
+    Total Liabilities: {line_type: aggregate, order: 200, is_total: true}
+    Retained Earnings: {line_type: plug, order: 250}
+    Total Equity: {line_type: aggregate, order: 300, children: [Retained Earnings], is_total: true}
+  cash_flow:
+    Net Income: {line_type: link, order: 1, calculation_params: {source_line: Net Income, source_statement: income_statement}}
+    Operating Cash Flow: {line_type: aggregate, order: 10, children: [Net Income], is_total: true}
+    Investing Cash Flow: {line_type: aggregate, order: 20, is_total: true}
+    Financing Cash Flow: {line_type: aggregate, order: 30, is_total: true}
+    Net Change in Cash: {line_type: plug, order: 90}
+    Beginning Cash Balance: {line_type: input, order: 91, driver: beginning_cash}
+    Ending Cash Balance: {line_type: aggregate, order: 92, children: [Beginning Cash Balance, Net Change in Cash], is_total: true}
 drivers:
   tax_rate:
     value: 0.21

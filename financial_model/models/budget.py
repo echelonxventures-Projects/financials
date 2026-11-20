@@ -11,24 +11,40 @@ from typing import Any
 import pandas as pd
 
 from financial_model.core.assumptions import Assumptions
-from financial_model.core.definitions import DefinitionError
-from financial_model.core.line_item import CalculationRule, Driver, LineItem, LineItemType, lookup_value
+from financial_model.core.definitions import DefinitionError, load_definition
+from financial_model.core.line_item import Driver, LineItem
 from financial_model.core.model import FinancialModel
 from financial_model.core.period import PeriodIndex
+from financial_model.core.statement import StatementType
 
-IS = "income_statement"
-BS = "balance_sheet"
-CF = "cash_flow"
-
-_DEPT_KEYS = {"g&a": "gna", "r&d": "rd", "s&m": "sm"}
+IS = StatementType.INCOME_STATEMENT.value
+BS = StatementType.BALANCE_SHEET.value
+CF = StatementType.CASH_FLOW.value
 
 
-def department_key(name: str) -> str:
-    """Driver prefix for a department name: 'G&A' -> 'gna', 'Customer Success' -> 'customer_success'."""
+def department_key(name: str, keys: dict[str, str] | None = None) -> str:
+    """Driver prefix for a department name: 'G&A' -> 'gna', 'Customer Success' -> 'customer_success'.
+
+    Special names come from the budget definition's ``department_keys``.
+    """
+    if keys is None:
+        keys = load_definition("budget", missing_ok=True).get("department_keys") or {}
     lowered = name.strip().lower()
-    if lowered in _DEPT_KEYS:
-        return _DEPT_KEYS[lowered]
+    if lowered in keys:
+        return str(keys[lowered])
     return re.sub(r"[^a-z0-9]+", "_", lowered).strip("_")
+
+
+def _fill(value: Any, dept: str, key: str, quoted: bool = False) -> Any:
+    """Replace ``{dept}`` / ``{key}`` placeholders (escaped for use inside a formula's quotes)."""
+    if isinstance(value, str):
+        name = dept.replace("\\", "\\\\").replace("'", "\\'") if quoted else dept
+        return value.replace("{dept}", name).replace("{key}", key)
+    if isinstance(value, list):
+        return [_fill(v, dept, key, quoted) for v in value]
+    if isinstance(value, dict):
+        return {k: _fill(v, dept, key, quoted) for k, v in value.items()}
+    return value
 
 
 class BudgetModel(FinancialModel):
@@ -40,6 +56,9 @@ class BudgetModel(FinancialModel):
     - Department-level rollups
     - Scenario management (base, upside, downside)
     - Variance analysis vs actuals
+
+    The fixed lines are the definition's ``structure``; each department's lines come from
+    its ``department_template`` (models/definitions/budget.yaml).
     """
 
     model_type = "budget"
@@ -55,248 +74,57 @@ class BudgetModel(FinancialModel):
         self.departments = list(departments or self.setting("departments", []))
         self.headcount_by_dept: dict[str, list[float]] = {}
         self.cost_per_head: dict[str, float] = {}
-        self._setup_budget_structure()
+        for dept in self.departments:
+            self._add_department_lines(dept)
+        self._update_rollup()
 
     # ------------------------------------------------------------------ #
-    def _dept_items(self, dept: str, order: int, headcount: Any = None, cost: Any = None) -> list[LineItem]:
-        key = department_key(dept)
-        seeds = self.setting("department_defaults", {})
+    def department_key(self, name: str) -> str:
+        return department_key(name, self.setting("department_keys") or {})
 
-        def driver(suffix: str, given: Any, label: str) -> Driver:
+    def _dept_items(self, dept: str, headcount: Any = None, cost: Any = None) -> list[LineItem]:
+        key = self.department_key(dept)
+        seeds = self.setting("department_defaults", {})
+        template = self.setting("department_template") or {}
+        given = {"headcount": headcount, "cost_per_head": cost}
+
+        def driver(suffix: str) -> Driver:
             name = f"{key}_{suffix}"
-            if given is not None:
-                return Driver(name, given, f"{dept} {label}", seeds.get(suffix, {}).get("unit", ""))
+            seed = seeds.get(suffix) or {}
+            label = f"{dept} {seed.get('label', suffix)}"
+            if given.get(suffix) is not None:
+                return Driver(name, given[suffix], label, seed.get("unit", ""))
             if name in self._default_drivers:
                 return self.ref(name)
-            seed = seeds.get(suffix)
-            if seed is None:
+            if "value" not in seed:
                 raise DefinitionError(f"budget: no default for '{name}' and no department_defaults.{suffix}")
-            return Driver(name, seed["value"], f"{dept} {label}", seed.get("unit", ""))
+            return Driver(name, seed["value"], label, seed.get("unit", ""))
 
-        def expense(df: pd.DataFrame, idx: int, d: str = dept) -> float:
-            hc = lookup_value(df, f"{d} Headcount", idx, statement=IS)
-            cph = lookup_value(df, f"{d} Cost per Head", idx, statement=IS)
-            return -hc * cph
+        position = self.departments.index(dept) if dept in self.departments else len(self.departments)
+        base_order = float(template.get("order_start", 0)) + position * float(template.get("order_step", 1))
+        items = []
+        for line_name, raw in (template.get("lines") or {}).items():
+            spec = {k: _fill(v, dept, key, quoted=k == "formula") for k, v in dict(raw).items() if k != "format"}
+            if "format" in raw:
+                spec["format"] = raw["format"]
+            statement = spec.pop("statement", IS)
+            order = base_order + float(spec.pop("offset", 0))
+            spec["order"] = int(order) if order.is_integer() else order
+            if isinstance(spec.get("driver"), str):
+                spec["driver"] = driver(spec["driver"])
+            items.append(self._line_from_spec(statement, _fill(line_name, dept, key), spec, None))
+        return items
 
-        headcount_driver = driver("headcount", headcount, "headcount")
-        cost_driver = driver("cost_per_head", cost, "fully loaded cost")
-        return [
-            LineItem(
-                f"{dept} Headcount",
-                LineItemType.INPUT,
-                IS,
-                order=order,
-                unit="FTE",
-                format="{:,.1f}",
-                driver=headcount_driver,
-            ),
-            LineItem(
-                f"{dept} Cost per Head",
-                LineItemType.INPUT,
-                IS,
-                order=order + 1,
-                unit="$",
-                driver=cost_driver,
-            ),
-            LineItem(
-                f"{dept} Expense",
-                LineItemType.CALCULATED,
-                IS,
-                order=order + 2,
-                unit="$",
-                calculation_rule=CalculationRule.CUSTOM,
-                custom_formula=expense,
-                description=f"{dept} total expense (negative)",
-            ),
-        ]
+    def _add_department_lines(self, dept: str, headcount: Any = None, cost: Any = None) -> None:
+        statements = {IS: self.income_statement, BS: self.balance_sheet, CF: self.cash_flow}
+        for item in self._dept_items(dept, headcount, cost):
+            statements[item.statement_type].add_line_item(item)
 
-    def _setup_budget_structure(self) -> None:
-        """Set up driver-based budget line items."""
-
-        def revenue(df: pd.DataFrame, idx: int) -> float:
-            start = lookup_value(df, "Starting ARR", idx, statement=IS)
-            end = lookup_value(df, "Ending ARR", idx, statement=IS)
-            return (start + end) / 2
-
-        rev_items = [
-            LineItem(
-                "Starting ARR",
-                LineItemType.INPUT,
-                IS,
-                order=1,
-                unit="$",
-                driver=self.ref("starting_arr"),
-            ),
-            LineItem(
-                "New ARR",
-                LineItemType.INPUT,
-                IS,
-                order=2,
-                unit="$",
-                driver=self.ref("new_arr"),
-            ),
-            LineItem(
-                "Expansion ARR",
-                LineItemType.INPUT,
-                IS,
-                order=3,
-                unit="$",
-                driver=self.ref("expansion_arr"),
-            ),
-            LineItem(
-                "Churned ARR",
-                LineItemType.INPUT,
-                IS,
-                order=4,
-                unit="$",
-                driver=self.ref("churned_arr"),
-            ),
-            LineItem(
-                "Ending ARR",
-                LineItemType.CALCULATED,
-                IS,
-                order=5,
-                unit="$",
-                calculation_rule=CalculationRule.SUM_CHILDREN,
-                children=["Starting ARR", "New ARR", "Expansion ARR", "Churned ARR"],
-                is_total=True,
-            ),
-            LineItem(
-                "Revenue",
-                LineItemType.CALCULATED,
-                IS,
-                order=10,
-                unit="$",
-                calculation_rule=CalculationRule.CUSTOM,
-                custom_formula=revenue,
-                is_total=True,
-                description="Recognized revenue (average ARR)",
-            ),
-        ]
-        for item in rev_items:
-            self.add_income_statement_item(item)
-
-        for i, dept in enumerate(self.departments):
-            for item in self._dept_items(dept, 20 + i * 10):
-                self.add_income_statement_item(item)
-
-        self.add_income_statement_item(
-            LineItem(
-                "Total Operating Expense",
-                LineItemType.AGGREGATE,
-                IS,
-                order=100,
-                unit="$",
-                children=[f"{d} Expense" for d in self.departments],
-                is_total=True,
-                description="Total OpEx (negative)",
-            )
-        )
-        self.add_income_statement_item(
-            LineItem(
-                "Operating Income",
-                LineItemType.CALCULATED,
-                IS,
-                order=110,
-                unit="$",
-                calculation_rule=CalculationRule.SUM_CHILDREN,
-                children=["Revenue", "Total Operating Expense"],
-                is_total=True,
-            )
-        )
-
-        def net_income(df: pd.DataFrame, idx: int, drivers: dict[str, Driver]) -> float:
-            op_income = lookup_value(df, "Operating Income", idx, statement=IS)
-            tax_rate = drivers["tax_rate"].get_value(idx)
-            return op_income * (1 - tax_rate)
-
-        self.add_income_statement_item(
-            LineItem(
-                "Net Income",
-                LineItemType.CALCULATED,
-                IS,
-                order=120,
-                unit="$",
-                calculation_rule=CalculationRule.CUSTOM,
-                custom_formula=net_income,
-                driver=self.ref("tax_rate"),
-                is_total=True,
-                description="Operating income x (1 - tax rate)",
-            )
-        )
-
-        # Minimal balance sheet / cash flow so the statements tie
-        bs_items = [
-            LineItem("Cash & Cash Equivalents", LineItemType.PLUG, BS, order=1, unit="$"),
-            LineItem(
-                "Total Assets",
-                LineItemType.AGGREGATE,
-                BS,
-                order=100,
-                unit="$",
-                children=["Cash & Cash Equivalents"],
-                is_total=True,
-            ),
-            LineItem("Total Liabilities", LineItemType.AGGREGATE, BS, order=200, unit="$", children=[], is_total=True),
-            LineItem("Retained Earnings", LineItemType.PLUG, BS, order=250, unit="$"),
-            LineItem(
-                "Total Equity",
-                LineItemType.AGGREGATE,
-                BS,
-                order=300,
-                unit="$",
-                children=["Retained Earnings"],
-                is_total=True,
-            ),
-        ]
-        for item in bs_items:
-            self.add_balance_sheet_item(item)
-
-        cf_items = [
-            LineItem(
-                "Net Income",
-                LineItemType.LINK,
-                CF,
-                order=1,
-                unit="$",
-                calculation_params={"source_line": "Net Income", "source_statement": IS},
-            ),
-            LineItem(
-                "Operating Cash Flow",
-                LineItemType.AGGREGATE,
-                CF,
-                order=10,
-                unit="$",
-                children=["Net Income"],
-                is_total=True,
-            ),
-            LineItem("Investing Cash Flow", LineItemType.AGGREGATE, CF, order=20, unit="$", children=[], is_total=True),
-            LineItem("Financing Cash Flow", LineItemType.AGGREGATE, CF, order=30, unit="$", children=[], is_total=True),
-            LineItem("Net Change in Cash", LineItemType.PLUG, CF, order=90, unit="$"),
-            LineItem(
-                "Beginning Cash Balance",
-                LineItemType.INPUT,
-                CF,
-                order=91,
-                unit="$",
-                driver=self.ref("beginning_cash"),
-            ),
-            LineItem(
-                "Ending Cash Balance",
-                LineItemType.AGGREGATE,
-                CF,
-                order=92,
-                unit="$",
-                children=["Beginning Cash Balance", "Net Change in Cash"],
-                is_total=True,
-            ),
-        ]
-        for item in cf_items:
-            self.add_cash_flow_item(item)
-
-    def opening_retained_earnings(self, drivers: dict[str, Driver]) -> float:
-        driver = drivers.get("beginning_cash")
-        return driver.get_value(0) if driver else 0.0
+    def _update_rollup(self) -> None:
+        template = self.setting("department_template") or {}
+        rollup = self.income_statement.get_line_item(str(template.get("rollup", "")))
+        if rollup is not None and template.get("rollup_line"):
+            rollup.children = [_fill(template["rollup_line"], d, self.department_key(d)) for d in self.departments]
 
     def add_department(self, name: str, headcount: list[float], cost_per_head: float) -> BudgetModel:
         """Add a new department to the budget."""
@@ -305,22 +133,15 @@ class BudgetModel(FinancialModel):
         self.headcount_by_dept[name] = list(headcount)
         self.cost_per_head[name] = cost_per_head
 
-        key = department_key(name)
-        units = {k: v.get("unit", "") for k, v in self.setting("department_defaults", {}).items()}
-        self.assumptions.set_driver(
-            Driver(f"{key}_headcount", list(headcount), f"{name} headcount", units.get("headcount", ""))
-        )
-        self.assumptions.set_driver(
-            Driver(f"{key}_cost_per_head", cost_per_head, f"{name} cost per head", units.get("cost_per_head", ""))
-        )
-
-        order = 20 + (self.departments.index(name)) * 10
-        for item in self._dept_items(name, order, headcount=list(headcount), cost=cost_per_head):
-            self.add_income_statement_item(item)
-
-        total = self.income_statement.get_line_item("Total Operating Expense")
-        if total is not None:
-            total.children = [f"{d} Expense" for d in self.departments]
+        key = self.department_key(name)
+        seeds = self.setting("department_defaults", {})
+        for suffix, value in (("headcount", list(headcount)), ("cost_per_head", cost_per_head)):
+            seed = seeds.get(suffix) or {}
+            self.assumptions.set_driver(
+                Driver(f"{key}_{suffix}", value, f"{name} {seed.get('label', suffix)}", seed.get("unit", ""))
+            )
+        self._add_department_lines(name, headcount=list(headcount), cost=cost_per_head)
+        self._update_rollup()
         return self
 
     def variance_analysis(self, actuals: pd.DataFrame, budget_result: Any) -> pd.DataFrame:

@@ -157,7 +157,7 @@ class DCFModel(ThreeStatementModel):
         opening_debt = 0.0
         for line in DEBT_LINES:
             if line in bs_data.index:
-                opening_debt += self.opening_balance(line, drivers) if line in self.OPENING_LINES else 0.0
+                opening_debt += self.opening_balance(line, drivers) if line in self.opening_lines() else 0.0
         net_debt = opening_debt - opening_cash
 
         equity_gordon = ev_gordon - net_debt

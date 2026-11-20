@@ -236,7 +236,9 @@ class LBOModel(ThreeStatementModel):
     # Line items
     # ------------------------------------------------------------------ #
     def _add_lbo_line_items(self) -> None:
-        """Add LBO-specific line items to the three statements."""
+        """Add the debt-schedule lines where the definition's ``layout`` puts them."""
+        layout = self.setting("layout") or {}
+        names = self.lbo_lines
 
         def tranche_balance(name: str) -> Any:
             return lambda df, idx, drivers: self.debt_schedule_for_period(df, idx, drivers)[name]["closing"]
@@ -246,70 +248,6 @@ class LBOModel(ThreeStatementModel):
                 -self._opening_tranche(df, name, idx, drivers) * abs(_dv(drivers, f"{key}_rate", idx))
             )
 
-        order = 165
-        for name, key in self.tranches.items():
-            self.add_balance_sheet_item(
-                LineItem(
-                    name,
-                    LineItemType.CALCULATED,
-                    BS,
-                    order=order,
-                    unit="$",
-                    calculation_rule=CalculationRule.CUSTOM,
-                    custom_formula=tranche_balance(name),
-                    description=f"{name} balance (opening - amortisation - sweep)",
-                )
-            )
-            order += 1
-            self.add_income_statement_item(
-                LineItem(
-                    self.interest_lines[name],
-                    LineItemType.CALCULATED,
-                    IS,
-                    order=62 + list(self.tranches).index(name) / max(len(self.tranches), 1),
-                    unit="$",
-                    calculation_rule=CalculationRule.CUSTOM,
-                    custom_formula=tranche_interest(name, key),
-                    description=f"{name} interest on opening balance",
-                )
-            )
-
-        self.add_income_statement_item(
-            LineItem(
-                "Revolver Interest",
-                LineItemType.CALCULATED,
-                IS,
-                order=66,
-                unit="$",
-                calculation_rule=CalculationRule.CUSTOM,
-                custom_formula=lambda df, idx, drivers: (
-                    -previous_value(df, "Revolver", idx, opening=0.0, statement=BS)
-                    * abs(_dv(drivers, "revolver_rate", idx))
-                ),
-                description="Revolver interest on opening balance",
-            )
-        )
-        # Total interest now sums the tranche lines (replaces the input-driven line)
-        self.add_income_statement_item(
-            LineItem(
-                "Interest Expense",
-                LineItemType.CALCULATED,
-                IS,
-                order=67,
-                unit="$",
-                calculation_rule=CalculationRule.SUM_CHILDREN,
-                children=[*self.interest_lines.values(), "Revolver Interest"],
-                is_total=True,
-                description="Total interest expense",
-            )
-        )
-
-        total_liabilities = self.balance_sheet.get_line_item("Total Liabilities")
-        if total_liabilities is not None:
-            for name in self.tranches:
-                if name not in total_liabilities.children:
-                    total_liabilities.children.append(name)
-
         def mandatory_amort(df: pd.DataFrame, idx: int, drivers: dict[str, Driver]) -> float:
             return -self.debt_schedule_for_period(df, idx, drivers)["_mandatory_total"]
 
@@ -318,35 +256,100 @@ class LBOModel(ThreeStatementModel):
             total_change = sum(self._delta(df, name, idx, drivers) for name in self.tranches)
             return total_change + self.debt_schedule_for_period(df, idx, drivers)["_mandatory_total"]
 
-        self.add_cash_flow_item(
-            LineItem(
-                "Mandatory Debt Amortization",
-                LineItemType.CALCULATED,
-                CF,
-                order=102,
-                unit="$",
-                calculation_rule=CalculationRule.CUSTOM,
-                custom_formula=mandatory_amort,
-                description="Scheduled Term Loan A/B amortisation",
+        def revolver_interest(df: pd.DataFrame, idx: int, drivers: dict[str, Driver]) -> float:
+            return -previous_value(df, "Revolver", idx, opening=0.0, statement=BS) * abs(
+                _dv(drivers, "revolver_rate", idx)
             )
-        )
-        self.add_cash_flow_item(
-            LineItem(
-                "Cash Sweep Repayment",
-                LineItemType.CALCULATED,
-                CF,
-                order=103,
-                unit="$",
-                calculation_rule=CalculationRule.CUSTOM,
-                custom_formula=sweep_repayment,
-                description="Optional prepayment from excess cash",
+
+        statements = {IS: self.income_statement, BS: self.balance_sheet, CF: self.cash_flow}
+
+        def place(role: str, default_statement: str, name: str, order: float, **fields: Any) -> None:
+            spec = layout.get(role) or {}
+            statement = str(spec.get("statement", default_statement))
+            description = str(spec.get("description", "")).replace("{name}", name)
+            statements[statement].add_line_item(
+                LineItem(
+                    name,
+                    fields.pop("line_type", LineItemType.CALCULATED),
+                    statement,
+                    order=order,
+                    unit="$",
+                    description=description,
+                    **fields,
+                )
             )
+            for total in spec.get("add_to") or []:
+                parent = statements[statement].get_line_item(total)
+                if parent is not None and name not in parent.children:
+                    parent.children.append(name)
+
+        balance = layout.get("tranche_balance") or {}
+        interest = layout.get("tranche_interest") or {}
+        n = max(len(self.tranches), 1)
+        for i, (name, key) in enumerate(self.tranches.items()):
+            place(
+                "tranche_balance",
+                BS,
+                name,
+                float(balance.get("order", 0)) + i * float(balance.get("order_step", 1)),
+                calculation_rule=CalculationRule.CUSTOM,
+                custom_formula=tranche_balance(name),
+            )
+            place(
+                "tranche_interest",
+                IS,
+                self.interest_lines[name],
+                float(interest.get("order", 0)) + i / n,
+                calculation_rule=CalculationRule.CUSTOM,
+                custom_formula=tranche_interest(name, key),
+            )
+
+        def order(role: str) -> float:
+            return float((layout.get(role) or {}).get("order", 0))
+
+        place(
+            "revolver_interest",
+            IS,
+            names["revolver_interest"],
+            order("revolver_interest"),
+            calculation_rule=CalculationRule.CUSTOM,
+            custom_formula=revolver_interest,
         )
-        financing = self.cash_flow.get_line_item("Financing Cash Flow")
-        if financing is not None:
-            for name in ("Mandatory Debt Amortization", "Cash Sweep Repayment"):
-                if name not in financing.children:
-                    financing.children.append(name)
+        # Total interest sums the tranche lines (replaces the input-driven line)
+        place(
+            "total_interest",
+            IS,
+            names["total_interest"],
+            order("total_interest"),
+            calculation_rule=CalculationRule.SUM_CHILDREN,
+            children=[*self.interest_lines.values(), names["revolver_interest"]],
+            is_total=True,
+        )
+        place(
+            "mandatory_amortization",
+            CF,
+            names["mandatory_amortization"],
+            order("mandatory_amortization"),
+            calculation_rule=CalculationRule.CUSTOM,
+            custom_formula=mandatory_amort,
+        )
+        place(
+            "cash_sweep",
+            CF,
+            names["cash_sweep"],
+            order("cash_sweep"),
+            calculation_rule=CalculationRule.CUSTOM,
+            custom_formula=sweep_repayment,
+        )
+
+    @property
+    def lbo_lines(self) -> dict[str, str]:
+        """Names of the single debt-schedule lines (definition ``layout.<role>.name``)."""
+        layout = self.setting("layout") or {}
+        return {
+            role: str((layout.get(role) or {}).get("name") or role.replace("_", " ").title())
+            for role in ("revolver_interest", "total_interest", "mandatory_amortization", "cash_sweep")
+        }
 
     # ------------------------------------------------------------------ #
     # Outputs
@@ -404,6 +407,7 @@ class LBOModel(ThreeStatementModel):
         """Per-period tranche balances, interest and repayments as a table."""
         result = result or self.calculate()
         bs, is_, cf = result.balance_sheet, result.income_statement, result.cash_flow
+        lines = self.lbo_lines
         rows = []
         for i, period in enumerate(result.periods):
             row: dict[str, Any] = {"period": period.label}
@@ -411,8 +415,8 @@ class LBOModel(ThreeStatementModel):
                 row[f"{name}"] = _row(bs, name, i)
                 row[f"{self.interest_lines[name]}"] = _row(is_, self.interest_lines[name], i)
             row["Revolver"] = _row(bs, "Revolver", i)
-            row["Mandatory Debt Amortization"] = _row(cf, "Mandatory Debt Amortization", i)
-            row["Cash Sweep Repayment"] = _row(cf, "Cash Sweep Repayment", i)
+            for role in ("mandatory_amortization", "cash_sweep"):
+                row[lines[role]] = _row(cf, lines[role], i)
             row["Total Debt"] = sum(_row(bs, n, i) for n in self.tranches) + _row(bs, "Revolver", i)
             row["Cash"] = _row(bs, "Cash & Cash Equivalents", i)
             rows.append(row)

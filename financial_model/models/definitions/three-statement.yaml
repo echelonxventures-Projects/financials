@@ -133,6 +133,100 @@ drivers:
     value: 1000000
     description: Diluted shares outstanding
     unit: '#'
+# Opening balance sheet: the period-0 value of each driver is the line's balance before the
+# first period. Lines not listed open at zero (working capital, revolver).
+opening_balances:
+  Cash & Cash Equivalents: beginning_cash
+  Property Plant & Equipment, Gross: ppe_gross
+  Intangible Assets: intangibles
+  Goodwill: goodwill
+  Current Portion of Long-Term Debt: current_debt
+  Long-Term Debt: long_term_debt
+  Deferred Tax Liability: dlt
+  Common Stock: common_stock
+  Additional Paid-In Capital: apic
+# Opening retained earnings: whatever makes the opening balance sheet balance.
+opening_retained_earnings: >-
+  (opening('Cash & Cash Equivalents') + opening('Property Plant & Equipment, Gross')
+  + opening('Intangible Assets') + opening('Goodwill'))
+  - (opening('Current Portion of Long-Term Debt') + opening('Long-Term Debt') + opening('Deferred Tax Liability'))
+  - (opening('Common Stock') + opening('Additional Paid-In Capital'))
+# Named expressions: usable as bare names in any formula of this model (and models extending it).
+expressions:
+  gross_ppe: "running(abs(capex), opening('Property Plant & Equipment, Gross'))"
+  depreciation_charge: "abs(depreciation_rate) * gross_ppe"
+# The statements every three-statement-based model starts from (applied when the engine is built;
+# `line_items` below, or in a definition that extends this one, then adds, changes or removes lines).
+# Line fields: line_type (input | calculated | link | plug | aggregate), order, unit, format,
+# description, is_total, children, driver, formula, calculation_rule, calculation_params.
+structure:
+  income_statement:
+    Revenue: {calculation_rule: "growth_rate", calculation_params: {base_line: Revenue, driver: revenue_growth}, order: 10, driver: "revenue", is_total: true, description: "Total revenue"}
+    Revenue Growth: {line_type: "input", order: 11, unit: "%", format: "{:.1%}", driver: "revenue_growth", description: "Revenue growth rate"}
+    COGS: {calculation_rule: "pct_of_revenue", calculation_params: {driver: cogs_pct, sign: -1}, order: 20, driver: "cogs_pct", description: "Cost of goods sold"}
+    Gross Profit: {calculation_rule: "sum_children", order: 30, children: [Revenue, COGS], is_total: true, description: "Gross profit"}
+    "R&D Expense": {calculation_rule: "pct_of_revenue", calculation_params: {driver: rd_pct, sign: -1}, order: 40, driver: "rd_pct", description: "Research & development"}
+    "Sales & Marketing Expense": {calculation_rule: "pct_of_revenue", calculation_params: {driver: sm_pct, sign: -1}, order: 41, driver: "sm_pct", description: "Sales & marketing"}
+    "G&A Expense": {calculation_rule: "pct_of_revenue", calculation_params: {driver: gna_pct, sign: -1}, order: 42, driver: "gna_pct", description: "General & administrative"}
+    Stock-Based Compensation: {formula: "-abs(sbc)", order: 43, driver: "sbc", description: "Non-cash SBC expense"}
+    "Depreciation & Amortization": {formula: "-depreciation_charge", order: 44, driver: "depreciation_rate", description: "Depreciation & amortization expense"}
+    Total Operating Expenses: {line_type: "aggregate", order: 45, children: [R&D Expense, Sales & Marketing Expense, G&A Expense, Stock-Based Compensation, Depreciation & Amortization], is_total: true, description: "Total operating expenses"}
+    Operating Income: {calculation_rule: "sum_children", order: 50, children: [Gross Profit, Total Operating Expenses], is_total: true, description: "Operating income (EBIT)"}
+    Interest Expense: {formula: "-abs(interest_expense)", order: 60, driver: "interest_expense", description: "Interest expense"}
+    "Other Income (Expense)": {line_type: "input", order: 61, driver: "other_income", description: "Other non-operating items"}
+    Pre-Tax Income: {calculation_rule: "sum_children", order: 70, children: [Operating Income, Interest Expense, Other Income (Expense)], is_total: true, description: "Pre-tax income"}
+    Income Tax Expense: {calculation_rule: "pct_of_line", calculation_params: {base_line: Pre-Tax Income, driver: tax_rate, sign: -1}, order: 80, driver: "tax_rate", description: "Income tax expense (benefit when pre-tax income is negative)"}
+    Net Income: {calculation_rule: "sum_children", order: 90, children: [Pre-Tax Income, Income Tax Expense], is_total: true, description: "Net income"}
+  balance_sheet:
+    "Cash & Cash Equivalents": {line_type: "plug", order: 10, description: "Cash (plug: balances the balance sheet, floored at min_cash)"}
+    Accounts Receivable: {calculation_rule: "days_outstanding", calculation_params: {base_line: Revenue, driver: ar_days}, order: 20, driver: "ar_days", description: "Accounts receivable"}
+    Inventory: {calculation_rule: "days_outstanding", calculation_params: {base_line: COGS, driver: inventory_days}, order: 30, driver: "inventory_days", description: "Inventory"}
+    Prepaid Expenses: {calculation_rule: "pct_of_revenue", calculation_params: {driver: prepaid_pct}, order: 40, driver: "prepaid_pct", description: "Prepaid expenses"}
+    Total Current Assets: {line_type: "aggregate", order: 50, children: [Cash & Cash Equivalents, Accounts Receivable, Inventory, Prepaid Expenses], is_total: true, description: "Total current assets"}
+    "Property Plant & Equipment, Gross": {formula: "gross_ppe", order: 60, driver: "ppe_gross", description: "Gross PP&E (opening + cumulative capex)"}
+    Accumulated Depreciation: {formula: "prev('Accumulated Depreciation') - depreciation_charge", order: 63, description: "Accumulated depreciation (contra-asset, negative)"}
+    "Property Plant & Equipment, Net": {calculation_rule: "sum_children", order: 70, children: ['Property Plant & Equipment, Gross', Accumulated Depreciation], description: "Net PP&E"}
+    Intangible Assets: {line_type: "input", order: 80, driver: "intangibles", description: "Intangible assets"}
+    Goodwill: {formula: "running(abs(acquisitions), opening('Goodwill'))", order: 90, driver: "goodwill", description: "Goodwill (opening + cumulative acquisitions)"}
+    Total Assets: {line_type: "aggregate", order: 100, children: [Total Current Assets, 'Property Plant & Equipment, Net', Intangible Assets, Goodwill], is_total: true, description: "Total assets"}
+    Accounts Payable: {calculation_rule: "days_outstanding", calculation_params: {base_line: COGS, driver: ap_days}, order: 110, driver: "ap_days", description: "Accounts payable"}
+    Accrued Expenses: {calculation_rule: "pct_of_revenue", calculation_params: {driver: accrued_pct}, order: 120, driver: "accrued_pct", description: "Accrued expenses"}
+    Deferred Revenue: {calculation_rule: "pct_of_revenue", calculation_params: {driver: deferred_rev_pct}, order: 130, driver: "deferred_rev_pct", description: "Deferred revenue"}
+    Current Portion of Long-Term Debt: {line_type: "input", order: 140, driver: "current_debt", description: "Current debt portion"}
+    Total Current Liabilities: {line_type: "aggregate", order: 150, children: [Accounts Payable, Accrued Expenses, Deferred Revenue, Current Portion of Long-Term Debt], is_total: true, description: "Total current liabilities"}
+    Revolver: {line_type: "plug", order: 160, description: "Revolver (plug: drawn when cash would fall below min_cash)"}
+    Long-Term Debt: {line_type: "input", order: 170, driver: "long_term_debt", description: "Long-term debt"}
+    Deferred Tax Liability: {line_type: "input", order: 180, driver: "dlt", description: "Deferred tax liability"}
+    Total Liabilities: {line_type: "aggregate", order: 190, children: [Total Current Liabilities, Revolver, Long-Term Debt, Deferred Tax Liability], is_total: true, description: "Total liabilities"}
+    Common Stock: {formula: "opening('Common Stock')", order: 200, driver: "common_stock", description: "Common stock"}
+    Additional Paid-In Capital: {formula: "running(abs(sbc) + equity_issuance, opening('Additional Paid-In Capital'))", order: 210, driver: "apic", description: "APIC (opening + cumulative SBC and equity issuance)"}
+    Retained Earnings: {line_type: "plug", order: 220, description: "Retained earnings (opening RE + cumulative net income - dividends)"}
+    Total Equity: {line_type: "aggregate", order: 230, children: [Common Stock, Additional Paid-In Capital, Retained Earnings], is_total: true, description: "Total equity"}
+  cash_flow:
+    Net Income: {line_type: "link", calculation_params: {source_line: Net Income, source_statement: income_statement}, order: 10, description: "Net income from IS"}
+    "Depreciation & Amortization": {line_type: "link", calculation_params: {sign: -1, source_line: Depreciation & Amortization, source_statement: income_statement}, order: 20, description: "D&A add-back"}
+    Stock-Based Compensation: {line_type: "link", calculation_params: {sign: -1, source_line: Stock-Based Compensation, source_statement: income_statement}, order: 30, description: "SBC add-back"}
+    Change in Accounts Receivable: {formula: "-delta('Accounts Receivable')", order: 40, description: "(Increase) decrease in AR"}
+    Change in Inventory: {formula: "-delta('Inventory')", order: 41, description: "(Increase) decrease in inventory"}
+    Change in Prepaid Expenses: {formula: "-delta('Prepaid Expenses')", order: 42, description: "(Increase) decrease in prepaid"}
+    Change in Accounts Payable: {formula: "delta('Accounts Payable')", order: 50, description: "Increase (decrease) in AP"}
+    Change in Accrued Expenses: {formula: "delta('Accrued Expenses')", order: 51, description: "Increase (decrease) in accrued"}
+    Change in Deferred Revenue: {formula: "delta('Deferred Revenue')", order: 52, description: "Increase (decrease) in deferred revenue"}
+    Change in Deferred Taxes: {formula: "delta('Deferred Tax Liability')", order: 53, description: "Increase (decrease) in deferred tax liability"}
+    Operating Cash Flow: {line_type: "aggregate", order: 60, children: [Net Income, Depreciation & Amortization, Stock-Based Compensation, Change in Accounts Receivable, Change in Inventory, Change in Prepaid Expenses, Change in Accounts Payable, Change in Accrued Expenses, Change in Deferred Revenue, Change in Deferred Taxes], is_total: true, description: "Cash from operations"}
+    Capital Expenditures: {formula: "-abs(capex)", order: 70, driver: "capex", description: "Capital expenditures"}
+    Acquisitions: {formula: "-abs(acquisitions)", order: 80, driver: "acquisitions", description: "Acquisitions (added to goodwill)"}
+    Change in Intangible Assets: {formula: "-delta('Intangible Assets')", order: 81, description: "(Increase) decrease in intangibles"}
+    Investing Cash Flow: {line_type: "aggregate", order: 90, children: [Capital Expenditures, Acquisitions, Change in Intangible Assets], is_total: true, description: "Cash from investing"}
+    "Debt Issuance (Repayment)": {formula: "delta('Long-Term Debt') + delta('Current Portion of Long-Term Debt')", order: 100, description: "Net change in term debt"}
+    "Revolver Draw (Repayment)": {formula: "delta('Revolver')", order: 101, description: "Net revolver draw"}
+    "Equity Issuance (Repurchase)": {formula: "equity_issuance", order: 110, driver: "equity_issuance", description: "Equity financing"}
+    Dividends Paid: {formula: "-abs(dividends)", order: 120, driver: "dividends", description: "Dividends"}
+    Financing Cash Flow: {line_type: "aggregate", order: 130, children: [Debt Issuance (Repayment), Revolver Draw (Repayment), Equity Issuance (Repurchase), Dividends Paid], is_total: true, description: "Cash from financing"}
+    Net Change in Cash: {line_type: "plug", order: 140, description: "Net change in cash (ties to balance sheet)"}
+    Beginning Cash Balance: {line_type: "input", order: 150, driver: "beginning_cash", description: "Beginning cash"}
+    Ending Cash Balance: {line_type: "aggregate", order: 160, children: [Beginning Cash Balance, Net Change in Cash], is_total: true, description: "Ending cash"}
+
 starter_scenarios: {}
 # Starter config written by `financial-model init --type three-statement [--industry <variant>]`.
 # period_paths get start_year/years; truncate_to_years lists are cut to the year count;

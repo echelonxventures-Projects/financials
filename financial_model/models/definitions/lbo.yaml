@@ -89,6 +89,31 @@ tranches:
 - {name: Term Loan B, key: tlb, amortizing: true, interest_line: TLB Interest}
 - {name: Subordinated Debt, key: sub, amortizing: false, interest_line: Sub Interest}
 - {name: Mezzanine Debt, key: mezz, amortizing: false, interest_line: Mezz Interest}
+# Where the debt schedule appears in the statements. `{name}` is the tranche name; tranche
+# interest lines share the order band [interest_order, interest_order + 1); `add_to` lists the
+# totals a line is added to. The amounts come from the debt-schedule engine.
+layout:
+  tranche_balance:
+    statement: balance_sheet
+    order: 165
+    order_step: 1
+    description: "{name} balance (opening - amortisation - sweep)"
+    add_to: [Total Liabilities]
+  tranche_interest:
+    order: 62
+    description: "{name} interest on opening balance"
+  revolver_interest: {name: Revolver Interest, order: 66, description: Revolver interest on opening balance}
+  total_interest: {name: Interest Expense, order: 67, description: Total interest expense}
+  mandatory_amortization:
+    name: Mandatory Debt Amortization
+    order: 102
+    description: Scheduled Term Loan A/B amortisation
+    add_to: [Financing Cash Flow]
+  cash_sweep:
+    name: Cash Sweep Repayment
+    order: 103
+    description: Optional prepayment from excess cash
+    add_to: [Financing Cash Flow]
 # Starter config written by `financial-model init --type lbo [--industry <variant>]`.
 # period_paths get start_year/years; truncate_to_years lists are cut to the year count;
 # cap_at_years values are capped at it. Unknown industries use fallback_variant.

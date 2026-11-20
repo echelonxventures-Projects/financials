@@ -109,9 +109,9 @@ class Statement:
                 if base and base not in names:
                     errors.append(f"{item.name}: base_line '{base}' not found")
 
-            if item.line_type == LineItemType.CALCULATED and not item.custom_formula:
+            if item.line_type == LineItemType.CALCULATED and not item.custom_formula and item.formula is None:
                 if item.calculation_rule is None:
-                    errors.append(f"{item.name}: calculated line needs a calculation_rule or custom_formula")
+                    errors.append(f"{item.name}: calculated line needs a formula, calculation_rule or custom_formula")
                 elif item.calculation_rule == CalculationRule.CUSTOM:
                     errors.append(f"{item.name}: custom rule requires a custom_formula (cannot be loaded from YAML)")
 

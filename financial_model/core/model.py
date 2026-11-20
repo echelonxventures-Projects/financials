@@ -114,6 +114,9 @@ class FinancialModel:
                 self.assumptions.set_driver(copy.deepcopy(driver))
         if name is None:
             self.name = str(self.definition.get("name") or type(self).__name__)
+        # The base layout (`structure`) is built first; engines may then add their own lines and
+        # the definition's `line_items` are applied last (after the outermost constructor).
+        self.apply_definition_structure("structure")
         # Classes whose constructor is this one (e.g. definition-only types built on the base engine)
         # get their definition's line items here; subclasses do it after their own constructor.
         if type(self).__init__ is FinancialModel.__init__:
@@ -151,21 +154,22 @@ class FinancialModel:
                 raise TypeError(f"{type(self).__name__}: unknown driver '{key}'")
             self.assumptions.set_driver(Driver(key, value, current.description, current.unit))
 
-    def apply_definition_structure(self) -> None:
-        """Add, change or remove line items as the definition's ``line_items`` says.
+    def apply_definition_structure(self, section: str = "line_items") -> None:
+        """Add, change or remove line items as the definition's ``line_items`` (or ``structure``) says.
 
         ``line_items: {<statement>: {<line name>: {formula: ..., order: ..., add_to: [...], ...}}}``
         A spec for an existing line changes only the fields it gives; ``null`` removes the line.
+        ``structure`` has the same shape and is the base layout, built when the model is created.
         """
         statements = {
             StatementType.INCOME_STATEMENT.value: self.income_statement,
             StatementType.BALANCE_SHEET.value: self.balance_sheet,
             StatementType.CASH_FLOW.value: self.cash_flow,
         }
-        for stmt_key, lines in (self.definition.get("line_items") or {}).items():
+        for stmt_key, lines in (self.definition.get(section) or {}).items():
             stmt = statements.get(stmt_key)
             if stmt is None:
-                raise DefinitionError(f"{self.model_type}: unknown statement '{stmt_key}' in line_items")
+                raise DefinitionError(f"{self.model_type}: unknown statement '{stmt_key}' in {section}")
             for line_name, spec in (lines or {}).items():
                 if spec is None:
                     stmt.remove_line_item(line_name)
@@ -208,6 +212,7 @@ class FinancialModel:
             self.periods.period_type.periods_per_year,
             period.year if period is not None else 0,
             lambda line: self.opening_balance(line, drivers),
+            self.definition.get("expressions") or None,
         )
 
     def definition_tables(self, result: ModelResult) -> dict[str, Any]:
@@ -280,12 +285,29 @@ class FinancialModel:
     # ------------------------------------------------------------------ #
     # Opening balance sheet hooks (overridden by concrete models)
     # ------------------------------------------------------------------ #
-    def opening_balance(self, line: str, drivers: dict[str, Driver]) -> float:  # noqa: ARG002
-        """Balance of ``line`` immediately before the first period (0 by default)."""
-        return 0.0
+    def opening_lines(self) -> dict[str, str]:
+        """Definition ``opening_balances``: line -> driver whose period-0 value opens it."""
+        cached = self.__dict__.get("_opening_lines")
+        if cached is None:
+            cached = {str(k): str(v) for k, v in (self.definition.get("opening_balances") or {}).items()}
+            self.__dict__["_opening_lines"] = cached
+        return cached
 
-    def opening_retained_earnings(self, drivers: dict[str, Driver]) -> float:  # noqa: ARG002
-        return 0.0
+    def opening_balance(self, line: str, drivers: dict[str, Driver]) -> float:
+        """Balance of ``line`` immediately before the first period (0 unless ``opening_balances`` lists it)."""
+        driver = drivers.get(self.opening_lines().get(line, ""))
+        return driver.get_value(0) if driver is not None else 0.0
+
+    def opening_retained_earnings(self, drivers: dict[str, Driver]) -> float:
+        """Definition ``opening_retained_earnings`` formula (0 without one)."""
+        source = self.definition.get("opening_retained_earnings")
+        if source is None:
+            return 0.0
+        if not isinstance(source, str):
+            return float(source)
+        from financial_model.core.expressions import evaluate
+
+        return evaluate(source, self.formula_context(pd.DataFrame(), 0, drivers, None))
 
     # ------------------------------------------------------------------ #
     # Calculation

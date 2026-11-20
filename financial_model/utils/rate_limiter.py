@@ -1,21 +1,29 @@
 """Rate-limited data fetching with circuit breaker pattern."""
+
 from __future__ import annotations
 
 import threading
 import time
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+
+def _setting(key: str) -> Any:
+    """``data.rate_limit.<key>`` from the settings (financial_model/settings.yaml, overridable)."""
+    from financial_model.config_loader import get_config
+
+    return ((get_config().get("data") or {}).get("rate_limit") or {})[key]
 
 
 @dataclass
 class RateLimitConfig:
-    """Configuration for rate limiting."""
+    """Configuration for rate limiting. Defaults come from the ``data.rate_limit`` settings."""
 
-    max_requests_per_minute: int = 30
-    max_requests_per_hour: int = 500
-    circuit_breaker_threshold: int = 5
-    circuit_breaker_timeout: float = 60.0
+    max_requests_per_minute: int = field(default_factory=lambda: int(_setting("max_requests_per_minute")))
+    max_requests_per_hour: int = field(default_factory=lambda: int(_setting("max_requests_per_hour")))
+    circuit_breaker_threshold: int = field(default_factory=lambda: int(_setting("circuit_breaker_threshold")))
+    circuit_breaker_timeout: float = field(default_factory=lambda: float(_setting("circuit_breaker_timeout")))
 
     def __post_init__(self):
         if self.max_requests_per_minute <= 0:

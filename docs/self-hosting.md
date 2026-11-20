@@ -28,6 +28,12 @@ for every key. Model assumptions are separate: they live in the model YAML you p
 | `data.default_provider` | `yfinance` | Provider for `fetch` when the source is not a local path (CLI) or none is given (API) |
 | `data.rate_limit.*` | 30/min, 500/h, breaker 5 failures / 60 s | Guards remote data providers |
 | `logging.level` | `INFO` | Log level |
+| `presentation.excel.*` | see `financial_model/settings.yaml` | Workbook look: fonts, header fill, borders, number formats, %/x hints, column widths, sheet and column titles, frozen panes |
+| `presentation.charts.*` | see `financial_model/settings.yaml` | Chart look: palette, positive/negative/total colours, themes, size, fonts, margins, legend, dashboard page colours |
+| `validation.tickers` / `validation.ranges` | see `financial_model/settings.yaml` | Ticker patterns per exchange; `[min, max]` bounds of named financial parameters |
+
+Every built-in value is in `financial_model/settings.yaml`; a settings file only needs the keys
+it changes (mappings deep-merge). Quote hex colours (`"112233"`), or YAML may read them as numbers.
 
 ## Running
 

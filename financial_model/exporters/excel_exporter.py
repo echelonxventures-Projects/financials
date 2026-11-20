@@ -16,40 +16,40 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from financial_model.config_loader import get_config
 from financial_model.exporters.json_exporter import to_jsonable
 
-_HEADER_FONT = Font(bold=True, size=11, color="FFFFFF")
-_HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-_HEADER_ALIGNMENT = Alignment(horizontal="center", vertical="center", wrap_text=True)
-_TITLE_FONT = Font(bold=True, size=14)
-_LABEL_FONT = Font(bold=True)
-_TOTAL_FONT = Font(bold=True, size=11)
-_THIN_BORDER = Border(bottom=Side(style="thin", color="B4C6E7"))
-_THICK_BORDER = Border(bottom=Side(style="medium", color="4472C4"))
 
-FMT_NUMBER = "#,##0"
-FMT_DECIMAL = "#,##0.00"
-FMT_PCT = "0.0%"
-FMT_MULTIPLE = '0.00"x"'
-
-_WIDTH_MIN = 12
-_WIDTH_MAX = 40
-_SHEET_NAME_MAX = 31  # Excel limit
-
-# Analysis keys whose values are ratios / multiples rather than currency.
-_PCT_HINTS = ("rate", "wacc", "pct", "growth", "irr", "margin", "ratio", "cost_of", "accretion", "%")
-_MULTIPLE_HINTS = ("moic", "multiple", "beta")
+def excel_style() -> dict[str, Any]:
+    """The ``presentation.excel`` settings (financial_model/settings.yaml, overridable)."""
+    return dict((get_config().get("presentation") or {}).get("excel") or {})
 
 
-def _number_format_for(name: str, value: Any) -> str:
+def _color(value: Any) -> str | None:
+    """Hex colour as text (YAML reads 112233 as a number); a leading '#' is optional."""
+    return None if value is None else str(value).lstrip("#").upper()
+
+
+def _font(spec: dict[str, Any]) -> Font:
+    return Font(bold=bool(spec.get("bold")), size=spec.get("size"), color=_color(spec.get("color")))
+
+
+def _border(style: Any, color: Any) -> Border:
+    return Border(bottom=Side(style=style, color=_color(color))) if style else Border()
+
+
+def _number_format_for(name: str, value: Any, style: dict[str, Any] | None = None) -> str:
+    style = style if style is not None else excel_style()
+    fmts = style.get("number_formats") or {}
     key = str(name).lower()
-    if any(h in key for h in _MULTIPLE_HINTS):
-        return FMT_MULTIPLE
-    if any(h in key for h in _PCT_HINTS):
-        return FMT_PCT
-    if isinstance(value, float) and abs(value) < 100 and not float(value).is_integer():
-        return FMT_DECIMAL
-    return FMT_NUMBER
+    if any(str(h).lower() in key for h in style.get("multiple_hints") or []):
+        return str(fmts.get("multiple", "General"))
+    if any(str(h).lower() in key for h in style.get("percent_hints") or []):
+        return str(fmts.get("percent", "General"))
+    limit = style.get("decimal_below")
+    if isinstance(value, float) and limit is not None and abs(value) < limit and not float(value).is_integer():
+        return str(fmts.get("decimal", "General"))
+    return str(fmts.get("number", "General"))
 
 
 def _cell_value(value: Any) -> Any:
@@ -71,8 +71,44 @@ class ExcelExporter:
         Directory used for relative filenames.
     """
 
-    def __init__(self, output_dir: str | Path = ".") -> None:
+    def __init__(self, output_dir: str | Path = ".", style: dict[str, Any] | None = None) -> None:
         self.output_dir = Path(output_dir)
+        self.style = style if style is not None else excel_style()
+        st = self.style
+        header = st.get("header") or {}
+        total = st.get("total") or {}
+        row_border = st.get("row_border") or {}
+        fmts = st.get("number_formats") or {}
+        self.title_font = _font(st.get("title") or {})
+        self.label_font = _font(st.get("label") or {})
+        self.total_font = _font(total)
+        self.header_font = _font(header)
+        self.header_fill = (
+            PatternFill(start_color=_color(header["fill"]), end_color=_color(header["fill"]), fill_type="solid")
+            if header.get("fill")
+            else PatternFill()
+        )
+        self.header_alignment = Alignment(
+            horizontal=header.get("align"), vertical="center", wrap_text=bool(header.get("wrap"))
+        )
+        self.row_border = _border(row_border.get("style"), row_border.get("color"))
+        self.total_border = _border(total.get("border_style"), total.get("border_color"))
+        self.fmt_number = str(fmts.get("number", "General"))
+        self.fmt_decimal = str(fmts.get("decimal", "General"))
+        self.fmt_pct = str(fmts.get("percent", "General"))
+        self.percent_units = set(st.get("percent_units") or [])
+        self.sheets = {k: str(v) for k, v in (st.get("sheets") or {}).items()}
+        self.columns = {k: str(v) for k, v in (st.get("columns") or {}).items()}
+        self.freeze = dict(st.get("freeze") or {})
+
+    def _fmt(self, name: Any, value: Any) -> str:
+        return _number_format_for(name, value, self.style)
+
+    def _sheet(self, key: str) -> str:
+        return self.sheets.get(key, key.replace("_", " ").title())
+
+    def _col(self, key: str) -> str:
+        return self.columns.get(key, key.replace("_", " ").title())
 
     # ------------------------------------------------------------------ #
     # Model results
@@ -94,15 +130,12 @@ class ExcelExporter:
         wb = openpyxl.Workbook()
         wb.remove(wb.active)
 
-        statements = (
-            ("Income Statement", result.income_statement, getattr(model, "income_statement", None)),
-            ("Balance Sheet", result.balance_sheet, getattr(model, "balance_sheet", None)),
-            ("Cash Flow", result.cash_flow, getattr(model, "cash_flow", None)),
-        )
-        for title, df, stmt in statements:
-            self._write_statement(wb.create_sheet(title), title, df, result, stmt)
+        for key in ("income_statement", "balance_sheet", "cash_flow"):
+            title = self._sheet(key)
+            df, stmt = getattr(result, key), getattr(model, key, None)
+            self._write_statement(wb.create_sheet(self._sheet_name(wb, title)), title, df, result, stmt)
 
-        self._write_assumptions(wb.create_sheet("Assumptions"), result)
+        self._write_assumptions(wb.create_sheet(self._sheet_name(wb, self._sheet("assumptions"))), result)
 
         for name, table in (extras or {}).items():
             self.write_table(wb, name, table)
@@ -122,16 +155,16 @@ class ExcelExporter:
     def write_table(self, wb: openpyxl.Workbook, name: str, table: Any) -> Worksheet:
         """Add ``table`` (DataFrame, dict of scalars, or list of records) as a new sheet."""
         ws = wb.create_sheet(self._sheet_name(wb, name))
-        ws.cell(row=1, column=1, value=name).font = _TITLE_FONT
+        ws.cell(row=1, column=1, value=name).font = self.title_font
         if isinstance(table, dict):
-            self.write_row(ws, 3, ["Metric", "Value"], header=True)
+            self.write_row(ws, 3, [self._col("metric"), self._col("value")], header=True)
             row = 4
             for key, value in table.items():
                 if isinstance(value, (dict, list)):
                     continue  # nested detail belongs in its own table
-                ws.cell(row=row, column=1, value=str(key)).font = _LABEL_FONT
+                ws.cell(row=row, column=1, value=str(key)).font = self.label_font
                 cell = ws.cell(row=row, column=2, value=_cell_value(value))
-                cell.number_format = _number_format_for(key, value)
+                cell.number_format = self._fmt(key, value)
                 row += 1
             return ws
 
@@ -139,10 +172,10 @@ class ExcelExporter:
         index_name = df.index.name or ""
         self.write_row(ws, 3, [index_name, *[str(c) for c in df.columns]], header=True)
         for r, (idx, values) in enumerate(df.iterrows(), start=4):
-            ws.cell(row=r, column=1, value=_cell_value(idx)).font = _LABEL_FONT
+            ws.cell(row=r, column=1, value=_cell_value(idx)).font = self.label_font
             for c, (col, value) in enumerate(values.items(), start=2):
                 cell = ws.cell(row=r, column=c, value=_cell_value(value))
-                cell.number_format = _number_format_for(col, value)
+                cell.number_format = self._fmt(col, value)
         return ws
 
     def export_tables(self, tables: dict[str, Any], path: str | Path) -> Path:
@@ -207,38 +240,40 @@ class ExcelExporter:
             if header:
                 self._apply_header_style(cell)
             elif isinstance(cell.value, float):
-                cell.number_format = FMT_DECIMAL
+                cell.number_format = self.fmt_decimal
 
     # ------------------------------------------------------------------ #
     # Sheets
     # ------------------------------------------------------------------ #
     def _write_statement(self, ws: Worksheet, title: str, df: pd.DataFrame, result: Any, stmt: Any) -> None:
-        ws.cell(row=1, column=1, value=title).font = _TITLE_FONT
+        ws.cell(row=1, column=1, value=title).font = self.title_font
         labels = [p.label for p in result.periods] if len(df.columns) == len(result.periods) else list(df.columns)
-        self.write_row(ws, 2, ["Line Item", *[str(x) for x in labels]], header=True)
-        ws.freeze_panes = "B3"
+        self.write_row(ws, 2, [self._col("line_item"), *[str(x) for x in labels]], header=True)
+        ws.freeze_panes = self.freeze.get("statement")
 
         row = 3
         for line_name, values in df.iterrows():
             item = stmt.get_line_item(str(line_name)) if stmt is not None else None
             ws.cell(row=row, column=1, value=str(line_name))
-            fmt = FMT_PCT if item is not None and getattr(item, "unit", "") == "%" else FMT_NUMBER
+            pct = item is not None and getattr(item, "unit", "") in self.percent_units
+            fmt = self.fmt_pct if pct else self.fmt_number
             for c, value in enumerate(values, start=2):
                 v = _cell_value(value)
                 cell = ws.cell(row=row, column=c, value=0.0 if v is None else v)
                 cell.number_format = fmt
-                cell.border = _THIN_BORDER
+                cell.border = self.row_border
             if item is not None and getattr(item, "is_total", False):
                 for c in range(1, len(labels) + 2):
-                    ws.cell(row=row, column=c).font = _TOTAL_FONT
-                    ws.cell(row=row, column=c).border = _THICK_BORDER
+                    ws.cell(row=row, column=c).font = self.total_font
+                    ws.cell(row=row, column=c).border = self.total_border
             row += 1
 
     def _write_assumptions(self, ws: Worksheet, result: Any) -> None:
-        ws.cell(row=1, column=1, value="Assumptions").font = _TITLE_FONT
+        ws.cell(row=1, column=1, value=self._sheet("assumptions")).font = self.title_font
         labels = [p.label for p in result.periods]
-        self.write_row(ws, 2, ["Driver", "Unit", "Description", *labels], header=True)
-        ws.freeze_panes = "D3"
+        header = [self._col("driver"), self._col("unit"), self._col("description"), *labels]
+        self.write_row(ws, 2, header, header=True)
+        ws.freeze_panes = self.freeze.get("assumptions")
 
         drivers = getattr(result, "drivers", None) or {}
         if not drivers and getattr(result, "assumptions", None) is not None:
@@ -247,7 +282,7 @@ class ExcelExporter:
             ws.cell(row=r, column=1, value=name)
             ws.cell(row=r, column=2, value=driver.unit)
             ws.cell(row=r, column=3, value=driver.description)
-            fmt = FMT_PCT if driver.unit == "%" else FMT_DECIMAL
+            fmt = self.fmt_pct if driver.unit in self.percent_units else self.fmt_decimal
             for i in range(len(labels)):
                 cell = ws.cell(row=r, column=4 + i, value=_cell_value(driver.get_value(i)))
                 cell.number_format = fmt
@@ -264,28 +299,28 @@ class ExcelExporter:
         p.parent.mkdir(parents=True, exist_ok=True)
         return p
 
-    @staticmethod
-    def _sheet_name(wb: openpyxl.Workbook, name: str) -> str:
-        base = "".join(ch for ch in str(name) if ch not in "[]:*?/\\")[:_SHEET_NAME_MAX] or "Sheet"
+    def _sheet_name(self, wb: openpyxl.Workbook, name: str) -> str:
+        limit = int(self.style.get("sheet_name_max") or 31)
+        base = "".join(ch for ch in str(name) if ch not in "[]:*?/\\")[:limit] or "Sheet"
         candidate, n = base, 2
         while candidate in wb.sheetnames:
             suffix = f" ({n})"
-            candidate = base[: _SHEET_NAME_MAX - len(suffix)] + suffix
+            candidate = base[: limit - len(suffix)] + suffix
             n += 1
         return candidate
 
-    @staticmethod
-    def _apply_header_style(cell: Cell) -> None:
-        cell.font = _HEADER_FONT
-        cell.fill = _HEADER_FILL
-        cell.alignment = _HEADER_ALIGNMENT
+    def _apply_header_style(self, cell: Cell) -> None:
+        cell.font = self.header_font
+        cell.fill = self.header_fill
+        cell.alignment = self.header_alignment
 
-    @staticmethod
-    def _auto_width(sheet: Worksheet) -> None:
+    def _auto_width(self, sheet: Worksheet) -> None:
+        width = self.style.get("column_width") or {}
+        lo, hi, pad = width.get("min", 0), width.get("max", 255), width.get("padding", 0)
         for column_cells in sheet.columns:
             longest = max((len(str(c.value)) for c in column_cells if c.value is not None), default=0)
             letter = get_column_letter(column_cells[0].column)
-            sheet.column_dimensions[letter].width = min(max(longest + 2, _WIDTH_MIN), _WIDTH_MAX)
+            sheet.column_dimensions[letter].width = min(max(longest + pad, lo), hi)
 
     @staticmethod
     def _ensure_xlsx(filename: str) -> str:

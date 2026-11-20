@@ -44,3 +44,103 @@ models:
   # Extra directories searched first for model definitions `<model_type>.yaml`
   # (defaults, starters, labels, or whole new declarative model types).
   definition_paths: []
+
+# Look of exported workbooks and charts. Override any key in your settings file, e.g.
+#   presentation: {charts: {palette: ["#0f766e", "#b45309"]}, excel: {header: {fill: "1F2937"}}}
+presentation:
+  excel:
+    title: {bold: true, size: 14}
+    label: {bold: true}
+    header: {bold: true, size: 11, color: FFFFFF, fill: 4472C4, align: center, wrap: true}
+    total: {bold: true, size: 11, border_style: medium, border_color: 4472C4}
+    row_border: {style: thin, color: B4C6E7}
+    number_formats:
+      number: "#,##0"
+      decimal: "#,##0.00"
+      percent: "0.0%"
+      multiple: '0.00"x"'
+    # A table value whose column/metric name contains one of these is shown as % or x.
+    percent_hints: [rate, wacc, pct, growth, irr, margin, ratio, cost_of, accretion, "%"]
+    multiple_hints: [moic, multiple, beta]
+    # Plain floats below this magnitude get the decimal format.
+    decimal_below: 100
+    percent_units: ["%"]           # line/driver units shown as percentages
+    column_width: {min: 12, max: 40, padding: 2}
+    sheet_name_max: 31            # Excel's limit
+    sheets:
+      income_statement: Income Statement
+      balance_sheet: Balance Sheet
+      cash_flow: Cash Flow
+      assumptions: Assumptions
+    columns:
+      line_item: Line Item
+      driver: Driver
+      unit: Unit
+      description: Description
+      metric: Metric
+      value: Value
+    freeze: {statement: B3, assumptions: D3}
+  charts:
+    # Categorical palette, assigned in order; one meaning per colour within a chart.
+    palette: ["#2563eb", "#16a34a", "#ea580c", "#9333ea", "#0891b2", "#dc2626", "#ca8a04", "#64748b"]
+    positive: "#16a34a"
+    negative: "#dc2626"
+    total: "#2563eb"
+    connector: "#94a3b8"
+    overlay_line: "#0f172a"        # cash / ending-balance lines drawn over bars
+    heatmap_scale: Blues
+    themes: {light: plotly_white, dark: plotly_dark}
+    theme: light
+    width: null                    # null = responsive
+    height: 460
+    font_family: "Inter, system-ui, -apple-system, sans-serif"
+    font_size: 12
+    margin: {l: 70, r: 30, t: 80, b: 50}
+    legend: {orientation: h, yanchor: bottom, y: 1.02, xanchor: right, x: 1}
+    hovermode: x unified
+    value_format: ",.0f"
+    page:                          # export_dashboard HTML page
+      light: {background: "#f8fafc", text: "#0f172a"}
+      dark: {background: "#0b1120", text: "#e2e8f0"}
+      max_width: 1100px
+      title_size: 22px
+
+# Input guards. Ticker patterns are regular expressions per exchange (GENERIC is the fallback);
+# ranges are [min, max] bounds for named financial parameters (null = unbounded).
+validation:
+  tickers:
+    NASDAQ: "^[A-Z]{1,6}$"
+    NYSE: "^[A-Z]{1,4}$"
+    NSE: "^[A-Z0-9]{1,8}$"
+    BSE: "^\\d{6}$"                       # 6-digit scrip codes, e.g. 500325
+    LSE: "^[A-Z]{1,4}$"
+    TSE: "^\\d[0-9A-Z]{3}$"               # 7203, and alphanumeric since 2024 (130A)
+    # 1-10 alphanumerics, optional share-class / exchange suffix (BRK-B, RELIANCE.NS, 7203.T),
+    # colon exchange prefix (AAPL:NAS) and Yahoo's ^ for indices (^GSPC).
+    GENERIC: "^\\^?[A-Z0-9]{1,10}([.\\-][A-Z0-9]{1,5})?(:[A-Z]{2,5})?$"
+  ranges:
+    revenue_growth_rate: [-0.5, 5.0]
+    ebitda_margin: [0.0, 1.0]
+    tax_rate: [0.0, 0.6]
+    capex_pct_revenue: [0.0, 1.0]
+    drc_pct_revenue: [0.0, 1.0]
+    wacc: [0.01, 0.40]
+    terminal_growth_rate: [-0.05, 0.05]
+    discount_rate: [0.01, 0.50]
+    debt_to_equity: [0.0, 10.0]
+    leveraged_buyout_multiple: [1.0, 20.0]
+    exit_multiple: [1.0, 25.0]
+    senior_debt_cost: [0.01, 0.15]
+    subordinated_debt_cost: [0.05, 0.20]
+    equity_multiple_target: [1.0, 5.0]
+    holding_period: [1, 10]
+    revenue: [0, null]
+    ebitda: [0, null]
+    multiple: [0.1, 50.0]
+    shares_outstanding: [1, 10000000000]
+    market_cap: [0, null]
+    beta: [-2.0, 5.0]
+    risk_free_rate: [0.0, 0.15]
+    equity_risk_premium: [0.0, 0.15]
+    probability: [0.0, 1.0]
+    weight: [0.0, 1.0]

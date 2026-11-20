@@ -1,10 +1,23 @@
 """Input validation utilities with comprehensive financial data guards."""
+
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache
 from typing import Any
+
+
+def _validation_settings() -> dict[str, Any]:
+    from financial_model.config_loader import get_config
+
+    return dict(get_config().get("validation") or {})
+
+
+@lru_cache(maxsize=256)
+def _compiled(pattern: str) -> re.Pattern[str]:
+    return re.compile(pattern)
 
 
 class ValidationError(ValueError):
@@ -48,21 +61,10 @@ class ValidationResult:
 class TickerValidator:
     """Validate stock ticker symbols against exchange patterns."""
 
-    _PATTERNS = {
-        # Major US exchanges
-        "NASDAQ": re.compile(r"^[A-Z]{1,6}$"),
-        "NYSE": re.compile(r"^[A-Z]{1,4}$"),
-        # India (NSE/BSE)
-        "NSE": re.compile(r"^[A-Z0-9]{1,8}$"),
-        "BSE": re.compile(r"^\d{6}$"),  # 6-digit scrip codes, e.g. 500325
-        # International
-        "LSE": re.compile(r"^[A-Z]{1,4}$"),
-        "TSE": re.compile(r"^\d[0-9A-Z]{3}$"),  # 4-char codes: 7203, and alphanumeric since 2024 (130A)
-        # Generic fallback: 1-10 alphanumerics, an optional share-class / exchange
-        # suffix (BRK-B, RELIANCE.NS, 7203.T) or a colon exchange prefix (AAPL:NAS),
-        # and Yahoo's ^ prefix for indices (^GSPC).
-        "GENERIC": re.compile(r"^\^?[A-Z0-9]{1,10}([.\-][A-Z0-9]{1,5})?(:[A-Z]{2,5})?$"),
-    }
+    @staticmethod
+    def patterns() -> dict[str, re.Pattern[str]]:
+        """Exchange -> pattern, from the ``validation.tickers`` settings."""
+        return {str(k): _compiled(str(v)) for k, v in (_validation_settings().get("tickers") or {}).items()}
 
     @classmethod
     def validate(cls, ticker: str, exchange: str = "GENERIC") -> ValidationResult:
@@ -74,7 +76,10 @@ class TickerValidator:
             )
 
         ticker = ticker.strip().upper()
-        pattern = cls._PATTERNS.get(exchange, cls._PATTERNS["GENERIC"])
+        patterns = cls.patterns()
+        pattern = patterns.get(exchange) or patterns.get("GENERIC")
+        if pattern is None:
+            return ValidationResult(is_valid=True, errors=[], warnings=[f"No ticker pattern for '{exchange}'"])
 
         if not pattern.match(ticker):
             return ValidationResult(
@@ -95,41 +100,22 @@ class TickerValidator:
 class FinancialRangeValidator:
     """Validate financial parameters are within realistic ranges."""
 
-    # Bounds for common financial metrics (min, max)
-    _BOUNDS = {
-        "revenue_growth_rate": (-0.5, 5.0),
-        "ebitda_margin": (0.0, 1.0),
-        "tax_rate": (0.0, 0.6),
-        "capex_pct_revenue": (0.0, 1.0),
-        "drc_pct_revenue": (0.0, 1.0),
-        "wacc": (0.01, 0.40),
-        "terminal_growth_rate": (-0.05, 0.05),
-        "discount_rate": (0.01, 0.50),
-        "debt_to_equity": (0.0, 10.0),
-        "leveraged_buyout_multiple": (1.0, 20.0),
-        "exit_multiple": (1.0, 25.0),
-        "senior_debt_cost": (0.01, 0.15),
-        "subordinated_debt_cost": (0.05, 0.20),
-        "equity_multiple_target": (1.0, 5.0),
-        "holding_period": (1, 10),
-        "revenue": (0, float("inf")),
-        "ebitda": (0, float("inf")),
-        "multiple": (0.1, 50.0),
-        "shares_outstanding": (1, 10_000_000_000),
-        "market_cap": (0, float("inf")),
-        "beta": (-2.0, 5.0),
-        "risk_free_rate": (0.0, 0.15),
-        "equity_risk_premium": (0.0, 0.15),
-        "probability": (0.0, 1.0),
-        "weight": (0.0, 1.0),
-    }
+    @staticmethod
+    def bounds() -> dict[str, tuple[float, float]]:
+        """Name -> (min, max), from the ``validation.ranges`` settings (null = unbounded)."""
+        out: dict[str, tuple[float, float]] = {}
+        for name, pair in (_validation_settings().get("ranges") or {}).items():
+            lo, hi = (list(pair) + [None, None])[:2]
+            out[str(name)] = (float("-inf") if lo is None else lo, float("inf") if hi is None else hi)
+        return out
 
     @classmethod
     def validate_value(cls, name: str, value: float) -> ValidationResult:
-        if name not in cls._BOUNDS:
+        bounds = cls.bounds()
+        if name not in bounds:
             return ValidationResult(is_valid=True, errors=[], warnings=[f"No bounds defined for '{name}'"])
 
-        min_val, max_val = cls._BOUNDS[name]
+        min_val, max_val = bounds[name]
         if value < min_val or value > max_val:
             return ValidationResult(
                 is_valid=False,
