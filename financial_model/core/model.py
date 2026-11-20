@@ -18,7 +18,14 @@ import yaml
 
 from financial_model.core.assumptions import Assumptions
 from financial_model.core.balancer import BalanceResult, BalanceSheetBalancer, CashFlowBalancer
-from financial_model.core.definitions import DefinitionError, definition_drivers, load_definition
+from financial_model.core.definitions import (
+    DefinitionError,
+    definition_drivers,
+    engine_section,
+    engine_value,
+    line_role,
+    load_definition,
+)
 from financial_model.core.line_item import Driver, LineItem, LineItemType
 from financial_model.core.period import PeriodIndex, PeriodType
 from financial_model.core.statement import Statement, StatementType
@@ -92,8 +99,6 @@ class FinancialModel:
         self.balance_sheet = Statement(StatementType.BALANCE_SHEET, periods=self.periods)
         self.cash_flow = Statement(StatementType.CASH_FLOW, periods=self.periods)
 
-        self.bs_balancer = BalanceSheetBalancer()
-        self.cf_balancer = CashFlowBalancer()
         self.last_passes = 0
 
         # Defaults are data: models/definitions/<model_type>.yaml (see core/definitions.py).
@@ -108,6 +113,12 @@ class FinancialModel:
                 self.definition = load_definition(key, missing_ok=True)
                 if self.definition:
                     break
+        # Engine line roles, line groups and balancing limits (definition, over three-statement's).
+        self.lines: dict[str, Any] = engine_section("lines", self.definition)
+        self.line_groups: dict[str, Any] = engine_section("line_groups", self.definition)
+        balancing = engine_section("balancing", self.definition)
+        self.bs_balancer = BalanceSheetBalancer(lines=self.lines, groups=self.line_groups, balancing=balancing)
+        self.cf_balancer = CashFlowBalancer(lines=self.lines, balancing=balancing)
         self._default_drivers = definition_drivers(self.definition)
         for driver_name, driver in self._default_drivers.items():
             if driver_name not in self.assumptions.drivers:
@@ -233,7 +244,7 @@ class FinancialModel:
                 for label, src in (rows or {}).items()
             }
             frame = pd.DataFrame(values, index=result.labels).T
-            frame.index.name = "Metric"
+            frame.index.name = engine_value("analysis_index", self.definition)
             tables[table] = frame
         return tables
 
@@ -285,6 +296,14 @@ class FinancialModel:
     # ------------------------------------------------------------------ #
     # Opening balance sheet hooks (overridden by concrete models)
     # ------------------------------------------------------------------ #
+    def line_name(self, role: str) -> str:
+        """The statement line playing engine ``role`` (definition ``lines``: ``cash``, ``net_income``...)."""
+        return line_role(self.lines, role)
+
+    def line_group(self, name: str) -> list[str]:
+        """A list of lines from the definition's ``line_groups`` (empty when not defined)."""
+        return [str(n) for n in self.line_groups.get(name) or []]
+
     def opening_lines(self) -> dict[str, str]:
         """Definition ``opening_balances``: line -> driver whose period-0 value opens it."""
         cached = self.__dict__.get("_opening_lines")
@@ -313,9 +332,15 @@ class FinancialModel:
     # Calculation
     # ------------------------------------------------------------------ #
     def calculate(
-        self, scenario: str | None = None, max_passes: int | None = None, tolerance: float = 1e-6
+        self, scenario: str | None = None, max_passes: int | None = None, tolerance: float | None = None
     ) -> ModelResult:
-        """Run the full model calculation for the base case or a named scenario."""
+        """Run the full model calculation for the base case or a named scenario.
+
+        Pass count and convergence tolerances default to the definition's ``balancing`` section.
+        """
+        solve = engine_section("balancing", self.definition)
+        if tolerance is None:
+            tolerance = float(solve.get("solve_tolerance", 0.0))
         if (
             scenario
             and self.assumptions.scenarios
@@ -336,7 +361,7 @@ class FinancialModel:
 
         self.bs_balancer.opening_retained_earnings = self.opening_retained_earnings(drivers)
 
-        passes = max_passes or max(2, n_periods + 3)
+        passes = max_passes or max(int(solve.get("min_passes", 1)), n_periods + int(solve.get("extra_passes", 0)))
         previous: np.ndarray | None = None
         bs_result: BalanceResult | None = None
         cf_result: BalanceResult | None = None
@@ -365,7 +390,9 @@ class FinancialModel:
                 )
             )
             self.last_passes = pass_no
-            if previous is not None and np.allclose(current, previous, rtol=1e-9, atol=tolerance):
+            if previous is not None and np.allclose(
+                current, previous, rtol=float(solve.get("solve_rtol", 0.0)), atol=tolerance
+            ):
                 break
             previous = current
 

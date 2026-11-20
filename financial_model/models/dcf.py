@@ -17,25 +17,6 @@ from financial_model.core.model import ModelResult
 from financial_model.core.period import PeriodIndex
 from financial_model.models.three_statement import ThreeStatementModel
 
-WORKING_CAPITAL_LINES = [
-    "Change in Accounts Receivable",
-    "Change in Inventory",
-    "Change in Prepaid Expenses",
-    "Change in Accounts Payable",
-    "Change in Accrued Expenses",
-    "Change in Deferred Revenue",
-    "Change in Deferred Taxes",
-]
-DEBT_LINES = [
-    "Long-Term Debt",
-    "Current Portion of Long-Term Debt",
-    "Revolver",
-    "Term Loan A",
-    "Term Loan B",
-    "Subordinated Debt",
-    "Mezzanine Debt",
-]
-
 
 def _row(df: pd.DataFrame, line: str, idx: int, default: float = 0.0) -> float:
     if line not in df.index:
@@ -90,18 +71,20 @@ class DCFModel(ThreeStatementModel):
         is_data, bs_data, cf_data = result.income_statement, result.balance_sheet, result.cash_flow
         drivers = result.drivers
         rows = []
+        ebit_line, dna_line, capex_line = (self.line_name(r) for r in ("operating_income", "depreciation", "capex"))
+        wc_lines = self.line_group("working_capital_changes")
         for i in range(len(result.periods)):
-            ebit = _row(is_data, "Operating Income", i)
-            dna = abs(_row(is_data, "Depreciation & Amortization", i))
+            ebit = _row(is_data, ebit_line, i)
+            dna = abs(_row(is_data, dna_line, i))
             if dna == 0:
-                dna = abs(_row(cf_data, "Depreciation & Amortization", i))
-            if "Capital Expenditures" in cf_data.index:
-                capex = abs(_row(cf_data, "Capital Expenditures", i))
-            elif "Capital Expenditures" in bs_data.index:
-                capex = abs(_row(bs_data, "Capital Expenditures", i))
+                dna = abs(_row(cf_data, dna_line, i))
+            if capex_line in cf_data.index:
+                capex = abs(_row(cf_data, capex_line, i))
+            elif capex_line in bs_data.index:
+                capex = abs(_row(bs_data, capex_line, i))
             else:
                 capex = abs(drivers["capex"].get_value(i)) if "capex" in drivers else 0.0
-            nwc_change = sum(_row(cf_data, line, i) for line in WORKING_CAPITAL_LINES)
+            nwc_change = sum(_row(cf_data, line, i) for line in wc_lines)
             nopat = ebit * (1 - tax_rate)
             rows.append(
                 {
@@ -151,11 +134,9 @@ class DCFModel(ThreeStatementModel):
 
         # Net debt at the valuation date (opening balances)
         bs_data = result.balance_sheet
-        opening_cash = (
-            dv("beginning_cash") if "beginning_cash" in drivers else _row(bs_data, "Cash & Cash Equivalents", 0)
-        )
+        opening_cash = dv("beginning_cash") if "beginning_cash" in drivers else _row(bs_data, self.line_name("cash"), 0)
         opening_debt = 0.0
-        for line in DEBT_LINES:
+        for line in self.line_group("debt"):
             if line in bs_data.index:
                 opening_debt += self.opening_balance(line, drivers) if line in self.opening_lines() else 0.0
         net_debt = opening_debt - opening_cash
@@ -269,9 +250,10 @@ class DCFModel(ThreeStatementModel):
         fcf = pd.DataFrame(dcf["fcf_detail"], index=dcf["periods"])
         fcf["discount_factor"] = dcf["discount_factors"]
         fcf["pv_fcf"] = dcf["pv_fcf"]
-        fcf.index.name = "Period"
+        tables = self.setting("tables") or {}
+        fcf.index.name = tables["period_index"]
         return {
-            "DCF Valuation": summary,
-            "Free Cash Flow": fcf,
-            "Sensitivity": self.sensitivity_analysis(result),
+            tables["valuation"]: summary,
+            tables["free_cash_flow"]: fcf,
+            tables["sensitivity"]: self.sensitivity_analysis(result),
         }

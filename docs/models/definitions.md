@@ -6,11 +6,11 @@ or remove line items with formulas, so **a new model type needs only a YAML file
 
 | Built-in definition | Holds |
 |---|---|
-| `three-statement.yaml` | **every line of the three statements** (`structure`), the statement charts (`charts`), the opening balance sheet (`opening_balances`, `opening_retained_earnings`), named `expressions`, every driver's default value, description and unit; aliases (`3s`, `ts`...); `init` starters |
-| `dcf.yaml` (extends three-statement) | WACC / terminal-value drivers, the sensitivity grid |
-| `lbo.yaml` (extends three-statement) | deal and debt drivers, **the tranche set** (add a seller note or a unitranche by adding an entry), where the debt-schedule lines go (`layout`: names, orders, totals) |
+| `three-statement.yaml` | **every line of the three statements** (`structure`), the statement charts (`charts`), the line each engine role refers to (`lines`), line groups and balancing limits, the opening balance sheet (`opening_balances`, `opening_retained_earnings`), named `expressions`, every driver's default value, description and unit; aliases (`3s`, `ts`...); `init` starters |
+| `dcf.yaml` (extends three-statement) | WACC / terminal-value drivers, the sensitivity grid, table names, console output, DCF charts |
+| `lbo.yaml` (extends three-statement) | deal and debt drivers, **the tranche set** (add a seller note or a unitranche by adding an entry), where the debt-schedule lines go (`layout`: names, orders, totals), the re-cut opening balance sheet (`opening_at_close`), the sweep's working capital, exit debt, labels, console output, LBO charts |
 | `budget.yaml` | its statements (`structure`), the lines built per department (`department_template`), departments built by default, the seed for new departments, special driver prefixes (`department_keys`) |
-| `ma.yaml` | deal-term defaults, which model types may be acquirer/target, the loss-making share-price fallback |
+| `ma.yaml` | deal-term defaults, contribution metrics (`contribution`), labels, console output, charts, which model types may be acquirer/target, the loss-making share-price fallback |
 | `business.yaml` (abstract) | Unit Economics table name and row labels shared by the business models |
 | `paas.yaml`, `b2b-saas.yaml`, `b2c-subscription.yaml` (extend business) | engine drivers, KPI rows and labels, starters |
 
@@ -63,6 +63,31 @@ formulas that any line can use as a bare name, e.g. `depreciation_charge: "abs(d
 
 Budget departments come from `department_template` (`{dept}` = department name, `{key}` = driver
 prefix, `offset` added to `order_start + position x order_step`, `rollup_line` added to `rollup`).
+
+## Engine line roles
+
+The engines (the balancer, DCF, LBO, M&A, business models) never name a statement line in code. They
+ask for a **role**, and `lines` in `three-statement.yaml` says which line plays it:
+
+```yaml
+lines:
+  cash: Cash & Cash Equivalents      # balancing plug
+  revolver: Revolver                 # balancing plug
+  net_income: Net Income
+  operating_income: Operating Income
+  ...
+line_groups:
+  working_capital_changes: [...]     # DCF change in NWC
+  debt: [...]                        # DCF net debt
+  balance_fallback: {...}            # classification when a statement has no totals
+balancing: {tolerance: 1.0e-6, solve_tolerance: 1.0e-6, solve_rtol: 1.0e-9, min_passes: 2, extra_passes: 3}
+```
+
+To rename a line the engines use, rename it in `structure` (or with `line_items`) and point its role
+at the new name, e.g. `lines: {revolver: Credit Facility}`. Definitions that do not extend
+three-statement (budget) inherit its roles. In Python, `model.line_name("cash")` and
+`model.line_group("debt")`. Expressions elsewhere in definitions (M&A `contribution`, LBO
+`implied_entry_ebitda`) use the role names as values.
 
 ## Charts are data
 
@@ -176,6 +201,13 @@ Formulas are single expressions evaluated per period, also allowed in model conf
 | a name from `expressions` | that named formula (a driver of the same name wins) |
 | `safe_div(a, b, default=0)`, `clamp(x, lo, hi)`, `min`, `max`, `abs`, `round` | helpers |
 | `+ - * / // % **`, comparisons, `and or not`, `a if c else b` | operators (`x / 0` is 0) |
+
+## Console output
+
+`financial-model dcf`, `lbo`, `ma` (and `run` on an M&A config) print the definition's `console` blocks
+in order: `{text: "EV (Gordon): ${ev_gordon:,.0f}"}` formats the command's results, and
+`{table: <name>, title, columns: [{column, label, format}], formats, float_format, transpose, index}`
+prints a table. `when: <name>` prints a block only when that value is set.
 
 ## Starters
 

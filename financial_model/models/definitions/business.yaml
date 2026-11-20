@@ -5,6 +5,12 @@ extends: three-statement
 abstract: true
 description: Base for customer-engine business models
 analysis_table: Unit Economics
+# Income-statement lines the customer engine drives (line role -> description) and lines it removes.
+engine_lines:
+  revenue: Revenue from the customer engine
+  cogs: Cost of revenue from the customer engine
+  sales_marketing: Customer acquisition spend + other S&M (sm_pct of revenue)
+engine_removes: [Revenue Growth]
 unit_economics_labels:
   gross_margin: Gross Margin
   operating_margin: Operating Margin

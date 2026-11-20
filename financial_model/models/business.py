@@ -97,7 +97,8 @@ class BusinessModel(ThreeStatementModel):
     # ------------------------------------------------------------------ #
     def _wire_income_statement(self) -> None:
         stmt = self.income_statement
-        stmt.remove_line_item("Revenue Growth")
+        for line in self.setting("engine_removes") or []:
+            stmt.remove_line_item(str(line))
 
         def revenue(df: pd.DataFrame, idx: int, drivers: dict[str, Driver]) -> float:  # noqa: ARG001
             return self.engine(drivers)["revenue"][idx]
@@ -110,28 +111,26 @@ class BusinessModel(ThreeStatementModel):
             other = abs(_dv(drivers, "sm_pct", idx)) * eng["revenue"][idx]
             return -(abs(eng["acquisition_spend"][idx]) + other)
 
-        replacements = {
-            "Revenue": (revenue, "Revenue from the customer engine"),
-            "COGS": (cogs, "Cost of revenue from the customer engine"),
-            "Sales & Marketing Expense": (
-                sales_marketing,
-                "Customer acquisition spend + other S&M (sm_pct of revenue)",
-            ),
-        }
-        for line, (formula, description) in replacements.items():
+        # Which lines the engine drives, and their descriptions: business.yaml `engine_lines` (role -> text).
+        formulas = {"revenue": revenue, "cogs": cogs, "sales_marketing": sales_marketing}
+        for role, description in (self.setting("engine_lines") or {}).items():
+            if role not in formulas:
+                raise ValueError(f"engine_lines: unknown role '{role}' (one of {', '.join(formulas)})")
+            line, formula = self.line_name(role), formulas[role]
             item = stmt.get_line_item(line)
-            assert item is not None
+            if item is None:
+                raise ValueError(f"the customer engine drives '{line}' ({role}), which is not in the income statement")
             stmt.add_line_item(
                 LineItem(
                     line,
                     LineItemType.CALCULATED,
                     IS,
                     order=item.order,
-                    unit="$",
+                    unit=item.unit,
                     calculation_rule=CalculationRule.CUSTOM,
                     custom_formula=formula,
                     is_total=item.is_total,
-                    description=description,
+                    description=str(description),
                 )
             )
 
@@ -142,10 +141,10 @@ class BusinessModel(ThreeStatementModel):
         """KPI table: one row per metric, one column per period."""
         eng = self.engine(result.drivers)
         is_df = result.income_statement
-        revenue = is_df.loc["Revenue"].to_numpy(dtype=float)
-        gross = is_df.loc["Gross Profit"].to_numpy(dtype=float)
-        op_income = is_df.loc["Operating Income"].to_numpy(dtype=float)
-        sm = -is_df.loc["Sales & Marketing Expense"].to_numpy(dtype=float)
+        revenue = is_df.loc[self.line_name("revenue")].to_numpy(dtype=float)
+        gross = is_df.loc[self.line_name("gross_profit")].to_numpy(dtype=float)
+        op_income = is_df.loc[self.line_name("operating_income")].to_numpy(dtype=float)
+        sm = -is_df.loc[self.line_name("sales_marketing")].to_numpy(dtype=float)
 
         rows: dict[str, list[float | None]] = {}
         for row in self.setting("kpi_rows", []):
@@ -176,7 +175,7 @@ class BusinessModel(ThreeStatementModel):
         rows.update(self.lifetime_value_rows(eng, gm, cac))
 
         table = pd.DataFrame(rows, index=result.labels).T
-        table.index.name = "Metric"
+        table.index.name = self.setting("analysis_index")
         return table
 
     def monthly_value_per_customer(self, eng: Engine, idx: int) -> float:

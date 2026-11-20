@@ -36,6 +36,24 @@ drivers:
     value: 12.0
     description: Exit EV/EBITDA multiple
     unit: x
+# Names of the DCF analysis tables (exports, API, CLI) and the index of the free-cash-flow table.
+tables: {valuation: DCF Valuation, free_cash_flow: Free Cash Flow, sensitivity: Sensitivity, period_index: Period}
+
+# `financial-model dcf` console output (see ma.yaml for the block fields); text values are the DCF results.
+console:
+- text: "WACC: {wacc:.2%}"
+- text: "Cost of Equity: {cost_of_equity:.2%}"
+- text: "Terminal EBITDA: ${terminal_ebitda:,.0f}"
+- text: "EV (Gordon): ${ev_gordon:,.0f}"
+- text: "EV (Multiple): ${ev_multiple:,.0f}"
+- text: "Net Debt: ${net_debt:,.0f}"
+- text: "Equity Value (Gordon): ${equity_gordon:,.0f}"
+- text: "Equity Value (Multiple): ${equity_multiple:,.0f}"
+- text: "Price/Share (Gordon): ${price_gordon:,.2f}"
+- text: "Price/Share (Multiple): ${price_multiple:,.2f}"
+- {title: "\nFree cash flow:", table: fcf, transpose: true, float_format: ",.0f"}
+- {title: "\nSensitivity (Equity Value, Gordon growth):", table: sensitivity, float_format: ",.0f"}
+
 # Charts added to the inherited three-statement charts (see three-statement.yaml).
 charts:
   dcf_fcf:

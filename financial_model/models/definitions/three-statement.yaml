@@ -227,6 +227,88 @@ structure:
     Beginning Cash Balance: {line_type: "input", order: 150, driver: "beginning_cash", description: "Beginning cash"}
     Ending Cash Balance: {line_type: "aggregate", order: 160, children: [Beginning Cash Balance, Net Change in Cash], is_total: true, description: "Ending cash"}
 
+# The line each engine role refers to: the balancer, DCF, LBO, M&A and business engines read
+# lines through these roles, never by a name in code. Rename a line in `structure` and point its
+# role here; a definition (or an operator copy) can change any single role.
+lines:
+  revenue: Revenue
+  cogs: COGS
+  gross_profit: Gross Profit
+  sales_marketing: Sales & Marketing Expense
+  operating_income: Operating Income
+  depreciation: Depreciation & Amortization
+  sbc: Stock-Based Compensation
+  interest_expense: Interest Expense
+  pre_tax_income: Pre-Tax Income
+  income_tax: Income Tax Expense
+  net_income: Net Income
+  dividends: Dividends                       # optional income-statement line
+  cash: Cash & Cash Equivalents              # balancing plug (asset)
+  revolver: Revolver                         # balancing plug (liability)
+  retained_earnings: Retained Earnings       # rolled forward with net income less dividends
+  accounts_receivable: Accounts Receivable
+  inventory: Inventory
+  prepaid_expenses: Prepaid Expenses
+  accounts_payable: Accounts Payable
+  accrued_expenses: Accrued Expenses
+  deferred_revenue: Deferred Revenue
+  goodwill: Goodwill
+  long_term_debt: Long-Term Debt
+  current_debt: Current Portion of Long-Term Debt
+  common_stock: Common Stock
+  paid_in_capital: Additional Paid-In Capital
+  total_current_assets: Total Current Assets
+  total_current_liabilities: Total Current Liabilities
+  total_assets: Total Assets
+  total_liabilities: Total Liabilities
+  total_equity: Total Equity
+  capex: Capital Expenditures
+  dividends_paid: Dividends Paid
+  operating_cash_flow: Operating Cash Flow
+  investing_cash_flow: Investing Cash Flow
+  financing_cash_flow: Financing Cash Flow
+  net_change_in_cash: Net Change in Cash
+  beginning_cash: Beginning Cash Balance
+  ending_cash: Ending Cash Balance
+# Groups of lines the engines sum. `balance_fallback` classifies the balance sheet only when a
+# statement has no totals to read the classification from.
+line_groups:
+  working_capital_changes:                   # DCF: change in net working capital (cash flow lines)
+  - Change in Accounts Receivable
+  - Change in Inventory
+  - Change in Prepaid Expenses
+  - Change in Accounts Payable
+  - Change in Accrued Expenses
+  - Change in Deferred Revenue
+  - Change in Deferred Taxes
+  debt:                                      # DCF: debt in net debt at the valuation date
+  - Long-Term Debt
+  - Current Portion of Long-Term Debt
+  - Revolver
+  - Term Loan A
+  - Term Loan B
+  - Subordinated Debt
+  - Mezzanine Debt
+  balance_fallback:
+    total_assets: [Cash & Cash Equivalents, Accounts Receivable, Inventory, Prepaid Expenses, "Property Plant & Equipment, Net", Intangible Assets, Goodwill]
+    total_liabilities: [Accounts Payable, Accrued Expenses, Deferred Revenue, Current Portion of Long-Term Debt, Revolver, Long-Term Debt, Term Loan A, Term Loan B, Subordinated Debt, Mezzanine Debt, Deferred Tax Liability]
+    total_equity: [Common Stock, Additional Paid-In Capital, Retained Earnings]
+    total_current_assets: [Cash & Cash Equivalents, Accounts Receivable, Inventory, Prepaid Expenses]
+    total_current_liabilities: [Accounts Payable, Accrued Expenses, Deferred Revenue, Current Portion of Long-Term Debt]
+# tolerance: balance-sheet and cash-flow tie check. The statements are solved in passes until the
+# values stop changing (solve_tolerance absolute, solve_rtol relative), at most
+# max(min_passes, periods + extra_passes) passes.
+balancing:
+  tolerance: 1.0e-6
+  max_iterations: 100
+  solve_tolerance: 1.0e-6
+  solve_rtol: 1.0e-9
+  min_passes: 2
+  extra_passes: 3
+
+# Index name of analysis tables (the `analysis` section and engine KPI tables).
+analysis_index: Metric
+
 # Charts drawn for this model (exports, dashboards, `financial-model chart`, the API), in order.
 # kind: bar | line | waterfall | heatmap | pie. source: a statement (income_statement,
 # balance_sheet, cash_flow) or an engine table (see docs/models/definitions.md). A series is a

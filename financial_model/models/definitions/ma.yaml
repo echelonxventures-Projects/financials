@@ -28,6 +28,49 @@ deal:
 loss_making_acquirer:
   revenue_multiple: 5.0
   min_share_price: 1.0
+# Year-1 contribution analysis: one row per metric; `value` is an expression over the line roles
+# of each side's definition (`lines` in three-statement.yaml: revenue, operating_income...).
+contribution:
+- {label: Revenue, value: revenue}
+- {label: EBITDA, value: operating_income + abs(depreciation)}
+- {label: D&A, value: abs(depreciation)}
+- {label: EBIT, value: operating_income}
+- {label: Interest, value: interest_expense}
+- {label: Pre-Tax, value: pre_tax_income}
+- {label: Tax, value: income_tax}
+- {label: Net Income, value: net_income}
+# Column labels and analysis table names.
+labels:
+  metric: Metric
+  acquirer: Acquirer
+  target: Target
+  combined: Combined
+  acquirer_share: Acquirer %
+  period: Period
+tables:
+  summary: Deal Summary
+  accretion_dilution: Accretion Dilution
+  contribution: Contribution
+# `financial-model ma` / `run` console output, in order. A `text` line formats values of the deal
+# summary ({equity_value:,.0f}; also {name}, {scenario}); a `table` block prints one of `tables`
+# (columns: pick and relabel; formats: per column). `when` prints a block only if that value is set.
+console:
+- text: "\n=== {name} ==="
+- {text: "Scenario: {scenario}", when: scenario}
+- text: "Equity purchase price: ${equity_value:,.0f}"
+- text: "  Cash (debt-funded):  ${cash_paid:,.0f}"
+- text: "  Stock:               ${stock_value:,.0f} ({new_shares_issued:,.0f} new shares at ${acquirer_share_price:,.2f})"
+- text: "Acquisition interest:  ${pf_interest:,.0f} / yr"
+- title: "\nAccretion / (dilution):"
+  table: accretion_dilution
+  columns:
+  - {column: acquirer_eps, label: Standalone EPS, format: ",.3f"}
+  - {column: pf_eps, label: Pro Forma EPS, format: ",.3f"}
+  - {column: pf_synergies, label: Synergies, format: ",.0f"}
+  - {column: accretion_dilution_pct, label: Accretion %, format: "+.1%"}
+- title: "\nContribution (year 1):"
+  table: contribution
+  formats: {Acquirer: ",.0f", Target: ",.0f", Combined: ",.0f", Acquirer %: ".1%"}
 # Starter config written by `financial-model init --type ma [--industry <variant>]`.
 # period_paths get start_year/years; truncate_to_years lists are cut to the year count;
 # cap_at_years values are capped at it. Unknown industries use fallback_variant.

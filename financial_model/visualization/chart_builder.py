@@ -11,7 +11,6 @@ embedded, so it works offline / self-hosted) and ``export_all`` writes one file 
 from __future__ import annotations
 
 import html
-import string
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,7 +19,7 @@ from typing import Any
 import pandas as pd
 import plotly.graph_objects as go
 
-from financial_model.core.expressions import evaluate_values
+from financial_model.core.expressions import FormulaError, evaluate_values, format_text
 from financial_model.core.model import FinancialModel, ModelResult
 
 
@@ -155,15 +154,11 @@ class _Data:
 
 
 def _format(template: Any, values: Mapping[str, Any]) -> str:
-    """``str.format`` restricted to plain names (no attribute or index access)."""
-    text = str(template or "")
-    fields = [f for _, f, _, _ in string.Formatter().parse(text) if f is not None]
-    if not fields:
-        return text
-    for f in fields:
-        if not f.isidentifier() or f not in values:
-            raise ChartSpecError(f"unknown name '{f}' in chart text: {text}")
-    return text.format_map(values)
+    """Chart text with ``{name}`` values of the source (plain names only)."""
+    try:
+        return format_text(template, values)
+    except FormulaError as exc:
+        raise ChartSpecError(f"{exc} (chart text)") from exc
 
 
 def _as_item(item: Any) -> dict[str, Any]:

@@ -80,6 +80,64 @@ drivers:
     value: 5
     description: Hold period
     unit: years
+# Opening balance sheet re-cut at close: line role -> a value of the deal (equity, goodwill...)
+# or a number. Tranches open at their funded amounts; other lines keep their opening balances.
+opening_at_close:
+  long_term_debt: 0
+  current_debt: 0
+  common_stock: 0
+  paid_in_capital: equity
+  goodwill: goodwill
+# Working-capital movement in the cash available for the sweep: role -> -1 (asset, an increase
+# uses cash) or +1 (liability, an increase frees cash).
+sweep_working_capital:
+  accounts_receivable: -1
+  inventory: -1
+  prepaid_expenses: -1
+  accounts_payable: 1
+  accrued_expenses: 1
+  deferred_revenue: 1
+# Debt besides the tranches netted against cash at exit (line roles).
+exit_debt: [revolver, long_term_debt, current_debt]
+# Entry EBITDA when neither the `entry_ebitda` driver nor statements exist (period-0 drivers).
+implied_entry_ebitda: "revenue * (1 - (abs(cogs_pct) + abs(rd_pct) + abs(sm_pct) + abs(gna_pct))) - abs(sbc)"
+# Labels of the sources & uses and debt-schedule tables, and the analysis table names.
+labels:
+  source: Source
+  use: Use
+  amount: Amount
+  commitment: Commitment
+  share: "% of Total"
+  revolver_undrawn: Revolver (undrawn)
+  sponsor_equity: Sponsor Equity
+  enterprise_value: Enterprise Value
+  fees: Transaction Fees
+  refinancing: Refinancing Existing Debt
+  period: period
+  total_debt: Total Debt
+  cash: Cash
+tables:
+  returns: LBO Returns
+  sources: Sources
+  uses: Uses
+  debt_schedule: Debt Schedule
+# `financial-model lbo` console output (see ma.yaml for the block fields); text values are the returns.
+console:
+- text: "Sources & Uses:"
+- {table: sources, index: false, float_format: ",.0f", small: {below: 1, format: ",.2f"}}
+- {table: uses, index: false, float_format: ",.0f", small: {below: 1, format: ",.2f"}}
+- {title: "\nDebt schedule:", table: debt_schedule, transpose: true, float_format: ",.0f"}
+- text: ""
+- text: "Entry EBITDA: ${entry_ebitda:,.0f}"
+- text: "Entry EV: ${entry_ev:,.0f}"
+- text: "Equity Invested: ${equity_invested:,.0f}"
+- text: "Exit ({exit_period}) EBITDA: ${exit_ebitda:,.0f}"
+- text: "Exit EV: ${exit_ev:,.0f}"
+- text: "Net Debt at Exit: ${net_debt_at_exit:,.0f}"
+- text: "Equity Value at Exit: ${equity_value_at_exit:,.0f}"
+- text: "MOIC: {moic:.2f}x"
+- text: "IRR: {irr:.2%}"
+
 # Charts added to the inherited three-statement charts. `group: tranches` is every tranche of the model.
 charts:
   lbo_debt:
@@ -98,7 +156,7 @@ charts:
     source: sources_uses
     table: sources
     labels: Source
-    values: Amount
+    values: Amount               # labels.amount
     positive_only: true
     hole: 0.5
     title: Sources of Funds
@@ -125,6 +183,7 @@ tranches:
 # interest lines share the order band [interest_order, interest_order + 1); `add_to` lists the
 # totals a line is added to. The amounts come from the debt-schedule engine.
 layout:
+  unit: $                     # unit of every debt-schedule line
   tranche_balance:
     statement: balance_sheet
     order: 165

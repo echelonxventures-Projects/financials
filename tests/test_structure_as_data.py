@@ -171,7 +171,7 @@ class TestLBOLayout:
         _write(definitions_dir, "lbo", {
             "model_type": "lbo", "extends": "three-statement",
             **{k: v for k, v in load_definition("lbo").items()
-               if k in ("drivers", "tranches", "layout", "name", "sensitivity")},
+               if k not in ("model_type", "extends", "_source", "_chain", *load_definition("three-statement"))},
         })  # fmt: skip
         doc = yaml.safe_load((definitions_dir / "lbo.yaml").read_text())
         doc["layout"]["cash_sweep"]["name"] = "Excess Cash Paydown"

@@ -130,6 +130,9 @@ drivers:
     value: 0
     description: Beginning cash
     unit: $
+# Column labels of variance_analysis (actuals vs budget).
+variance_labels: {budget: Budget, actual: Actual, variance: Variance, variance_pct: Variance %}
+
 # Charts of the budget (see three-statement.yaml for the fields). `match` picks every line by name.
 charts:
   arr:

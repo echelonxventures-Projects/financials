@@ -238,7 +238,9 @@ async def calculate_dcf(request: DCFRequest) -> dict[str, Any]:
         response: dict[str, Any] = {
             "model_result": _result_to_dict(result),
             "dcf": _jsonable(dcf_result),
-            "free_cash_flow": table_to_jsonable(model.analysis_tables(result)["Free Cash Flow"]),
+            "free_cash_flow": table_to_jsonable(
+                model.analysis_tables(result)[model.setting("tables")["free_cash_flow"]]
+            ),
         }
         if request.wacc_range and request.growth_range:
             sens = model.sensitivity_analysis(

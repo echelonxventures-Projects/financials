@@ -14,6 +14,7 @@ import typer
 import yaml
 
 from financial_model import __version__, config_loader
+from financial_model.core.expressions import format_text
 from financial_model.core.model import FinancialModel, ModelResult
 from financial_model.data.loader import config_from_statements, derive_drivers_from_financials
 from financial_model.data.providers import available_providers, fetch_statements
@@ -149,24 +150,9 @@ def dcf(
     result = model.calculate(scenario=scenario)
     dcf_result = model.calculate_dcf(result)
 
-    typer.echo(f"WACC: {dcf_result['wacc']:.2%}")
-    typer.echo(f"Cost of Equity: {dcf_result['cost_of_equity']:.2%}")
-    typer.echo(f"Terminal EBITDA: ${dcf_result['terminal_ebitda']:,.0f}")
-    typer.echo(f"EV (Gordon): ${dcf_result['ev_gordon']:,.0f}")
-    typer.echo(f"EV (Multiple): ${dcf_result['ev_multiple']:,.0f}")
-    typer.echo(f"Net Debt: ${dcf_result['net_debt']:,.0f}")
-    typer.echo(f"Equity Value (Gordon): ${dcf_result['equity_gordon']:,.0f}")
-    typer.echo(f"Equity Value (Multiple): ${dcf_result['equity_multiple']:,.0f}")
-    typer.echo(f"Price/Share (Gordon): ${dcf_result['price_gordon']:,.2f}")
-    typer.echo(f"Price/Share (Multiple): ${dcf_result['price_multiple']:,.2f}")
-
-    typer.echo("\nFree cash flow:")
-    fcf = pd.DataFrame(dcf_result["fcf_detail"], index=dcf_result["periods"]).T
-    typer.echo(fcf.to_string(float_format=lambda x: f"{x:,.0f}"))
-
-    sens = model.sensitivity_analysis(result)
-    typer.echo("\nSensitivity (Equity Value, Gordon growth):")
-    typer.echo(sens.to_string(float_format=lambda x: f"{x:,.0f}"))
+    fcf = pd.DataFrame(dcf_result["fcf_detail"], index=dcf_result["periods"])
+    tables = {"fcf": fcf, "sensitivity": model.sensitivity_analysis(result)}
+    _print_console(model.setting("console") or [], dcf_result, tables)
 
     if output:
         model.export_excel(str(output), result)
@@ -186,23 +172,8 @@ def lbo(
     lbo_result = model.calculate_returns(result)
     su = model.sources_uses(result)
 
-    typer.echo("Sources & Uses:")
-    typer.echo(su["sources"].to_string(index=False, float_format=lambda x: f"{x:,.2f}" if abs(x) < 1 else f"{x:,.0f}"))
-    typer.echo(su["uses"].to_string(index=False, float_format=lambda x: f"{x:,.2f}" if abs(x) < 1 else f"{x:,.0f}"))
-
-    typer.echo("\nDebt schedule:")
-    typer.echo(model.debt_schedule(result).T.to_string(float_format=lambda x: f"{x:,.0f}"))
-
-    typer.echo("")
-    typer.echo(f"Entry EBITDA: ${lbo_result['entry_ebitda']:,.0f}")
-    typer.echo(f"Entry EV: ${lbo_result['entry_ev']:,.0f}")
-    typer.echo(f"Equity Invested: ${lbo_result['equity_invested']:,.0f}")
-    typer.echo(f"Exit ({lbo_result['exit_period']}) EBITDA: ${lbo_result['exit_ebitda']:,.0f}")
-    typer.echo(f"Exit EV: ${lbo_result['exit_ev']:,.0f}")
-    typer.echo(f"Net Debt at Exit: ${lbo_result['net_debt_at_exit']:,.0f}")
-    typer.echo(f"Equity Value at Exit: ${lbo_result['equity_value_at_exit']:,.0f}")
-    typer.echo(f"MOIC: {lbo_result['moic']:.2f}x")
-    typer.echo(f"IRR: {lbo_result['irr']:.2%}")
+    tables = {"sources": su["sources"], "uses": su["uses"], "debt_schedule": model.debt_schedule(result)}
+    _print_console(model.setting("console") or [], lbo_result, tables)
 
     if output:
         model.export_excel(str(output), result)
@@ -483,46 +454,58 @@ def _load_model(config_path: Path, model_type: str | None = None) -> FinancialMo
     return model
 
 
+def _formatter(spec: str) -> Any:
+    return lambda value: format(value, spec)
+
+
+def _float_format(block: dict[str, Any]) -> Any:
+    """``float_format`` spec, with an optional ``small: {below, format}`` for values under a magnitude."""
+    spec, small = block.get("float_format"), block.get("small") or {}
+    if not spec:
+        return None
+    if small:
+        below, small_spec = float(small["below"]), str(small["format"])
+        return lambda x: format(x, small_spec) if abs(x) < below else format(x, str(spec))
+    return _formatter(str(spec))
+
+
+def _print_console(blocks: list[Any], values: dict[str, Any], tables: dict[str, Any]) -> None:
+    """Print a definition's ``console`` blocks: ``{text}`` lines ({name} = a result value) and
+    ``{table}`` blocks (``title``, ``columns`` [{column, label, format}], ``formats``, ``float_format``,
+    ``small``, ``transpose``, ``index``). ``when: <name>`` prints a block only when that value is set."""
+    for block in blocks or []:
+        if block.get("when") and not values.get(str(block["when"])):
+            continue
+        if "text" in block:
+            typer.echo(format_text(block["text"], values))
+            continue
+        if block.get("title") is not None:
+            typer.echo(format_text(block["title"], values))
+        frame = tables[str(block["table"])]
+        formats = dict(block.get("formats") or {})
+        if block.get("columns"):
+            frame = frame[[c["column"] for c in block["columns"]]].copy()
+            frame.columns = [c["label"] for c in block["columns"]]
+            formats.update({c["label"]: c["format"] for c in block["columns"] if c.get("format")})
+        if block.get("transpose"):
+            frame = frame.T
+        kwargs: dict[str, Any] = {"index": bool(block.get("index", True))}
+        if formats:
+            kwargs["formatters"] = {col: _formatter(f) for col, f in formats.items()}
+        if _float_format(block) is not None:
+            kwargs["float_format"] = _float_format(block)
+        typer.echo(frame.to_string(**kwargs))
+
+
 def _run_merger(model: MergerModel, scenario: str | None, output: Path | None, fmt: str | None) -> None:
     tables = model.analysis_tables(scenario)
     if _json_to_stdout(output, fmt):
         typer.echo(JSONExporter().dumps_tables(tables))
         return
-    summary = tables["Deal Summary"]
-    typer.echo(f"\n=== {model.name} ===")
-    if scenario:
-        typer.echo(f"Scenario: {scenario}")
-    typer.echo(f"Equity purchase price: ${summary['equity_value']:,.0f}")
-    typer.echo(f"  Cash (debt-funded):  ${summary['cash_paid']:,.0f}")
-    typer.echo(
-        f"  Stock:               ${summary['stock_value']:,.0f} "
-        f"({summary['new_shares_issued']:,.0f} new shares at ${summary['acquirer_share_price']:,.2f})"
-    )
-    typer.echo(f"Acquisition interest:  ${summary['pf_interest']:,.0f} / yr")
-    typer.echo("\nAccretion / (dilution):")
-    ad = tables["Accretion Dilution"][["acquirer_eps", "pf_eps", "pf_synergies", "accretion_dilution_pct"]].copy()
-    ad.columns = ["Standalone EPS", "Pro Forma EPS", "Synergies", "Accretion %"]
-    typer.echo(
-        ad.to_string(
-            formatters={
-                "Standalone EPS": "{:,.3f}".format,
-                "Pro Forma EPS": "{:,.3f}".format,
-                "Synergies": "{:,.0f}".format,
-                "Accretion %": "{:+.1%}".format,
-            }
-        )
-    )
-    typer.echo("\nContribution (year 1):")
-    typer.echo(
-        tables["Contribution"].to_string(
-            formatters={
-                "Acquirer": "{:,.0f}".format,
-                "Target": "{:,.0f}".format,
-                "Combined": "{:,.0f}".format,
-                "Acquirer %": "{:.1%}".format,
-            }
-        )
-    )
+    # What is printed, and how, is the `console` section of the ma definition.
+    names = model.definition.get("tables") or {}
+    values = {**tables[names["summary"]], "name": model.name, "scenario": scenario or ""}
+    _print_console(model.definition.get("console") or [], values, {k: tables[v] for k, v in names.items()})
     if output:
         resolved = _resolve_format(output, fmt)
         if resolved == "excel":

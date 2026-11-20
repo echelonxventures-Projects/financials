@@ -334,7 +334,19 @@ class _ValueEvaluator(_Evaluator):
             return float(len(flat))
         if fn in ("min", "max"):
             return (min if fn == "min" else max)(flat)
-        return super().call(fn, args)
+        if fn == "abs":
+            return abs(args[0])
+        if fn == "round":
+            return round(args[0], int(args[1]) if len(args) > 1 else 0)
+        if fn == "safe_div":
+            if len(args) < 2:
+                raise FormulaError(f"safe_div(a, b[, default]) needs two arguments: {self.source}")
+            return args[0] / args[1] if args[1] else (args[2] if len(args) > 2 else 0.0)
+        if fn == "clamp":
+            if len(args) != 3:
+                raise FormulaError(f"clamp(x, lo, hi) needs three arguments: {self.source}")
+            return min(max(args[0], args[1]), args[2])
+        raise FormulaError(f"unknown function {fn}")  # pragma: no cover - rejected at compile time
 
 
 def evaluate_values(source: str, names: Mapping[str, Any]) -> float:
@@ -344,3 +356,15 @@ def evaluate_values(source: str, names: Mapping[str, Any]) -> float:
     if math.isnan(result) or math.isinf(result):
         raise FormulaError(f"expression produced {result}: {source}")
     return result
+
+
+def format_text(template: Any, values: Mapping[str, Any]) -> str:
+    """``str.format`` of a template from a definition, restricted to plain names (``{irr:.1%}``):
+    no attribute or index access, so a template cannot reach into objects."""
+    import string
+
+    text = str(template or "")
+    for _, field, _, _ in string.Formatter().parse(text):
+        if field is not None and (not field.isidentifier() or field not in values):
+            raise FormulaError(f"unknown name '{field}' in text: {text}")
+    return text.format_map(values)

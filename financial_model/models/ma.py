@@ -13,6 +13,7 @@ from typing import Any
 import pandas as pd
 
 from financial_model.core.definitions import load_definition
+from financial_model.core.expressions import evaluate_values
 from financial_model.models.three_statement import ThreeStatementModel
 
 
@@ -143,7 +144,9 @@ class MergerModel:
             return acq_eps * self.acquirer_pe
         # Loss-making acquirer: fall back to a revenue multiple
         fallback = self.definition.get("loss_making_acquirer") or {}
-        revenue_per_share = _row(acq_is, "Revenue", 0) / self.acquirer_shares if self.acquirer_shares else 0.0
+        revenue_per_share = (
+            _row(acq_is, self.acquirer.line_name("revenue"), 0) / self.acquirer_shares if self.acquirer_shares else 0.0
+        )
         return max(revenue_per_share * float(fallback["revenue_multiple"]), float(fallback["min_share_price"]))
 
     def calculate_accretion_dilution(self, scenario: str | None = None) -> dict[str, Any]:
@@ -153,7 +156,8 @@ class MergerModel:
         tgt_is = tgt_result.income_statement
         n_periods = min(len(acq_result.periods), len(tgt_result.periods))
 
-        acq_ni_0 = _row(acq_is, "Net Income", 0)
+        a_line, t_line = self.acquirer.line_name, self.target.line_name
+        acq_ni_0 = _row(acq_is, a_line("net_income"), 0)
         acq_eps_0 = acq_ni_0 / self.acquirer_shares if self.acquirer_shares > 0 else 0.0
 
         equity_value = self.offer_price_per_share * self.target_shares
@@ -167,8 +171,8 @@ class MergerModel:
 
         per_period: list[dict[str, Any]] = []
         for i in range(n_periods):
-            acq_ni = _row(acq_is, "Net Income", i)
-            tgt_ni = _row(tgt_is, "Net Income", i)
+            acq_ni = _row(acq_is, a_line("net_income"), i)
+            tgt_ni = _row(tgt_is, t_line("net_income"), i)
             acq_eps = acq_ni / self.acquirer_shares if self.acquirer_shares > 0 else 0.0
             synergies = self.synergies * self._phase_in(i)
             # Pro forma NI = standalone NIs + after-tax synergies - after-tax acquisition interest
@@ -181,8 +185,10 @@ class MergerModel:
                     "acquirer_eps": acq_eps,
                     "pf_eps": pf_eps,
                     "accretion_dilution_pct": accretion,
-                    "pf_revenue": _row(acq_is, "Revenue", i) + _row(tgt_is, "Revenue", i),
-                    "pf_ebit": _row(acq_is, "Operating Income", i) + _row(tgt_is, "Operating Income", i) + synergies,
+                    "pf_revenue": _row(acq_is, a_line("revenue"), i) + _row(tgt_is, t_line("revenue"), i),
+                    "pf_ebit": _row(acq_is, a_line("operating_income"), i)
+                    + _row(tgt_is, t_line("operating_income"), i)
+                    + synergies,
                     "pf_synergies": synergies,
                     "pf_ni": pf_ni,
                 }
@@ -192,7 +198,7 @@ class MergerModel:
         return {
             "acquirer_ni": acq_ni_0,
             "acquirer_eps": acq_eps_0,
-            "target_ni": _row(tgt_is, "Net Income", 0),
+            "target_ni": _row(tgt_is, t_line("net_income"), 0),
             "equity_value": equity_value,
             "cash_paid": cash_paid,
             "stock_value": stock_value,
@@ -215,31 +221,25 @@ class MergerModel:
         acq_result, tgt_result = self._results(scenario)
         acq_is, tgt_is = acq_result.income_statement, tgt_result.income_statement
 
-        def ebitda(df: pd.DataFrame) -> float:
-            return _row(df, "Operating Income", 0) + abs(_row(df, "Depreciation & Amortization", 0))
+        lab = self.definition.get("labels") or {}
 
+        def year_one(model: ThreeStatementModel, df: pd.DataFrame) -> dict[str, float]:
+            """Every line role's year-1 value, the names a ``contribution`` metric can use."""
+            return {role: _row(df, str(line), 0) for role, line in model.lines.items()}
+
+        acq_values, tgt_values = year_one(self.acquirer, acq_is), year_one(self.target, tgt_is)
         rows = []
-        metrics: list[tuple[str, Any]] = [
-            ("Revenue", lambda df: _row(df, "Revenue", 0)),
-            ("EBITDA", ebitda),
-            ("D&A", lambda df: abs(_row(df, "Depreciation & Amortization", 0))),
-            ("EBIT", lambda df: _row(df, "Operating Income", 0)),
-            ("Interest", lambda df: _row(df, "Interest Expense", 0)),
-            ("Pre-Tax", lambda df: _row(df, "Pre-Tax Income", 0)),
-            ("Tax", lambda df: _row(df, "Income Tax Expense", 0)),
-            ("Net Income", lambda df: _row(df, "Net Income", 0)),
-        ]
-        for label, fn in metrics:
-            acq_val = fn(acq_is)
-            tgt_val = fn(tgt_is)
+        for metric in self.definition.get("contribution") or []:
+            acq_val = evaluate_values(str(metric["value"]), acq_values)
+            tgt_val = evaluate_values(str(metric["value"]), tgt_values)
             combined = acq_val + tgt_val
             rows.append(
                 {
-                    "Metric": label,
-                    "Acquirer": acq_val,
-                    "Target": tgt_val,
-                    "Combined": combined,
-                    "Acquirer %": acq_val / combined if combined != 0 else 0.0,
+                    lab["metric"]: str(metric["label"]),
+                    lab["acquirer"]: acq_val,
+                    lab["target"]: tgt_val,
+                    lab["combined"]: combined,
+                    lab["acquirer_share"]: acq_val / combined if combined != 0 else 0.0,
                 }
             )
         return pd.DataFrame(rows)
@@ -248,10 +248,11 @@ class MergerModel:
         """Deal summary, accretion/dilution by period and year-1 contribution analysis."""
         ad = self.calculate_accretion_dilution(scenario)
         summary = {k: v for k, v in ad.items() if k != "by_period"}
+        lab, tables = self.definition.get("labels") or {}, self.definition.get("tables") or {}
         by_period = pd.DataFrame(ad["by_period"]).set_index("period")
-        by_period.index.name = "Period"
+        by_period.index.name = lab["period"]
         return {
-            "Deal Summary": summary,
-            "Accretion Dilution": by_period,
-            "Contribution": self.contribution_analysis(scenario).set_index("Metric"),
+            tables["summary"]: summary,
+            tables["accretion_dilution"]: by_period,
+            tables["contribution"]: self.contribution_analysis(scenario).set_index(lab["metric"]),
         }

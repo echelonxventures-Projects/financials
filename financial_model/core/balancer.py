@@ -3,6 +3,9 @@ Balancing logic for Balance Sheet and Cash Flow Statement.
 
 Balance sheet plugs
 -------------------
+Every line named here is a role in the model definition's ``lines`` section (built-in names
+shown); the fallback classification and the tolerance are ``line_groups`` and ``balancing``.
+
 * **Retained Earnings** rolls forward from the opening balance with net income
   less dividends (it is derived, not solved).
 * **Cash** and **Revolver** are solved jointly each period so that
@@ -21,10 +24,12 @@ financing flows equals that movement.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import pandas as pd
 
 from financial_model.core.assumptions import Assumptions
+from financial_model.core.definitions import engine_section, line_role
 from financial_model.core.line_item import LineItemType
 from financial_model.core.period import PeriodIndex
 from financial_model.core.statement import Statement
@@ -37,43 +42,6 @@ class BalanceResult:
     max_diff: float
     plug_values: dict[str, float]
     errors: list[str]
-
-
-# Fallback classification used when no Statement topology is available
-DEFAULT_ASSET_LINES = [
-    "Cash & Cash Equivalents",
-    "Accounts Receivable",
-    "Inventory",
-    "Prepaid Expenses",
-    "Property Plant & Equipment, Net",
-    "Intangible Assets",
-    "Goodwill",
-]
-DEFAULT_LIABILITY_LINES = [
-    "Accounts Payable",
-    "Accrued Expenses",
-    "Deferred Revenue",
-    "Current Portion of Long-Term Debt",
-    "Revolver",
-    "Long-Term Debt",
-    "Term Loan A",
-    "Term Loan B",
-    "Subordinated Debt",
-    "Mezzanine Debt",
-    "Deferred Tax Liability",
-]
-DEFAULT_EQUITY_LINES = [
-    "Common Stock",
-    "Additional Paid-In Capital",
-    "Retained Earnings",
-]
-DEFAULT_CURRENT_ASSET_LINES = ["Cash & Cash Equivalents", "Accounts Receivable", "Inventory", "Prepaid Expenses"]
-DEFAULT_CURRENT_LIABILITY_LINES = [
-    "Accounts Payable",
-    "Accrued Expenses",
-    "Deferred Revenue",
-    "Current Portion of Long-Term Debt",
-]
 
 
 def _cell(df: pd.DataFrame, line: str, period_idx: int) -> float:
@@ -91,18 +59,33 @@ class BalanceSheetBalancer:
 
     def __init__(
         self,
-        cash_line: str = "Cash & Cash Equivalents",
-        revolver_line: str = "Revolver",
-        retained_earnings_line: str = "Retained Earnings",
-        max_iterations: int = 100,
-        tolerance: float = 1e-6,
+        cash_line: str | None = None,
+        revolver_line: str | None = None,
+        retained_earnings_line: str | None = None,
+        max_iterations: int | None = None,
+        tolerance: float | None = None,
+        lines: dict[str, Any] | None = None,
+        groups: dict[str, Any] | None = None,
+        balancing: dict[str, Any] | None = None,
     ):
-        self.cash_line = cash_line
-        self.revolver_line = revolver_line
-        self.retained_earnings_line = retained_earnings_line
-        self.max_iterations = max_iterations
-        self.tolerance = tolerance
+        # Line roles, fallback groups and limits: the definition's `lines`, `line_groups`, `balancing`.
+        self.lines = dict(lines) if lines is not None else engine_section("lines")
+        settings = balancing if balancing is not None else engine_section("balancing")
+        self.cash_line = cash_line or line_role(self.lines, "cash")
+        self.revolver_line = revolver_line or line_role(self.lines, "revolver")
+        self.retained_earnings_line = retained_earnings_line or line_role(self.lines, "retained_earnings")
+        self.max_iterations = int(max_iterations if max_iterations is not None else settings.get("max_iterations", 1))
+        self.tolerance = float(tolerance if tolerance is not None else settings.get("tolerance", 0.0))
+        fallback = (groups if groups is not None else engine_section("line_groups")).get("balance_fallback") or {}
+        #: total line -> its member lines, used when a statement has no topology to read them from
+        self.fallback: dict[str, list[str]] = {line_role(self.lines, role): list(m) for role, m in fallback.items()}
         self.opening_retained_earnings = 0.0
+
+    def _role(self, role: str) -> str:
+        return line_role(self.lines, role)
+
+    def _members(self, role: str) -> list[str]:
+        return self.fallback.get(self._role(role), [])
 
     # ------------------------------------------------------------------ #
     # Classification helpers
@@ -115,9 +98,9 @@ class BalanceSheetBalancer:
         return [name for name in fallback if name in bs_data.index]
 
     def _classify(self, stmt: Statement | None, bs_data: pd.DataFrame) -> tuple[list[str], list[str], list[str]]:
-        assets = self._leaves(stmt, "Total Assets", DEFAULT_ASSET_LINES, bs_data)
-        liabilities = self._leaves(stmt, "Total Liabilities", DEFAULT_LIABILITY_LINES, bs_data)
-        equity = self._leaves(stmt, "Total Equity", DEFAULT_EQUITY_LINES, bs_data)
+        assets = self._leaves(stmt, self._role("total_assets"), self._members("total_assets"), bs_data)
+        liabilities = self._leaves(stmt, self._role("total_liabilities"), self._members("total_liabilities"), bs_data)
+        equity = self._leaves(stmt, self._role("total_equity"), self._members("total_equity"), bs_data)
         return assets, liabilities, equity
 
     # ------------------------------------------------------------------ #
@@ -145,10 +128,10 @@ class BalanceSheetBalancer:
 
             # Retained earnings roll-forward (derived, not a plug)
             if self.retained_earnings_line in bs_data.index:
-                ni = _cell(is_data, "Net Income", period_idx)
-                dividends = _cell(cf_data, "Dividends Paid", period_idx)  # negative = cash out
-                if "Dividends" in is_data.index:
-                    dividends -= abs(_cell(is_data, "Dividends", period_idx))
+                ni = _cell(is_data, self._role("net_income"), period_idx)
+                dividends = _cell(cf_data, self._role("dividends_paid"), period_idx)  # negative = cash out
+                if self.lines.get("dividends") in is_data.index:
+                    dividends -= abs(_cell(is_data, self._role("dividends"), period_idx))
                 prev_re = (
                     _cell(bs_data, self.retained_earnings_line, period_idx - 1)
                     if period_idx > 0
@@ -190,13 +173,14 @@ class BalanceSheetBalancer:
         self._recalculate_aggregates(bs_data, balance_sheet_stmt)
 
         max_diff = 0.0
+        total_a, total_l, total_e = (self._role(r) for r in ("total_assets", "total_liabilities", "total_equity"))
         for period_idx in range(len(periods)):
-            if "Total Assets" in bs_data.index:
-                total_assets = _cell(bs_data, "Total Assets", period_idx)
+            if total_a in bs_data.index:
+                total_assets = _cell(bs_data, total_a, period_idx)
             else:
                 total_assets = sum(_cell(bs_data, line, period_idx) for line in assets)
-            if "Total Liabilities" in bs_data.index and "Total Equity" in bs_data.index:
-                le = _cell(bs_data, "Total Liabilities", period_idx) + _cell(bs_data, "Total Equity", period_idx)
+            if total_l in bs_data.index and total_e in bs_data.index:
+                le = _cell(bs_data, total_l, period_idx) + _cell(bs_data, total_e, period_idx)
             else:
                 le = sum(_cell(bs_data, line, period_idx) for line in liabilities) + sum(
                     _cell(bs_data, line, period_idx) for line in equity
@@ -224,13 +208,7 @@ class BalanceSheetBalancer:
                     bs_data.loc[item.name, bs_data.columns[period_idx]] = item.calculate(bs_data, period_idx, {})
             return
 
-        groups = {
-            "Total Current Assets": DEFAULT_CURRENT_ASSET_LINES,
-            "Total Current Liabilities": DEFAULT_CURRENT_LIABILITY_LINES,
-            "Total Assets": DEFAULT_ASSET_LINES,
-            "Total Liabilities": DEFAULT_LIABILITY_LINES,
-            "Total Equity": DEFAULT_EQUITY_LINES,
-        }
+        groups = self.fallback
         for period_idx in range(bs_data.shape[1]):
             col = bs_data.columns[period_idx]
             for total_line, members in groups.items():
@@ -241,19 +219,19 @@ class BalanceSheetBalancer:
     def _sum_assets(self, bs_data: pd.DataFrame, period_idx: int, exclude_plugs: bool = False) -> float:
         return sum(
             _cell(bs_data, line, period_idx)
-            for line in DEFAULT_ASSET_LINES
+            for line in self._members("total_assets")
             if not (exclude_plugs and line == self.cash_line)
         )
 
     def _sum_liabilities(self, bs_data: pd.DataFrame, period_idx: int, exclude_plugs: bool = False) -> float:
         return sum(
             _cell(bs_data, line, period_idx)
-            for line in DEFAULT_LIABILITY_LINES
+            for line in self._members("total_liabilities")
             if not (exclude_plugs and line == self.revolver_line)
         )
 
     def _sum_equity(self, bs_data: pd.DataFrame, period_idx: int, exclude_plugs: bool = False) -> float:  # noqa: ARG002
-        return sum(_cell(bs_data, line, period_idx) for line in DEFAULT_EQUITY_LINES)
+        return sum(_cell(bs_data, line, period_idx) for line in self._members("total_equity"))
 
 
 class CashFlowBalancer:
@@ -263,21 +241,27 @@ class CashFlowBalancer:
     the sum of operating, investing and financing flows.
     """
 
-    SUBTOTALS = ("Operating Cash Flow", "Investing Cash Flow", "Financing Cash Flow")
-
     def __init__(
         self,
-        cash_line: str = "Cash & Cash Equivalents",
-        net_change_line: str = "Net Change in Cash",
-        beginning_cash_line: str = "Beginning Cash Balance",
-        ending_cash_line: str = "Ending Cash Balance",
-        tolerance: float = 1e-6,
+        cash_line: str | None = None,
+        net_change_line: str | None = None,
+        beginning_cash_line: str | None = None,
+        ending_cash_line: str | None = None,
+        tolerance: float | None = None,
+        lines: dict[str, Any] | None = None,
+        balancing: dict[str, Any] | None = None,
     ):
-        self.cash_line = cash_line
-        self.net_change_line = net_change_line
-        self.beginning_cash_line = beginning_cash_line
-        self.ending_cash_line = ending_cash_line
-        self.tolerance = tolerance
+        roles = dict(lines) if lines is not None else engine_section("lines")
+        settings = balancing if balancing is not None else engine_section("balancing")
+        self.cash_line = cash_line or line_role(roles, "cash")
+        self.net_change_line = net_change_line or line_role(roles, "net_change_in_cash")
+        self.beginning_cash_line = beginning_cash_line or line_role(roles, "beginning_cash")
+        self.ending_cash_line = ending_cash_line or line_role(roles, "ending_cash")
+        self.tolerance = float(tolerance if tolerance is not None else settings.get("tolerance", 0.0))
+        #: subtotals whose sum is the net change in cash
+        self.SUBTOTALS = tuple(
+            line_role(roles, r) for r in ("operating_cash_flow", "investing_cash_flow", "financing_cash_flow")
+        )
 
     def _flow_lines(self, cf_data: pd.DataFrame, stmt: Statement | None) -> list[str]:
         """Lines whose sum should equal the net change in cash."""

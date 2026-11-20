@@ -29,6 +29,7 @@ import pandas as pd
 
 from financial_model.core.assumptions import Assumptions
 from financial_model.core.definitions import load_definition
+from financial_model.core.expressions import evaluate_values
 from financial_model.core.line_item import (
     CalculationRule,
     Driver,
@@ -83,6 +84,11 @@ class LBOModel(ThreeStatementModel):
         """Defaults come from models/definitions/lbo.yaml; keyword arguments override drivers by name."""
         super().__init__(name=name, periods=periods, assumptions=assumptions)
         self._ebitda0_cache: float | None = None
+        self._closing: dict[str, Any] | None = None
+        #: output labels (sources & uses, debt schedule) and analysis table names: lbo.yaml `labels`, `tables`
+        self.labels: dict[str, str] = self.setting("labels") or {}
+        self.tables: dict[str, str] = self.setting("tables") or {}
+        self._sweep_wc: dict[str, Any] = self.setting("sweep_working_capital") or {}
         self.tranches, self.amortizing, self.interest_lines = _tranche_tables(self.setting("tranches") or [])
         self._apply_overrides(overrides)
         self._add_lbo_line_items()
@@ -91,10 +97,9 @@ class LBOModel(ThreeStatementModel):
     # Deal maths
     # ------------------------------------------------------------------ #
     def _driver_implied_ebitda(self, drivers: dict[str, Driver]) -> float:
-        """First-year EBITDA implied by the standard driver set (used before any statements exist)."""
-        revenue = _dv(drivers, "revenue", 0)
-        margin = 1 - sum(abs(_dv(drivers, name, 0)) for name in ("cogs_pct", "rd_pct", "sm_pct", "gna_pct"))
-        return revenue * margin - abs(_dv(drivers, "sbc", 0))
+        """First-year EBITDA implied by the drivers (``implied_entry_ebitda``; before any statements exist)."""
+        values = {name: d.get_value(0) for name, d in drivers.items()}
+        return evaluate_values(str(self.setting("implied_entry_ebitda") or "0"), values)
 
     def entry_ebitda_value(self, drivers: dict[str, Driver], df: pd.DataFrame | None = None) -> float:
         """EBITDA used for the entry valuation (driver, else first-year model EBITDA)."""
@@ -102,8 +107,8 @@ class LBOModel(ThreeStatementModel):
         if explicit > 0:
             return explicit
         if df is not None:
-            ebit = lookup_value(df, "Operating Income", 0, statement=IS)
-            dna = abs(lookup_value(df, "Depreciation & Amortization", 0, statement=IS))
+            ebit = lookup_value(df, self.line_name("operating_income"), 0, statement=IS)
+            dna = abs(lookup_value(df, self.line_name("depreciation"), 0, statement=IS))
             if ebit != 0 or dna != 0:
                 self._ebitda0_cache = ebit + dna
         if self._ebitda0_cache is not None:
@@ -150,15 +155,21 @@ class LBOModel(ThreeStatementModel):
         }
 
     # Opening balance sheet is re-cut at close -------------------------- #
+    @property
+    def closing_balances(self) -> dict[str, Any]:
+        """Line -> its opening balance after the close: a ``deal`` value name or a number (``opening_at_close``)."""
+        if self._closing is None:
+            spec = self.setting("opening_at_close") or {}
+            self._closing = {self.line_name(role): value for role, value in spec.items()}
+        return self._closing
+
     def opening_balance(self, line: str, drivers: dict[str, Driver], df: pd.DataFrame | None = None) -> float:
-        if line in ("Long-Term Debt", "Current Portion of Long-Term Debt", "Common Stock"):
-            return 0.0
         if line in self.tranches:
             return self.deal(drivers, df)["tranches"][line]
-        if line == "Additional Paid-In Capital":
-            return self.deal(drivers, df)["equity"]
-        if line == "Goodwill":
-            return self.deal(drivers, df)["goodwill"]
+        closing = self.closing_balances
+        if line in closing:
+            value = closing[line]
+            return float(self.deal(drivers, df)[value]) if isinstance(value, str) else float(value)
         return super().opening_balance(line, drivers)
 
     def opening_retained_earnings(self, drivers: dict[str, Driver]) -> float:  # noqa: ARG002
@@ -196,18 +207,18 @@ class LBOModel(ThreeStatementModel):
 
         # Cash available for the sweep: prior cash + flows before optional debt service
         prior_cash = previous_value(
-            df, "Cash & Cash Equivalents", idx, opening=_dv(drivers, "beginning_cash", 0), statement=BS
+            df, self.line_name("cash"), idx, opening=_dv(drivers, "beginning_cash", 0), statement=BS
         )
-        ni = lookup_value(df, "Net Income", idx, statement=IS)
-        dna = abs(lookup_value(df, "Depreciation & Amortization", idx, statement=IS))
-        sbc = abs(lookup_value(df, "Stock-Based Compensation", idx, statement=IS))
+        ni = lookup_value(df, self.line_name("net_income"), idx, statement=IS)
+        dna = abs(lookup_value(df, self.line_name("depreciation"), idx, statement=IS))
+        sbc = abs(lookup_value(df, self.line_name("sbc"), idx, statement=IS))
+        # Working-capital movement: `sweep_working_capital` (role -> sign: -1 asset, +1 liability)
+        wc = 0.0
+        for role, sign in self._sweep_wc.items():
+            delta = self._delta(df, self.line_name(role), idx, drivers)
+            wc = wc - delta if float(sign) < 0 else wc + delta
         wc = (
-            -self._delta(df, "Accounts Receivable", idx, drivers)
-            - self._delta(df, "Inventory", idx, drivers)
-            - self._delta(df, "Prepaid Expenses", idx, drivers)
-            + self._delta(df, "Accounts Payable", idx, drivers)
-            + self._delta(df, "Accrued Expenses", idx, drivers)
-            + self._delta(df, "Deferred Revenue", idx, drivers)
+            wc
             - (
                 _dv(drivers, "intangibles", idx)
                 - (_dv(drivers, "intangibles", idx - 1) if idx > 0 else _dv(drivers, "intangibles", 0))
@@ -257,7 +268,7 @@ class LBOModel(ThreeStatementModel):
             return total_change + self.debt_schedule_for_period(df, idx, drivers)["_mandatory_total"]
 
         def revolver_interest(df: pd.DataFrame, idx: int, drivers: dict[str, Driver]) -> float:
-            return -previous_value(df, "Revolver", idx, opening=0.0, statement=BS) * abs(
+            return -previous_value(df, self.line_name("revolver"), idx, opening=0.0, statement=BS) * abs(
                 _dv(drivers, "revolver_rate", idx)
             )
 
@@ -273,7 +284,7 @@ class LBOModel(ThreeStatementModel):
                     fields.pop("line_type", LineItemType.CALCULATED),
                     statement,
                     order=order,
-                    unit="$",
+                    unit=str(spec.get("unit", layout.get("unit", ""))),
                     description=description,
                     **fields,
                 )
@@ -375,25 +386,26 @@ class LBOModel(ThreeStatementModel):
         deal = self.deal(drivers, df)
         total = deal["total_uses"] or 1.0
 
+        lab = self.labels
         sources = pd.DataFrame(
             {
-                "Source": [*self.tranches.keys(), "Revolver (undrawn)", "Sponsor Equity"],
-                "Amount": [*(deal["tranches"][n] for n in self.tranches), 0.0, deal["equity"]],
-                "Commitment": [
+                lab["source"]: [*self.tranches.keys(), lab["revolver_undrawn"], lab["sponsor_equity"]],
+                lab["amount"]: [*(deal["tranches"][n] for n in self.tranches), 0.0, deal["equity"]],
+                lab["commitment"]: [
                     *(deal["tranches"][n] for n in self.tranches),
                     deal["revolver_commitment"],
                     deal["equity"],
                 ],
             }
         )
-        sources["% of Total"] = sources["Amount"] / total
+        sources[lab["share"]] = sources[lab["amount"]] / total
         uses = pd.DataFrame(
             {
-                "Use": ["Enterprise Value", "Transaction Fees", "Refinancing Existing Debt"],
-                "Amount": [deal["entry_ev"], deal["fees"], deal["refinanced_debt"]],
+                lab["use"]: [lab["enterprise_value"], lab["fees"], lab["refinancing"]],
+                lab["amount"]: [deal["entry_ev"], deal["fees"], deal["refinanced_debt"]],
             }
         )
-        uses["% of Total"] = uses["Amount"] / total
+        uses[lab["share"]] = uses[lab["amount"]] / total
 
         return {
             "sources": sources,
@@ -411,20 +423,21 @@ class LBOModel(ThreeStatementModel):
         """Per-period tranche balances, interest and repayments as a table."""
         result = result or self.calculate()
         bs, is_, cf = result.balance_sheet, result.income_statement, result.cash_flow
-        lines = self.lbo_lines
+        lines, lab = self.lbo_lines, self.labels
+        revolver, cash = self.line_name("revolver"), self.line_name("cash")
         rows = []
         for i, period in enumerate(result.periods):
-            row: dict[str, Any] = {"period": period.label}
+            row: dict[str, Any] = {lab["period"]: period.label}
             for name in self.tranches:
                 row[f"{name}"] = _row(bs, name, i)
                 row[f"{self.interest_lines[name]}"] = _row(is_, self.interest_lines[name], i)
-            row["Revolver"] = _row(bs, "Revolver", i)
+            row[revolver] = _row(bs, revolver, i)
             for role in ("mandatory_amortization", "cash_sweep"):
                 row[lines[role]] = _row(cf, lines[role], i)
-            row["Total Debt"] = sum(_row(bs, n, i) for n in self.tranches) + _row(bs, "Revolver", i)
-            row["Cash"] = _row(bs, "Cash & Cash Equivalents", i)
+            row[lab["total_debt"]] = sum(_row(bs, n, i) for n in self.tranches) + _row(bs, revolver, i)
+            row[lab["cash"]] = _row(bs, cash, i)
             rows.append(row)
-        return pd.DataFrame(rows).set_index("period")
+        return pd.DataFrame(rows).set_index(lab["period"])
 
     def calculate_returns(self, result: ModelResult | None = None) -> dict[str, Any]:
         """Calculate sponsor IRR, MOIC and the exit bridge."""
@@ -442,15 +455,16 @@ class LBOModel(ThreeStatementModel):
         exit_idx = max(0, min(hold_years, n_periods) - 1)
         years_held = exit_idx + 1
 
-        exit_ebitda = _row(is_data, "Operating Income", exit_idx) + abs(
-            _row(is_data, "Depreciation & Amortization", exit_idx)
+        exit_ebitda = _row(is_data, self.line_name("operating_income"), exit_idx) + abs(
+            _row(is_data, self.line_name("depreciation"), exit_idx)
         )
         exit_mult = _dv(drivers, "exit_multiple", exit_idx)
         exit_ev = exit_ebitda * exit_mult
 
-        cash = _row(bs_data, "Cash & Cash Equivalents", exit_idx)
-        debt = sum(_row(bs_data, n, exit_idx) for n in self.tranches) + _row(bs_data, "Revolver", exit_idx)
-        debt += _row(bs_data, "Long-Term Debt", exit_idx) + _row(bs_data, "Current Portion of Long-Term Debt", exit_idx)
+        cash = _row(bs_data, self.line_name("cash"), exit_idx)
+        debt = sum(_row(bs_data, n, exit_idx) for n in self.tranches)
+        for role in self.setting("exit_debt") or []:  # debt besides the tranches netted at exit
+            debt += _row(bs_data, self.line_name(role), exit_idx)
         net_debt = debt - cash
         equity_value = exit_ev - net_debt
 
@@ -480,8 +494,8 @@ class LBOModel(ThreeStatementModel):
         """Sponsor returns, sources & uses and the tranche-level debt schedule."""
         su = self.sources_uses(result)
         return {
-            "LBO Returns": self.calculate_returns(result),
-            "Sources": su["sources"].set_index("Source"),
-            "Uses": su["uses"].set_index("Use"),
-            "Debt Schedule": self.debt_schedule(result),
+            self.tables["returns"]: self.calculate_returns(result),
+            self.tables["sources"]: su["sources"].set_index(self.labels["source"]),
+            self.tables["uses"]: su["uses"].set_index(self.labels["use"]),
+            self.tables["debt_schedule"]: self.debt_schedule(result),
         }

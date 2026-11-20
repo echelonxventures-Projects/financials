@@ -147,9 +147,9 @@ class BudgetModel(FinancialModel):
     def variance_analysis(self, actuals: pd.DataFrame, budget_result: Any) -> pd.DataFrame:
         """Compare actuals vs budget (latest period)."""
         budget_is = budget_result.income_statement
-        variances = pd.DataFrame(
-            index=budget_is.index, columns=["Budget", "Actual", "Variance", "Variance %"], dtype=float
-        )
+        lab = self.setting("variance_labels") or {}
+        columns = [lab[k] for k in ("budget", "actual", "variance", "variance_pct")]
+        variances = pd.DataFrame(index=budget_is.index, columns=columns, dtype=float)
 
         for line in budget_is.index:
             if line in actuals.index:

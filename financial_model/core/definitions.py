@@ -130,6 +130,30 @@ def available_definitions() -> dict[str, Path]:
     return found
 
 
+def engine_section(name: str, definition: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Section ``name`` (``lines``, ``line_groups``, ``balancing``...) of ``definition`` over the
+    three-statement one, so a definition that does not extend it (e.g. budget) still has every role."""
+    base = load_definition("three-statement", missing_ok=True).get(name)
+    own = (definition or {}).get(name)
+    if isinstance(base, dict) or isinstance(own, dict):
+        return _merge(base if isinstance(base, dict) else {}, own if isinstance(own, dict) else {})
+    raise DefinitionError(f"definition section '{name}' must be a mapping")
+
+
+def engine_value(name: str, definition: dict[str, Any] | None = None) -> Any:
+    """A scalar definition entry, falling back to the three-statement definition's."""
+    own = (definition or {}).get(name)
+    return own if own is not None else load_definition("three-statement", missing_ok=True).get(name)
+
+
+def line_role(lines: dict[str, Any], role: str) -> str:
+    """The line name of an engine ``role`` (definition ``lines``); a clear error when it is missing."""
+    name = lines.get(role)
+    if not name:
+        raise DefinitionError(f"no line for role '{role}' in the definition's `lines` section")
+    return str(name)
+
+
 def driver_from_spec(name: str, spec: Any) -> Driver:
     """``{value, description, unit, source}`` (or a bare value) -> Driver."""
     if not isinstance(spec, dict):
