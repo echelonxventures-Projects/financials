@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,7 @@ CATALOG_KEYS = (
     "default_endpoint",
     "endpoints",
     "plans",
+    "messages",
 )
 
 
@@ -105,17 +107,17 @@ class MeterRule:
     def unlimited(self) -> bool:
         return self.included is None
 
-    def refusal(self, used: float, quantity: float) -> str | None:
-        """Why ``quantity`` more units would be refused, or None if allowed."""
+    def refusal(self, used: float, quantity: float) -> tuple[str, dict[str, Any]] | None:
+        """Why ``quantity`` more units would be refused (message key + fields), or None if allowed."""
         if self.unlimited:
             return None
         after = used + quantity
         if self.cap is not None and after > self.cap:
-            return f"hard cap of {self.cap:g} {self.metric} per month reached"
+            return ("cap_reached", {"cap": self.cap, "metric": self.metric})
         if self.overage == "block" and after > (self.included or 0):
             if not self.included:
-                return f"{self.metric} are not included in this plan"
-            return f"monthly allowance of {self.included:g} {self.metric} reached"
+                return ("metric_not_included", {"metric": self.metric})
+            return ("allowance_reached", {"included": self.included, "metric": self.metric})
         return None
 
     def billable(self, used: float) -> float:
@@ -243,6 +245,11 @@ def _load(path: str | Path) -> dict[str, Any]:
     return data
 
 
+@lru_cache(maxsize=1)
+def _builtin_messages() -> dict[str, str]:
+    return dict(_load(BUILTIN).get("messages") or {})
+
+
 @dataclass
 class Catalog:
     data: dict[str, Any]
@@ -306,6 +313,13 @@ class Catalog:
         if spec is None:
             raise CatalogError(f"unknown account status '{name}'")
         return dict(spec)
+
+    def message(self, key: str, **fields: Any) -> str:
+        """A customer-facing message from the catalogue's ``messages`` (built-in wording if omitted)."""
+        template = (self.data.get("messages") or {}).get(key) or _builtin_messages().get(key)
+        if template is None:
+            raise CatalogError(f"no message '{key}' in the catalogue")
+        return str(template).format(**fields)
 
     def default_plan_for(self, kind: str) -> str:
         default = self.data.get("default_plan")

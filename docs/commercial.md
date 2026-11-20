@@ -19,7 +19,7 @@ behaviour is written in Python. They are data, in two files shipped with the pac
 
 | File | Holds | Override with |
 |---|---|---|
-| `financial_model/platform/catalog.yaml` | currency, account kinds, roles and permissions, account statuses, metrics, plans (prices, limits, features, pay-to-use metering), per-endpoint rules | inline keys under `platform:` in your settings file, or your own catalogue files via `platform.catalog` |
+| `financial_model/platform/catalog.yaml` | currency, account kinds, roles and permissions, account statuses, metrics, plans (prices, limits, features, pay-to-use metering), per-endpoint rules, and every customer-facing message (`messages`, translatable) | inline keys under `platform:` in your settings file, or your own catalogue files via `platform.catalog` |
 | `financial_model/platform/settings.yaml` | runtime defaults: database, token lifetime, password policy, API-key prefix, sign-up switch, billing provider settings (Stripe URL, signature tolerance, checkout fields, status map, webhook event handling) | the `platform:` section of your settings file, or `FIN_PLATFORM_*` environment variables |
 
 Three ways to change the commercial model, from smallest to largest:

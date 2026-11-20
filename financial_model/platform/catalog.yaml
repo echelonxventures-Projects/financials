@@ -193,3 +193,38 @@ plans:
       imports: {included: null}
       synthetic: {included: null}
     display: {support: dedicated, description: "Unlimited use, private deployment, SLA and custom models."}
+
+# ---------------------------------------------------------------- messages
+# Every customer-facing message (API errors and notes). {fields} are filled in at runtime.
+# Translate or reword them here; a replacement catalogue inherits any message it omits.
+messages:
+  role_lacks_permission: "the {role} role does not have the '{permission}' permission"
+  unknown_plan: "unknown plan '{plan}'"
+  plan_not_for_kind: "plan '{plan}' is not available to {kind} accounts"
+  invalid_email: "a valid email address is required"
+  email_taken: "an account with this email already exists"
+  signup_disabled: "self-serve sign-up is disabled on this platform"
+  kind_not_user_creatable: "{kind} accounts cannot be created by users"
+  seat_limit: "this account allows {seats:g} member(s) on the {plan} plan"
+  last_creator: "cannot remove the last {role}"
+  unknown_account: "no account {account}"
+  key_limit: "the {plan} plan allows {limit:g} active API key(s)"
+  bad_login: "invalid email or password"
+  no_accounts: "this user does not belong to any account"
+  not_member: "you are not a member of that account"
+  bad_key: "invalid or revoked API key"
+  bad_token: "invalid or expired token"
+  token_member_removed: "token user is no longer a member of this account"
+  no_credentials: "send an X-API-Key header or an Authorization: Bearer token"
+  status_blocked: "account status is {status}"
+  model_not_in_plan: "the {plan} plan does not include '{model_type}' models"
+  period_limit: "the {plan} plan allows up to {limit:g} periods per model"
+  features_not_in_plan: "the {plan} plan does not include {features}"
+  quota_exceeded: "{reason} on the {plan} plan"
+  cap_reached: "hard cap of {cap:g} {metric} per month reached"
+  metric_not_included: "{metric} are not included in this plan"
+  allowance_reached: "monthly allowance of {included:g} {metric} reached"
+  service_key_not_user: "use a user's credentials, not a service key"
+  grant_above_rank: "you cannot grant a role above your own ({role})"
+  no_such_key: "no such active key"
+  key_shown_once: "Store this API key now; it is not shown again."

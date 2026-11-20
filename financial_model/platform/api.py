@@ -174,7 +174,7 @@ async def signup(body: SignupRequest, request: Request) -> dict[str, Any]:
         "user": {"id": user.id, "email": user.email, "name": user.name},
         "tenant": {"id": tenant.id, "kind": tenant.kind, "plan": tenant.plan},
         "api_key": key,
-        "note": "Store this API key now; it is not shown again.",
+        "note": _service(request).catalog.message("key_shown_once"),
     }
 
 
@@ -210,7 +210,7 @@ async def create_account(body: AccountRequest, request: Request) -> dict[str, An
     """Create an account owned by the calling user (B2B organisation by default)."""
     who = principal(request)
     if who.user is None:
-        raise HTTPException(status_code=400, detail="use a user's credentials, not a service key")
+        raise HTTPException(status_code=400, detail=_service(request).catalog.message("service_key_not_user"))
     tenant = _call(_service(request).create_user_account, who.user, body.name, body.kind, body.plan)
     return {"id": tenant.id, "kind": tenant.kind, "name": tenant.name, "plan": tenant.plan}
 
@@ -226,7 +226,7 @@ async def add_member(body: MemberRequest, request: Request) -> dict[str, Any]:
     service, who = _service(request), principal(request)
     role = body.role or str(service.catalog.get("default_member_role"))
     if _call(service.catalog.rank, role) > service.catalog.rank(who.role):
-        raise HTTPException(status_code=403, detail=f"you cannot grant a role above your own ({who.role})")
+        raise HTTPException(status_code=403, detail=service.catalog.message("grant_above_rank", role=who.role))
     user = _call(service.add_member, who.tenant.id, body.email, role)
     return {"id": user.id, "email": user.email, "role": role, "password_set": user.password_hash is not None}
 
@@ -264,14 +264,14 @@ async def create_key(body: KeyRequest, request: Request) -> dict[str, Any]:
         "id": record.id,
         "name": record.name,
         "api_key": plain,
-        "note": "Store this key now; it is not shown again.",
+        "note": _service(request).catalog.message("key_shown_once"),
     }
 
 
 @v1.delete("/keys/{key_id}")
 async def revoke_key(key_id: str, request: Request) -> dict[str, str]:
     if not _service(request).store.revoke_key(principal(request).tenant.id, key_id):
-        raise HTTPException(status_code=404, detail="no such active key")
+        raise HTTPException(status_code=404, detail=_service(request).catalog.message("no_such_key"))
     return {"revoked": key_id}
 
 

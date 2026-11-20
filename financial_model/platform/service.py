@@ -76,7 +76,7 @@ class Principal:
 
     def require(self, permission: str) -> None:
         if not self.can(permission):
-            raise Forbidden(f"the {self.role} role does not have the '{permission}' permission")
+            raise Forbidden(self.catalog.message("role_lacks_permission", role=self.role, permission=permission))
 
 
 def current_period(now: float | None = None) -> str:
@@ -156,9 +156,9 @@ class PlatformService:
     def _plan(self, key: str, kind: str) -> Plan:
         plan = self.plans.get(key)
         if plan is None:
-            raise NotFound(f"unknown plan '{key}'")
+            raise NotFound(self.catalog.message("unknown_plan", plan=key))
         if not plan.available_to(kind):
-            raise PlatformError(f"plan '{key}' is not available to {kind} accounts")
+            raise PlatformError(self.catalog.message("plan_not_for_kind", plan=key, kind=kind))
         return plan
 
     def seat_limit(self, tenant: Tenant) -> float | None:
@@ -169,9 +169,9 @@ class PlatformService:
     def create_user(self, email: str, password: str | None, name: str = "") -> User:
         email = email.strip().lower()
         if not _EMAIL.match(email):
-            raise PlatformError("a valid email address is required")
+            raise PlatformError(self.catalog.message("invalid_email"))
         if self.store.get_user_by_email(email):
-            raise Conflict("an account with this email already exists")
+            raise Conflict(self.catalog.message("email_taken"))
         pw_hash = hash_password(password, self.password_iterations, self.password_min_length) if password else None
         user = User(new_id("usr"), email, name or email.split("@")[0], pw_hash, time.time())
         self.store.add_user(user)
@@ -199,7 +199,7 @@ class PlatformService:
         """Self-serve sign-up (B2C by default): a user, an account of ``signup_kind`` and a first API key."""
         kind = self.catalog.get("signup_kind")
         if not self.allow_signup or not kind or not self.catalog.kind(kind).get("signup"):
-            raise Forbidden("self-serve sign-up is disabled on this platform")
+            raise Forbidden(self.catalog.message("signup_disabled"))
         user = self.create_user(email, password, name)
         tenant = self.create_account(kind, user.name, user)
         key, _ = self.issue_key(tenant.id, user.id, "default")
@@ -209,7 +209,7 @@ class PlatformService:
         """An account created by a logged-in user (B2B organisations by default)."""
         kind = kind or self.catalog.get("default_account_kind")
         if not kind or not self.catalog.kind(kind).get("user_creatable"):
-            raise Forbidden(f"{kind} accounts cannot be created by users")
+            raise Forbidden(self.catalog.message("kind_not_user_creatable", kind=kind))
         return self.create_account(kind, name, user, plan)
 
     def add_member(self, tenant_id: str, email: str, role: str | None = None, password: str | None = None) -> User:
@@ -222,7 +222,7 @@ class PlatformService:
         if self.store.get_role(tenant_id, user.id) is None:
             seats = self.seat_limit(tenant)
             if seats is not None and len(self.store.members(tenant_id)) >= seats:
-                raise NotEntitled(f"this account allows {seats:g} member(s) on the {self.plan_for(tenant).name} plan")
+                raise NotEntitled(self.catalog.message("seat_limit", seats=seats, plan=self.plan_for(tenant).name))
         self.store.set_membership(tenant_id, user.id, role)
         return user
 
@@ -230,7 +230,7 @@ class PlatformService:
         creator = self.catalog.get("creator_role")
         holders = [u.id for u, r in self.store.members(tenant_id) if r == creator]
         if holders == [user_id]:
-            raise PlatformError(f"cannot remove the last {creator}")
+            raise PlatformError(self.catalog.message("last_creator", role=creator))
         self.store.remove_membership(tenant_id, user_id)
 
     def set_plan(self, tenant_id: str, plan: str, status: str | None = None) -> Tenant:
@@ -244,7 +244,7 @@ class PlatformService:
     def _tenant(self, tenant_id: str) -> Tenant:
         tenant = self.store.get_tenant(tenant_id)
         if tenant is None:
-            raise NotFound(f"no account {tenant_id}")
+            raise NotFound(self.catalog.message("unknown_account", account=tenant_id))
         return tenant
 
     # ------------------------------------------------------------------ #
@@ -255,7 +255,7 @@ class PlatformService:
         limit = self.plan_for(tenant).limit("api_keys")
         active = [k for k in self.store.list_keys(tenant_id) if k.revoked_at is None]
         if limit is not None and len(active) >= limit:
-            raise NotEntitled(f"the {self.plan_for(tenant).name} plan allows {limit:g} active API key(s)")
+            raise NotEntitled(self.catalog.message("key_limit", plan=self.plan_for(tenant).name, limit=limit))
         plain, prefix, digest = self.keys.new()
         record = ApiKey(new_id("key"), tenant_id, user_id, prefix, digest, name, time.time())
         self.store.add_key(record)
@@ -264,13 +264,13 @@ class PlatformService:
     def login(self, email: str, password: str, tenant_id: str | None = None) -> tuple[str, int, Tenant]:
         user = self.store.get_user_by_email(email.strip().lower())
         if user is None or not verify_password(password, user.password_hash):
-            raise AuthError("invalid email or password")
+            raise AuthError(self.catalog.message("bad_login"))
         tenants = self.store.tenants_for_user(user.id)
         if not tenants:
-            raise AuthError("this user does not belong to any account")
+            raise AuthError(self.catalog.message("no_accounts"))
         chosen = next((t for t, _ in tenants if t.id == tenant_id), None) if tenant_id else tenants[0][0]
         if chosen is None:
-            raise Forbidden("you are not a member of that account")
+            raise Forbidden(self.catalog.message("not_member"))
         token, expires = sign_token({"uid": user.id, "tid": chosen.id}, self.secret_key, self.token_ttl)
         return token, expires, chosen
 
@@ -288,7 +288,7 @@ class PlatformService:
                 or record.revoked_at is not None
                 or not secrets.compare_digest(record.digest, self.keys.digest(api_key))
             ):
-                raise AuthError("invalid or revoked API key")
+                raise AuthError(self.catalog.message("bad_key"))
             tenant = self._tenant(record.tenant_id)
             user = self.store.get_user(record.user_id) if record.user_id else None
             role = (self.store.get_role(tenant.id, user.id) if user else None) or str(
@@ -299,14 +299,14 @@ class PlatformService:
         if bearer:
             claims = verify_token(bearer, self.secret_key)
             if claims is None:
-                raise AuthError("invalid or expired token")
+                raise AuthError(self.catalog.message("bad_token"))
             tenant = self._tenant(str(claims["tid"]))
             user = self.store.get_user(str(claims["uid"]))
             member_role = self.store.get_role(tenant.id, user.id) if user else None
             if user is None or member_role is None:
-                raise AuthError("token user is no longer a member of this account")
+                raise AuthError(self.catalog.message("token_member_removed"))
             return self._principal(tenant, user, member_role, "token")
-        raise AuthError("send an X-API-Key header or an Authorization: Bearer token")
+        raise AuthError(self.catalog.message("no_credentials"))
 
     # ------------------------------------------------------------------ #
     # Entitlements and metering
@@ -327,20 +327,23 @@ class PlatformService:
             principal.require(permission)
         status = self.catalog.status(tenant.status)
         if metric and status.get("blocked"):
-            raise NotEntitled(str(status.get("message") or f"account status is {tenant.status}"))
+            raise NotEntitled(
+                str(status.get("message") or self.catalog.message("status_blocked", status=tenant.status))
+            )
         if model_type and not plan.allows_model(model_type):
-            raise NotEntitled(f"the {plan.name} plan does not include '{model_type}' models")
+            raise NotEntitled(self.catalog.message("model_not_in_plan", plan=plan.name, model_type=model_type))
         max_periods = plan.limit("periods")
         if periods is not None and max_periods is not None and periods > max_periods:
-            raise NotEntitled(f"the {plan.name} plan allows up to {max_periods:g} periods per model")
+            raise NotEntitled(self.catalog.message("period_limit", plan=plan.name, limit=max_periods))
         missing = plan.has_features(features)
         if missing:
-            raise NotEntitled(f"the {plan.name} plan does not include {', '.join(missing)}")
+            raise NotEntitled(self.catalog.message("features_not_in_plan", plan=plan.name, features=", ".join(missing)))
         if metric:
             used = self.store.get_usage(tenant.id, current_period()).get(metric, 0.0)
-            reason = plan.rule(metric).refusal(used, quantity)
-            if reason:
-                raise QuotaExceeded(f"{reason} on the {plan.name} plan")
+            refusal = plan.rule(metric).refusal(used, quantity)
+            if refusal:
+                reason = self.catalog.message(refusal[0], **refusal[1])
+                raise QuotaExceeded(self.catalog.message("quota_exceeded", reason=reason, plan=plan.name))
 
     def record(self, tenant_id: str, metric: str, quantity: float = 1) -> None:
         self.store.add_usage(tenant_id, current_period(), metric, quantity)

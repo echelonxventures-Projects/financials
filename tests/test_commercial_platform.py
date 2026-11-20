@@ -186,7 +186,7 @@ class TestPayToUse:
         amount, lines = rule.charge(2100)  # 2000 billable: 1000 @ 0.05 + 1000 @ 0.01
         assert amount == pytest.approx(60.0) and len(lines) == 2
         assert rule.refusal(4999, 1) is None
-        assert "hard cap" in rule.refusal(5000, 1)
+        assert rule.refusal(5000, 1) == ("cap_reached", {"cap": 5000.0, "metric": "runs"})
         assert MeterRule.from_dict("runs", {"included": None}).refusal(10**9, 1) is None
         with pytest.raises(CatalogError):
             MeterRule.from_dict("runs", {"overage": "bill"})  # billing needs a price
@@ -451,6 +451,15 @@ class TestCatalogue:
         assert c.get("/v1/plans").status_code == 401  # not public in this catalogue
         svc: PlatformService = c.app.state.platform
         assert svc.invoice(account["tenant"]["id"])["currency"] == "INR"
+
+    def test_messages_are_configurable(self):
+        c = _client(messages={"bad_key": "Clé API invalide"})
+        r = c.post("/calculate", json={"config": {}}, headers={"X-API-Key": "fm_nope_x"})
+        assert r.status_code == 401 and r.json()["detail"] == "Clé API invalide"
+        assert (
+            Catalog.load().message("allowance_reached", included=5, metric="runs")
+            == "monthly allowance of 5 runs reached"
+        )
 
     def test_inconsistent_catalogue_is_rejected(self):
         with pytest.raises(CatalogError, match="default_plan"):
