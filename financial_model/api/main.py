@@ -26,7 +26,7 @@ from financial_model.core.period import PeriodIndex, PeriodType
 from financial_model.core.statement import StatementType
 from financial_model.data.loader import config_from_statements
 from financial_model.data.providers import available_providers, fetch_statements, statements_from_mapping
-from financial_model.data.synthetic import generate_saas_company
+from financial_model.data.synthetic import generate_company, profiles
 from financial_model.exporters.json_exporter import result_to_dict, table_to_jsonable, to_jsonable
 from financial_model.models.dcf import DCFModel
 from financial_model.models.lbo import LBOModel
@@ -156,7 +156,7 @@ class ChartRequest(BaseModel):
 
 class FetchRequest(BaseModel):
     ticker: str = Field(..., description="Source identifier for the provider (a ticker for yfinance)")
-    years: int = 5
+    years: int | None = Field(None, description="History years; default: settings defaults.history_years")
     provider: str | None = Field(None, description="Remote data provider; default: settings data.default_provider")
 
 
@@ -168,15 +168,17 @@ class ImportRequest(BaseModel):
     balance_sheet: dict[str, dict[str, Any]] = Field(default_factory=dict)
     cash_flow: dict[str, dict[str, Any]] = Field(default_factory=dict)
     key_stats: dict[str, Any] = Field(default_factory=dict)
-    years: int = 5
+    years: int | None = Field(None, description="Projection years; default: settings defaults.years")
 
 
 class SyntheticRequest(BaseModel):
-    industry: str = "saas"
-    years: int = 5
-    start_year: int = 2020
-    base_arr: float = 10_000_000
-    arr_growth: float = 0.35
+    """Omitted fields use settings defaults.industry and the profile's parameters (data/synthetic.yaml)."""
+
+    industry: str | None = None
+    years: int | None = None
+    start_year: int | None = None
+    base_arr: float | None = None
+    arr_growth: float | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -279,7 +281,8 @@ async def calculate_lbo(request: LBORequest) -> dict[str, Any]:
 async def fetch_company(request: FetchRequest) -> dict[str, Any]:
     """Fetch historical statements from a remote data provider."""
     try:
-        data = fetch_statements(request.ticker, request.years, request.provider, for_api=True)
+        years = request.years or int(config_loader.default("history_years"))
+        data = fetch_statements(request.ticker, years, request.provider, for_api=True)
         return {
             "ticker": request.ticker,
             "provider": data.get("provider"),
@@ -299,7 +302,8 @@ async def import_statements(request: ImportRequest) -> dict[str, Any]:
     The returned ``config`` can be posted straight to /calculate, /dcf, /lbo or /charts.
     """
     try:
-        if request.years < 1:
+        years = request.years if request.years is not None else int(config_loader.default("years"))
+        if years < 1:
             raise ValueError("years must be >= 1")
         data = statements_from_mapping(
             {
@@ -308,11 +312,11 @@ async def import_statements(request: ImportRequest) -> dict[str, Any]:
                 "cash_flow": request.cash_flow,
                 "key_stats": request.key_stats,
             },
-            request.years,
+            years,
         )
         if data["income_statement"].empty:
             raise ValueError("income_statement has no numeric data")
-        config = config_from_statements(data, request.name, request.years, metadata={"source": "import"})
+        config = config_from_statements(data, request.name, years, metadata={"source": "import"})
         return {"config": _jsonable(config)}
     except Exception as e:
         raise _http_error(e) from e
@@ -333,17 +337,21 @@ async def list_providers() -> dict[str, list[dict[str, Any]]]:
 @router.post("/synthetic")
 async def generate_synthetic(request: SyntheticRequest) -> dict[str, Any]:
     """Generate synthetic company data."""
-    if request.industry != "saas":
-        raise HTTPException(status_code=400, detail=f"Industry {request.industry} not supported")
+    industry = request.industry or str(config_loader.default("industry"))
+    if industry not in profiles():
+        raise HTTPException(
+            status_code=400, detail=f"Industry {industry} not supported. Available: {', '.join(profiles())}"
+        )
     try:
-        data = generate_saas_company(
+        data = generate_company(
+            industry,
             start_year=request.start_year,
             years=request.years,
             base_arr=request.base_arr,
             arr_growth=request.arr_growth,
         )
         return {
-            "industry": request.industry,
+            "industry": industry,
             "income_statement": _jsonable(data["income_statement"].to_dict()),
             "balance_sheet": _jsonable(data["balance_sheet"].to_dict()),
             "cash_flow": _jsonable(data["cash_flow"].to_dict()),

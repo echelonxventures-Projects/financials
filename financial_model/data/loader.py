@@ -8,16 +8,19 @@ module works without it.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
+import yaml
 
 try:  # optional: only the yfinance provider needs it
     import yfinance as yf
 except ImportError:  # pragma: no cover - exercised by the minimal-install tests
     yf = None
 
+from financial_model.core.definitions import definition_drivers, load_definition
 from financial_model.utils.optional import MissingDependencyError
 from financial_model.utils.validation import TickerValidator
 
@@ -29,69 +32,26 @@ def normalize_ticker(ticker: str) -> str:
     return ticker.strip().upper()
 
 
-IS_MAPPING = {
-    "Total Revenue": "Revenue",
-    "Cost Of Revenue": "COGS",
-    "Reconciled Cost Of Revenue": "COGS",
-    "Gross Profit": "Gross Profit",
-    "Research Development": "R&D Expense",
-    "Research And Development": "R&D Expense",
-    "Selling General Administrative": "SG&A Expense",
-    "Selling General And Administration": "SG&A Expense",
-    "Operating Expense": "Operating Expenses",
-    "Operating Income": "Operating Income",
-    "Interest Expense": "Interest Expense",
-    "Pretax Income": "Pre-Tax Income",
-    "Tax Provision": "Income Tax Expense",
-    "Net Income": "Net Income",
-    "Diluted EPS": "Diluted EPS",
-    "Reconciled Depreciation": "Depreciation & Amortization",
-    "Diluted Average Shares": "Diluted Shares",
-}
-BS_MAPPING = {
-    "Cash And Cash Equivalents": "Cash & Cash Equivalents",
-    "Accounts Receivable": "Accounts Receivable",
-    "Inventory": "Inventory",
-    "Prepaid Assets": "Prepaid Expenses",
-    "Total Current Assets": "Total Current Assets",
-    "Property Plant Equipment Net": "Property Plant & Equipment, Net",
-    "Net PPE": "Property Plant & Equipment, Net",
-    "Gross PPE": "Property Plant & Equipment, Gross",
-    "Goodwill": "Goodwill",
-    "Intangible Assets": "Intangible Assets",
-    "Other Intangible Assets": "Intangible Assets",
-    "Total Assets": "Total Assets",
-    "Accounts Payable": "Accounts Payable",
-    "Current Accrued Expenses": "Accrued Expenses",
-    "Current Deferred Revenue": "Deferred Revenue",
-    "Current Debt": "Current Portion of Long-Term Debt",
-    "Total Current Liabilities": "Total Current Liabilities",
-    "Long Term Debt": "Long-Term Debt",
-    "Total Liabilities": "Total Liabilities",
-    "Total Liabilities Net Minority Interest": "Total Liabilities",
-    "Common Stock": "Common Stock",
-    "Additional Paid In Capital": "Additional Paid-In Capital",
-    "Retained Earnings": "Retained Earnings",
-    "Total Stockholder Equity": "Total Equity",
-    "Stockholders Equity": "Total Equity",
-    "Non Current Deferred Taxes Liabilities": "Deferred Tax Liability",
-}
-CF_MAPPING = {
-    "Operating Cash Flow": "Operating Cash Flow",
-    "Capital Expenditure": "Capital Expenditures",
-    "Free Cash Flow": "Free Cash Flow",
-    "Net Income": "Net Income",
-    "Depreciation Amortization": "Depreciation & Amortization",
-    "Depreciation And Amortization": "Depreciation & Amortization",
-    "Change In Working Capital": "Change in Working Capital",
-    "Stock Based Compensation": "Stock-Based Compensation",
-    "Investing Cash Flow": "Investing Cash Flow",
-    "Financing Cash Flow": "Financing Cash Flow",
-    "Net Change In Cash": "Net Change in Cash",
-    "Changes In Cash": "Net Change in Cash",
-    "Common Stock Dividend Paid": "Dividends Paid",
-    "Cash Dividends Paid": "Dividends Paid",
-}
+MAPPINGS_PATH = Path(__file__).with_name("mappings.yaml")
+
+
+def load_mappings() -> dict[str, Any]:
+    """Statement aliases, line mappings and derivation policy: data/mappings.yaml + ``data.mapping_paths``."""
+    from financial_model.config_loader import _deep_merge, get_config
+
+    with MAPPINGS_PATH.open(encoding="utf-8") as f:
+        merged: dict[str, Any] = yaml.safe_load(f) or {}
+    extra = (get_config().get("data") or {}).get("mapping_paths") or []
+    for path in [extra] if isinstance(extra, (str, Path)) else extra:
+        with Path(path).open(encoding="utf-8") as f:
+            merged = _deep_merge(merged, yaml.safe_load(f) or {})
+    return merged
+
+
+_MAPPINGS = load_mappings()
+IS_MAPPING: dict[str, str] = dict(_MAPPINGS["line_mappings"]["income_statement"])
+BS_MAPPING: dict[str, str] = dict(_MAPPINGS["line_mappings"]["balance_sheet"])
+CF_MAPPING: dict[str, str] = dict(_MAPPINGS["line_mappings"]["cash_flow"])
 
 
 class DataLoader:
@@ -231,7 +191,7 @@ def derive_drivers_from_financials(
     """
     Turn historical statements (standardised line names) into model drivers.
 
-    Growth uses the historical CAGR (fading by 10% a year towards 3%), margins and
+    Growth uses the historical CAGR fading towards a long-run rate (data/mappings.yaml), margins and
     working-capital days use the latest year, and balance sheet opening values come
     from the latest period. Missing lines fall back to model defaults.
     """
@@ -239,16 +199,23 @@ def derive_drivers_from_financials(
     bs_df = _chronological(balance_sheet)
     cf_df = _chronological(cash_flow)
     key_stats = key_stats or {}
+    policy = load_mappings()["derivation"]
+    g, days = policy["growth"], float(policy["days_in_year"])
+    base = definition_drivers(load_definition(policy["base_model"]))
+
+    def fallback(name: str) -> float:
+        return base[name].get_value(0) if name in base else 0.0
 
     revenue_series = _series(is_df, "Revenue")
-    revenue = float(revenue_series.iloc[-1]) if len(revenue_series) else 10_000_000.0
+    revenue = float(revenue_series.iloc[-1]) if len(revenue_series) else fallback("revenue")
     if len(revenue_series) >= 2 and revenue_series.iloc[0] > 0:
         years = len(revenue_series) - 1
         cagr = (revenue_series.iloc[-1] / revenue_series.iloc[0]) ** (1 / years) - 1
     else:
-        cagr = float(key_stats.get("revenue_growth") or 0.10)
-    cagr = float(np.clip(cagr, -0.5, 1.0))
-    growth = [round(0.03 + (cagr - 0.03) * (0.9**i), 4) for i in range(projection_years)]
+        cagr = float(key_stats.get("revenue_growth") or g["fallback_cagr"])
+    cagr = float(np.clip(cagr, g["min_cagr"], g["max_cagr"]))
+    long_run, fade = float(g["long_run"]), float(g["fade"])
+    growth = [round(long_run + (cagr - long_run) * (fade**i), 4) for i in range(projection_years)]
 
     cogs = abs(_latest(is_df, "COGS"))
     if cogs == 0 and "Gross Profit" in is_df.index:
@@ -257,7 +224,12 @@ def derive_drivers_from_financials(
     sga = abs(_latest(is_df, "SG&A Expense"))
     pretax = _latest(is_df, "Pre-Tax Income")
     tax = abs(_latest(is_df, "Income Tax Expense"))
-    tax_rate = float(np.clip(_ratio(tax, pretax, 0.21), 0.0, 0.5)) if pretax > 0 else 0.21
+    tax_fallback = fallback("tax_rate")
+    tax_rate = (
+        float(np.clip(_ratio(tax, pretax, tax_fallback), policy["tax_rate"]["min"], policy["tax_rate"]["max"]))
+        if pretax > 0
+        else tax_fallback
+    )
     dna = abs(_latest(is_df, "Depreciation & Amortization")) or abs(_latest(cf_df, "Depreciation & Amortization"))
     sbc = abs(_latest(cf_df, "Stock-Based Compensation"))
     interest = abs(_latest(is_df, "Interest Expense"))
@@ -279,7 +251,9 @@ def derive_drivers_from_financials(
     common = _latest(bs_df, "Common Stock")
     apic = _latest(bs_df, "Additional Paid-In Capital")
     dividends = abs(_latest(cf_df, "Dividends Paid"))
-    shares = float(key_stats.get("shares_outstanding") or _latest(is_df, "Diluted Shares") or 1_000_000)
+    shares = float(
+        key_stats.get("shares_outstanding") or _latest(is_df, "Diluted Shares") or fallback("shares_outstanding")
+    )
 
     def driver(value: Any, description: str, unit: str) -> dict[str, Any]:
         if isinstance(value, float):
@@ -288,24 +262,32 @@ def derive_drivers_from_financials(
 
     return {
         "revenue": driver(revenue, "Latest fiscal year revenue", "$"),
-        "revenue_growth": driver(growth, f"Historical CAGR {cagr:.1%} fading towards 3%", "%"),
-        "cogs_pct": driver(_ratio(cogs, revenue, 0.35), "COGS % of revenue (latest year)", "%"),
+        "revenue_growth": driver(growth, f"Historical CAGR {cagr:.1%} fading towards {long_run:.0%}", "%"),
+        "cogs_pct": driver(_ratio(cogs, revenue, fallback("cogs_pct")), "COGS % of revenue (latest year)", "%"),
         "rd_pct": driver(_ratio(rd, revenue, 0.0), "R&D % of revenue", "%"),
         "sm_pct": driver(_ratio(sga, revenue, 0.0), "SG&A % of revenue (reported combined; mapped to S&M)", "%"),
         "gna_pct": driver(0.0, "G&A % of revenue (included in SG&A)", "%"),
         "sbc": driver(sbc, "Stock-based compensation (latest year)", "$"),
         "tax_rate": driver(tax_rate, "Effective tax rate", "%"),
         "interest_expense": driver(interest, "Interest expense (latest year)", "$"),
-        "ar_days": driver(_ratio(ar * 365, revenue, 45.0) if ar else 45.0, "Receivable days", "days"),
-        "inventory_days": driver(_ratio(inventory * 365, cogs, 0.0), "Inventory days", "days"),
+        "ar_days": driver(
+            _ratio(ar * days, revenue, fallback("ar_days")) if ar else fallback("ar_days"), "Receivable days", "days"
+        ),
+        "inventory_days": driver(_ratio(inventory * days, cogs, 0.0), "Inventory days", "days"),
         "prepaid_pct": driver(_ratio(prepaid, revenue, 0.0), "Prepaid % of revenue", "%"),
-        "ap_days": driver(_ratio(ap * 365, cogs, 60.0) if ap else 60.0, "Payable days", "days"),
+        "ap_days": driver(
+            _ratio(ap * days, cogs, fallback("ap_days")) if ap else fallback("ap_days"), "Payable days", "days"
+        ),
         "accrued_pct": driver(_ratio(accrued, revenue, 0.0), "Accrued % of revenue", "%"),
         "deferred_rev_pct": driver(_ratio(deferred, revenue, 0.0), "Deferred revenue % of revenue", "%"),
         "ppe_gross": driver(ppe_gross, "Opening gross PP&E", "$"),
         "capex": driver(-capex, "Annual capex (latest year)", "$"),
         "depreciation_rate": driver(
-            _ratio(dna, ppe_gross + capex, 0.10) if ppe_gross else 0.10, "D&A / gross PP&E", "%"
+            _ratio(dna, ppe_gross + capex, fallback("depreciation_rate"))
+            if ppe_gross
+            else fallback("depreciation_rate"),
+            "D&A / gross PP&E",
+            "%",
         ),
         "intangibles": driver(intangibles, "Intangible assets", "$"),
         "goodwill": driver(goodwill, "Opening goodwill", "$"),

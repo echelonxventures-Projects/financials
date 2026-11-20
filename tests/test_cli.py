@@ -1,6 +1,7 @@
 """
 CLI tests.
 """
+
 from __future__ import annotations
 
 import tempfile
@@ -142,7 +143,7 @@ class TestCLICommands:
             output_path = Path(tmpdir) / "synthetic.yaml"
             result = self.runner.invoke(click_app, ["synthetic", "--industry", "invalid", "--output", str(output_path)])
             assert result.exit_code != 0
-            assert "not yet implemented" in result.output
+            assert "unknown synthetic industry 'invalid'" in result.output
 
     def test_validate_command_valid(self):
         with tempfile.TemporaryDirectory() as tmpdir:

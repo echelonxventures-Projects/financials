@@ -1,6 +1,7 @@
 """
 Tests for API coverage - exception handlers and edge cases.
 """
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -76,7 +77,7 @@ class TestAPIExceptionHandlers:
 
     def test_synthetic_exception_other(self):
         """Test /synthetic exception handling."""
-        with patch("financial_model.api.main.generate_saas_company") as mock_gen:
+        with patch("financial_model.api.main.generate_company") as mock_gen:
             mock_gen.side_effect = Exception("Generation failed")
             request = {"industry": "saas", "years": 3}
             response = client.post("/synthetic", json=request)

@@ -1,0 +1,106 @@
+# How imported statements (your files, or a data provider) are read and turned into drivers.
+#   statement_aliases: sheet / file / key names recognised as each statement
+#   line_mappings: provider line label -> the model's line name
+#   derivation: policy for deriving drivers from history. Missing lines fall back to the
+#               defaults of `derivation.base_model` (models/definitions/<base_model>.yaml).
+# Add labels or aliases in files listed in the settings key `data.mapping_paths` (merged over this one).
+statement_aliases:
+  income_statement:
+  - income
+  - income_statement
+  - is
+  - p_and_l
+  - p_l
+  - pl
+  - pnl
+  - profit_and_loss
+  - profit_loss
+  balance_sheet:
+  - balance
+  - balance_sheet
+  - bs
+  - financial_position
+  cash_flow:
+  - cash_flow
+  - cash_flow_statement
+  - cash_flows
+  - cashflow
+  - cf
+  key_stats:
+  - key_statistics
+  - key_stats
+  - metrics
+  - stats
+line_mappings:
+  income_statement:
+    Total Revenue: Revenue
+    Cost Of Revenue: COGS
+    Reconciled Cost Of Revenue: COGS
+    Gross Profit: Gross Profit
+    Research Development: R&D Expense
+    Research And Development: R&D Expense
+    Selling General Administrative: SG&A Expense
+    Selling General And Administration: SG&A Expense
+    Operating Expense: Operating Expenses
+    Operating Income: Operating Income
+    Interest Expense: Interest Expense
+    Pretax Income: Pre-Tax Income
+    Tax Provision: Income Tax Expense
+    Net Income: Net Income
+    Diluted EPS: Diluted EPS
+    Reconciled Depreciation: Depreciation & Amortization
+    Diluted Average Shares: Diluted Shares
+  balance_sheet:
+    Cash And Cash Equivalents: Cash & Cash Equivalents
+    Accounts Receivable: Accounts Receivable
+    Inventory: Inventory
+    Prepaid Assets: Prepaid Expenses
+    Total Current Assets: Total Current Assets
+    Property Plant Equipment Net: Property Plant & Equipment, Net
+    Net PPE: Property Plant & Equipment, Net
+    Gross PPE: Property Plant & Equipment, Gross
+    Goodwill: Goodwill
+    Intangible Assets: Intangible Assets
+    Other Intangible Assets: Intangible Assets
+    Total Assets: Total Assets
+    Accounts Payable: Accounts Payable
+    Current Accrued Expenses: Accrued Expenses
+    Current Deferred Revenue: Deferred Revenue
+    Current Debt: Current Portion of Long-Term Debt
+    Total Current Liabilities: Total Current Liabilities
+    Long Term Debt: Long-Term Debt
+    Total Liabilities: Total Liabilities
+    Total Liabilities Net Minority Interest: Total Liabilities
+    Common Stock: Common Stock
+    Additional Paid In Capital: Additional Paid-In Capital
+    Retained Earnings: Retained Earnings
+    Total Stockholder Equity: Total Equity
+    Stockholders Equity: Total Equity
+    Non Current Deferred Taxes Liabilities: Deferred Tax Liability
+  cash_flow:
+    Operating Cash Flow: Operating Cash Flow
+    Capital Expenditure: Capital Expenditures
+    Free Cash Flow: Free Cash Flow
+    Net Income: Net Income
+    Depreciation Amortization: Depreciation & Amortization
+    Depreciation And Amortization: Depreciation & Amortization
+    Change In Working Capital: Change in Working Capital
+    Stock Based Compensation: Stock-Based Compensation
+    Investing Cash Flow: Investing Cash Flow
+    Financing Cash Flow: Financing Cash Flow
+    Net Change In Cash: Net Change in Cash
+    Changes In Cash: Net Change in Cash
+    Common Stock Dividend Paid: Dividends Paid
+    Cash Dividends Paid: Dividends Paid
+derivation:
+  growth:
+    long_run: 0.03
+    fade: 0.9
+    min_cagr: -0.5
+    max_cagr: 1.0
+    fallback_cagr: 0.1
+  tax_rate:
+    min: 0.0
+    max: 0.5
+  days_in_year: 365
+  base_model: three-statement

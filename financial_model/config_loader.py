@@ -38,48 +38,20 @@ def _platform_defaults() -> dict[str, Any]:
     return data
 
 
-# Every key here is read somewhere: api.* by the API app and `financial-model serve`,
-# data.* by the data providers (rate limits apply to remote ones), logging.level by both entry points,
-# models.definition_paths by every model, platform.* by the multi-tenant mode of the API and `financial-model platform`.
-_BUILTIN_DEFAULTS: dict[str, Any] = {
-    "app": {
-        "name": "Financial Model",
-        "version": __version__,
-    },
-    "api": {
-        # Loopback by default; the Docker image sets FIN_API_HOST=0.0.0.0.
-        "host": "127.0.0.1",
-        "port": 8000,
-        # Empty = no CORS headers (same-origin only). Use ["*"] or explicit origins.
-        "cors_origins": [],
-        # Optional shared secret. When set, requests must send `X-API-Key: <value>`.
-        "api_key": "",
-        # Reject request bodies larger than this.
-        "max_request_mb": 10,
-        "workers": 1,
-    },
-    "data": {
-        # Provider used when `fetch` is given a non-path source (CLI) or no provider (API).
-        "default_provider": "yfinance",
-        "rate_limit": {
-            "max_requests_per_minute": 30,
-            "max_requests_per_hour": 500,
-            "circuit_breaker_threshold": 5,
-            "circuit_breaker_timeout": 60.0,
-        },
-    },
-    "logging": {
-        "level": "INFO",
-    },
-    "models": {
-        # Extra directories searched first for model definitions `<model_type>.yaml`
-        # (defaults, starters, labels, or whole new declarative model types).
-        "definition_paths": [],
-    },
+def _builtin_defaults() -> dict[str, Any]:
+    """Built-in settings (financial_model/settings.yaml) plus the platform section and the version."""
+    with Path(__file__).with_name("settings.yaml").open(encoding="utf-8") as f:
+        data: dict[str, Any] = yaml.safe_load(f) or {}
+    data.setdefault("app", {})["version"] = __version__
     # Commercial multi-tenant mode (PaaS / B2B / B2C), off by default: see docs/commercial.md.
-    # Its defaults are data (platform/settings.yaml); prices and plans are in platform/catalog.yaml.
-    "platform": _platform_defaults(),
-}
+    data["platform"] = _platform_defaults()
+    return data
+
+
+# Every key is read somewhere: api.* by the API app and `financial-model serve`, data.* by the
+# data providers, logging.level by both entry points, defaults.* by CLI options and API request
+# fields, models.definition_paths by every model, platform.* by the multi-tenant mode.
+_BUILTIN_DEFAULTS: dict[str, Any] = _builtin_defaults()
 
 _DEFAULT_SETTINGS_FILES = (Path("financial.yaml"), Path("config/financial.yaml"))
 
@@ -185,6 +157,16 @@ def _apply_env_overrides(config: dict[str, Any], env: Mapping[str, str] | None =
         except ValueError as exc:
             raise ValueError(f"Environment variable {key}={value!r}: {exc}") from exc
     return result
+
+
+def default(key: str) -> Any:
+    """A ``defaults.<key>`` setting; ``start_year`` null means the current calendar year."""
+    value = (get_config().get("defaults") or {}).get(key)
+    if key == "start_year" and value is None:
+        import datetime
+
+        return datetime.date.today().year
+    return value
 
 
 def get_config(

@@ -13,11 +13,11 @@ import pandas as pd
 import typer
 import yaml
 
-from financial_model import __version__
+from financial_model import __version__, config_loader
 from financial_model.core.model import FinancialModel, ModelResult
 from financial_model.data.loader import config_from_statements, derive_drivers_from_financials
 from financial_model.data.providers import available_providers, fetch_statements
-from financial_model.data.synthetic import generate_saas_company
+from financial_model.data.synthetic import generate_company
 from financial_model.exporters.csv_exporter import CSVExporter
 from financial_model.exporters.json_exporter import JSONExporter
 from financial_model.models.dcf import DCFModel
@@ -77,12 +77,19 @@ def init(
         help="three-statement | dcf | lbo | budget | paas | b2b-saas | b2c-subscription | ma",
     ),
     output: Path = typer.Option(Path("model.yaml"), "--output", "-o", help="Output config file"),
-    industry: str = typer.Option("saas", "--industry", "-i", help="Industry template (saas or other)"),
-    years: int = typer.Option(5, "--years", "-y", help="Projection years"),
-    start_year: int = typer.Option(2024, "--start-year", "-s", help="Start year"),
+    industry: Optional[str] = typer.Option(
+        None, "--industry", "-i", help="Starter variant in the model definition (default: settings defaults.industry)"
+    ),
+    years: Optional[int] = typer.Option(None, "--years", "-y", help="Projection years (default: defaults.years)"),
+    start_year: Optional[int] = typer.Option(
+        None, "--start-year", "-s", help="First year (default: defaults.start_year, else this year)"
+    ),
 ) -> None:
     """Generate a starter YAML configuration file."""
     model_type = _normalize_type(model_type)
+    industry = industry or str(config_loader.default("industry"))
+    years = years or int(config_loader.default("years"))
+    start_year = start_year or int(config_loader.default("start_year"))
     config = _generate_config(model_type, industry, years, start_year)
     with output.open("w", encoding="utf-8") as f:
         yaml.dump(config, f, sort_keys=False, default_flow_style=False)
@@ -292,10 +299,13 @@ def fetch(
         help="Data provider (see `financial-model providers`). Default: 'file' when SOURCE is a path, "
         "else settings data.default_provider",
     ),
-    years: int = typer.Option(5, "--years", "-y", help="Projection years (and history to use)"),
+    years: Optional[int] = typer.Option(
+        None, "--years", "-y", help="Projection years and history to use (default: defaults.history_years)"
+    ),
     output: Path = typer.Option(Path("data.yaml"), "--output", "-o"),
 ) -> None:
     """Load historical statements from any provider and derive a model config from them."""
+    years = years or int(config_loader.default("history_years"))
     try:
         data = fetch_statements(source, years, provider)
     except (
@@ -359,19 +369,21 @@ def openapi(
 
 @app.command()
 def synthetic(
-    industry: str = typer.Option("saas", "--industry", "-i"),
-    years: int = typer.Option(5, "--years", "-y"),
-    start_year: int = typer.Option(2020, "--start-year", "-s"),
+    industry: Optional[str] = typer.Option(
+        None, "--industry", "-i", help="Synthetic profile (data/synthetic.yaml; default: defaults.industry)"
+    ),
+    years: Optional[int] = typer.Option(None, "--years", "-y", help="Years (default: the profile's)"),
+    start_year: Optional[int] = typer.Option(None, "--start-year", "-s", help="First year (default: the profile's)"),
     output: Path = typer.Option(Path("synthetic.yaml"), "--output", "-o"),
 ) -> None:
     """Generate synthetic company data and a matching model config."""
-    if industry == "saas":
-        data = generate_saas_company(start_year=start_year, years=years)
-    else:
-        typer.echo(f"Industry {industry} not yet implemented", err=True)
-        raise typer.Exit(1)
-
-    config = _synthetic_to_config(data, industry, years, start_year)
+    industry = industry or str(config_loader.default("industry"))
+    try:
+        data = generate_company(industry, start_year=start_year, years=years)
+    except ValueError as exc:
+        _fail(str(exc))
+    periods = data["periods"]
+    config = _synthetic_to_config(data, industry, len(periods), periods[0].year)
     with output.open("w", encoding="utf-8") as f:
         yaml.dump(config, f, sort_keys=False, default_flow_style=False)
     typer.echo(f"Generated synthetic {industry} data to {output}")

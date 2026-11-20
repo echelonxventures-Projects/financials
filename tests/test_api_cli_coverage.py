@@ -1,6 +1,7 @@
 """
 Tests for API and CLI exception handlers and edge cases.
 """
+
 from __future__ import annotations
 
 import json
@@ -87,7 +88,7 @@ class TestAPIExceptionHandlers:
 
     def test_synthetic_exception_handler(self):
         """Test /synthetic exception handler."""
-        with patch("financial_model.api.main.generate_saas_company") as mock_gen:
+        with patch("financial_model.api.main.generate_company") as mock_gen:
             mock_gen.side_effect = Exception("Generation failed")
             request = {"industry": "saas", "years": 3}
             response = client.post("/synthetic", json=request)

@@ -2,6 +2,7 @@
 End-to-end behaviour tests: statements tie, scenarios apply, YAML overlays defaults,
 the LBO debt schedule works, and the CLI does what the README says.
 """
+
 from __future__ import annotations
 
 import json
@@ -299,12 +300,15 @@ class TestCLIEndToEnd:
         out_json = tmp_path / "out.json"
         assert runner.invoke(cli, ["run", str(cfg), "-o", str(out_json)]).exit_code == 0
         payload = json.loads(out_json.read_text(encoding="utf-8"))
-        assert payload["periods"] == ["FY2024", "FY2025", "FY2026"]
-        assert "FY2024" in payload["income_statement"]
+        from financial_model.config_loader import default
+
+        first = int(default("start_year"))  # settings defaults.start_year, else the current year
+        assert payload["periods"] == [f"FY{first + i}" for i in range(3)]
+        assert f"FY{first}" in payload["income_statement"]
 
         out_csv = tmp_path / "csvs"
         assert runner.invoke(cli, ["run", str(cfg), "-o", str(out_csv)]).exit_code == 0
-        assert "FY2024" in (out_csv / "income_statement.csv").read_text(encoding="utf-8").splitlines()[0]
+        assert f"FY{first}" in (out_csv / "income_statement.csv").read_text(encoding="utf-8").splitlines()[0]
 
         out_xlsx = tmp_path / "out.xlsx"
         assert runner.invoke(cli, ["run", str(cfg), "-o", str(out_xlsx)]).exit_code == 0

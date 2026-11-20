@@ -1,6 +1,7 @@
 # Runtime settings for `financial-model serve` / the API container.
 # Copy to ./financial.yaml (auto-loaded) or point FIN_CONFIG_PATH at it.
 # Every key can also be set as an env var: FIN_<SECTION>_<KEY>, e.g. FIN_API_PORT=9000.
+# Built-in values: financial_model/settings.yaml (nothing is hard-coded in Python).
 # Model assumptions do NOT go here - they live in the model YAMLs (three_statement_saas.yaml, ...).
 
 api:
@@ -18,8 +19,18 @@ data:
     circuit_breaker_threshold: 5   # consecutive failures before fetches are refused...
     circuit_breaker_timeout: 60.0  # ...for this many seconds
 
+  mapping_paths: []         # extra statement-label mappings / aliases (see financial_model/data/mappings.yaml)
+  synthetic_paths: []       # extra synthetic company profiles (see financial_model/data/synthetic.yaml)
+
 logging:
   level: INFO
+
+# Defaults of CLI options and API request fields (not model assumptions).
+defaults:
+  industry: saas            # `init` starter variant / synthetic profile
+  years: 5
+  start_year: null          # null = the current calendar year
+  history_years: 5
 
 # Model definitions: every model's defaults, starters and labels (and whole new model types)
 # are YAML files `<model_type>.yaml`. Directories listed here are searched before the built-in

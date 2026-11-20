@@ -73,3 +73,15 @@ warehouse = "my_pkg.providers:WarehouseProvider"
 
 Model classes plug in the same way under `financial_model.models`. A plugin that fails to
 import is logged and skipped; it never breaks the toolkit.
+
+
+## Mappings and synthetic profiles are data
+
+* `financial_model/data/mappings.yaml`: which sheet/file names count as each statement,
+  how provider line labels map to the model's lines (e.g. `Total Revenue` -> `Revenue`),
+  and how drivers are derived from history (long-run growth, fade, clipping). Add your own
+  labels (another language, your ERP's chart of accounts) in a file listed in
+  `data.mapping_paths`; it is merged over the built-in one.
+* `financial_model/data/synthetic.yaml`: the synthetic company profiles behind
+  `financial-model synthetic --industry <name>`. Profiles can `extends` another; add more
+  via `data.synthetic_paths`.

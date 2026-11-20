@@ -87,22 +87,13 @@ class YFinanceProvider(DataProvider):
 # --------------------------------------------------------------------------- #
 # Local files
 # --------------------------------------------------------------------------- #
-_ALIASES = {
-    "income_statement": {
-        "income_statement",
-        "income",
-        "is",
-        "p_l",
-        "p_and_l",
-        "pl",
-        "pnl",
-        "profit_and_loss",
-        "profit_loss",
-    },
-    "balance_sheet": {"balance_sheet", "balance", "bs", "financial_position"},
-    "cash_flow": {"cash_flow", "cashflow", "cf", "cash_flow_statement", "cash_flows"},
-    "key_stats": {"key_stats", "stats", "key_statistics", "metrics"},
-}
+def _statement_aliases() -> dict[str, set[str]]:
+    from financial_model.data.loader import load_mappings
+
+    return {k: set(v) for k, v in (load_mappings().get("statement_aliases") or {}).items()}
+
+
+_ALIASES = _statement_aliases()
 _FILE_EXTS = (".csv", ".xlsx", ".xls", ".json")
 _YEAR = re.compile(r"(19|20)\d{2}")
 _QUARTER = re.compile(r"Q([1-4])", re.IGNORECASE)

@@ -1,0 +1,46 @@
+# Built-in runtime settings. Everything here can be overridden by a settings file
+# (./financial.yaml, ./config/financial.yaml or $FIN_CONFIG_PATH) or FIN_<SECTION>_<KEY> env vars.
+# Model defaults are not here: they live in financial_model/models/definitions/*.yaml.
+
+app:
+  name: Financial Model
+
+api:
+  # Loopback by default; the Docker image sets FIN_API_HOST=0.0.0.0.
+  host: 127.0.0.1
+  port: 8000
+  # Empty = no CORS headers (same-origin only). Use ["*"] or explicit origins.
+  cors_origins: []
+  # Optional shared secret. When set, requests must send `X-API-Key: <value>`.
+  api_key: ""
+  # Reject request bodies larger than this.
+  max_request_mb: 10
+  workers: 1
+
+data:
+  # Provider used when `fetch` is given a non-path source (CLI) or no provider (API).
+  default_provider: yfinance
+  rate_limit:
+    max_requests_per_minute: 30
+    max_requests_per_hour: 500
+    circuit_breaker_threshold: 5
+    circuit_breaker_timeout: 60.0
+  # Extra files of statement-label mappings and statement aliases (merged over data/mappings.yaml).
+  mapping_paths: []
+  # Extra files of synthetic company profiles (merged over data/synthetic.yaml).
+  synthetic_paths: []
+
+logging:
+  level: INFO
+
+# Defaults of CLI options and API request fields that are not model assumptions.
+defaults:
+  industry: saas            # starter variant for `init` and the synthetic profile
+  years: 5                  # projection / history years
+  start_year: null          # null = the current calendar year
+  history_years: 5          # years of history fetched / imported
+
+models:
+  # Extra directories searched first for model definitions `<model_type>.yaml`
+  # (defaults, starters, labels, or whole new declarative model types).
+  definition_paths: []

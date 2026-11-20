@@ -1,0 +1,54 @@
+# Synthetic company profiles for `financial-model synthetic --industry <name>` and POST /synthetic.
+# Each profile may `extends` another and change only what differs. Add your own profiles in a file
+# listed in the settings key `data.synthetic_paths` (merged over this one; `null` removes a profile).
+profiles:
+  saas:
+    name: SaaS Demo Co
+    label: SaaS
+    start_year: 2020
+    years: 5
+    # Revenue engine
+    base_arr: 10000000
+    arr_growth: 0.35
+    churn_rate: 0.05
+    expansion_rate: 0.15
+    # Margins (share of revenue)
+    gross_margin: 0.78
+    sales_marketing_pct: 0.45
+    rd_pct: 0.22
+    gna_pct: 0.12
+    tax_rate: 0.21
+    # Balance sheet
+    days_in_year: 365
+    ar_days: 45
+    ap_days: 30
+    deferred_revenue_pct: 0.30
+    accrued_pct: 0.05
+    prepaid_pct: 0.02
+    deferred_contract_cost_pct_of_sm: 0.10
+    ppe_pct: 0.05
+    opening_cash_min: 500000
+    opening_cash_pct: 0.15
+    cash_retention: 0.5          # share of net income added to cash each year (simplified)
+    common_stock: 1000
+    apic: 5000000
+    # Cash flow
+    dna_pct: 0.03
+    sbc_pct: 0.08
+    capex_pct: 0.05
+    initial_equity: 5000000
+    beginning_cash: 500000
+  consumer:
+    extends: saas
+    name: Consumer Demo Co
+    label: Consumer
+    base_arr: 50000000
+    arr_growth: 0.15
+    gross_margin: 0.45
+  manufacturing:
+    extends: saas
+    name: Manufacturing Demo Co
+    label: Manufacturing
+    base_arr: 100000000
+    arr_growth: 0.08
+    gross_margin: 0.35
