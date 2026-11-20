@@ -113,17 +113,17 @@ def run(
     result = model.calculate(scenario=scenario)
 
     if _json_to_stdout(output, format):
-        typer.echo(JSONExporter().dumps_result(result, model.analysis_tables(result)))
+        typer.echo(JSONExporter().dumps_result(result, model.all_tables(result)))
     elif output:
         fmt = _resolve_format(output, format)
         if fmt == "excel":
             model.export_excel(str(output), result)
             typer.echo(f"Exported to {output}")
         elif fmt == "csv":
-            _export_csv(result, output, model.analysis_tables(result))
+            _export_csv(result, output, model.all_tables(result))
             typer.echo(f"Exported CSVs to {output}")
         else:
-            _export_json(result, output, model.analysis_tables(result))
+            _export_json(result, output, model.all_tables(result))
             typer.echo(f"Exported JSON to {output}")
         _print_balance_status(result)
     else:

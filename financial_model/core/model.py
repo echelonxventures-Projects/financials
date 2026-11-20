@@ -6,7 +6,9 @@ Coordinates statements, assumptions, periods, and balancing.
 from __future__ import annotations
 
 import copy
+import functools
 from dataclasses import dataclass, field
+from dataclasses import fields as dataclass_fields
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +62,22 @@ class FinancialModel:
 
     model_type = "three-statement"
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Apply the definition's ``line_items`` once the outermost constructor has finished."""
+        super().__init_subclass__(**kwargs)
+        original = cls.__dict__.get("__init__")
+        if original is None or getattr(original, "_applies_definition", False):
+            return
+
+        @functools.wraps(original)
+        def init(self: FinancialModel, *args: Any, **kw: Any) -> None:
+            original(self, *args, **kw)
+            if type(self).__init__ is init:
+                self.apply_definition_structure()
+
+        init._applies_definition = True  # type: ignore[attr-defined]
+        cls.__init__ = init  # type: ignore[method-assign]
+
     def __init__(
         self,
         name: str | None = None,
@@ -96,6 +114,10 @@ class FinancialModel:
                 self.assumptions.set_driver(copy.deepcopy(driver))
         if name is None:
             self.name = str(self.definition.get("name") or type(self).__name__)
+        # Classes whose constructor is this one (e.g. definition-only types built on the base engine)
+        # get their definition's line items here; subclasses do it after their own constructor.
+        if type(self).__init__ is FinancialModel.__init__:
+            self.apply_definition_structure()
 
     # ------------------------------------------------------------------ #
     # Definition access
@@ -128,6 +150,91 @@ class FinancialModel:
             if current is None:
                 raise TypeError(f"{type(self).__name__}: unknown driver '{key}'")
             self.assumptions.set_driver(Driver(key, value, current.description, current.unit))
+
+    def apply_definition_structure(self) -> None:
+        """Add, change or remove line items as the definition's ``line_items`` says.
+
+        ``line_items: {<statement>: {<line name>: {formula: ..., order: ..., add_to: [...], ...}}}``
+        A spec for an existing line changes only the fields it gives; ``null`` removes the line.
+        """
+        statements = {
+            StatementType.INCOME_STATEMENT.value: self.income_statement,
+            StatementType.BALANCE_SHEET.value: self.balance_sheet,
+            StatementType.CASH_FLOW.value: self.cash_flow,
+        }
+        for stmt_key, lines in (self.definition.get("line_items") or {}).items():
+            stmt = statements.get(stmt_key)
+            if stmt is None:
+                raise DefinitionError(f"{self.model_type}: unknown statement '{stmt_key}' in line_items")
+            for line_name, spec in (lines or {}).items():
+                if spec is None:
+                    stmt.remove_line_item(line_name)
+                    continue
+                stmt.add_line_item(self._line_from_spec(stmt_key, line_name, dict(spec), stmt.get_line_item(line_name)))
+                for parent in spec.get("add_to") or []:
+                    target = stmt.get_line_item(parent)
+                    if target is None:
+                        raise DefinitionError(f"{self.model_type}: add_to '{parent}' is not a line of {stmt_key}")
+                    if line_name not in target.children:
+                        target.children.append(line_name)
+
+    def _line_from_spec(self, statement: str, name: str, spec: dict[str, Any], existing: LineItem | None) -> LineItem:
+        spec.pop("add_to", None)
+        base: dict[str, Any] = {}
+        if existing is not None:
+            base = {
+                f.name: getattr(existing, f.name)
+                for f in dataclass_fields(LineItem)
+                if f.name not in ("name", "statement_type")
+            }
+        if "formula" in spec:
+            base.update(line_type=LineItemType.CALCULATED, calculation_rule=None, custom_formula=None)
+        if isinstance(spec.get("driver"), str):
+            spec["driver"] = self.ref(spec["driver"])
+        base.update(spec)
+        base.setdefault("line_type", LineItemType.CALCULATED)
+        return LineItem(name=name, statement_type=statement, **base)
+
+    def formula_context(self, data: pd.DataFrame, idx: int, drivers: dict[str, Driver], statement: str | None) -> Any:
+        from financial_model.core.expressions import Context
+
+        period = self.periods[idx] if len(self.periods) > idx else None
+        return Context(
+            data,
+            idx,
+            drivers,
+            statement,
+            len(self.periods),
+            self.periods.period_type.periods_per_year,
+            period.year if period is not None else 0,
+            lambda line: self.opening_balance(line, drivers),
+        )
+
+    def definition_tables(self, result: ModelResult) -> dict[str, Any]:
+        """Tables from the definition's ``analysis`` section: ``{table: {row label: formula}}``."""
+        from financial_model.core.expressions import evaluate
+
+        specs = self.definition.get("analysis") or {}
+        if not specs:
+            return {}
+        data = self._combine(result.income_statement, result.balance_sheet, result.cash_flow)
+        tables: dict[str, Any] = {}
+        for table, rows in specs.items():
+            values = {
+                label: [
+                    evaluate(src, self.formula_context(data, i, result.drivers, None))
+                    for i in range(len(result.periods))
+                ]
+                for label, src in (rows or {}).items()
+            }
+            frame = pd.DataFrame(values, index=result.labels).T
+            frame.index.name = "Metric"
+            tables[table] = frame
+        return tables
+
+    def all_tables(self, result: ModelResult) -> dict[str, Any]:
+        """Everything exporters and the API publish: the engine's tables plus the definition's."""
+        return {**self.analysis_tables(result), **self.definition_tables(result)}
 
     def setting(self, key: str, default: Any = None) -> Any:
         """Any other section of the model's definition (labels, starters, departments...)."""
@@ -280,7 +387,13 @@ class FinancialModel:
             if skip_plugs and item.line_type == LineItemType.PLUG:
                 continue
             for period_idx in range(len(self.periods)):
-                val = item.calculate(combined, period_idx, drivers)
+                if item.formula is not None and item.line_type == LineItemType.CALCULATED:
+                    from financial_model.core.expressions import evaluate
+
+                    ctx = self.formula_context(combined, period_idx, drivers, key)
+                    val = evaluate(item.formula, ctx)
+                else:
+                    val = item.calculate(combined, period_idx, drivers)
                 col = df.columns[period_idx]
                 df.loc[item.name, col] = val
                 combined.loc[(key, item.name), col] = val
@@ -308,21 +421,21 @@ class FinancialModel:
         from financial_model.exporters.excel_exporter import ExcelExporter
 
         result = result or self.calculate()
-        return ExcelExporter().export_result(result, path, model=self, extras=self.analysis_tables(result))
+        return ExcelExporter().export_result(result, path, model=self, extras=self.all_tables(result))
 
     def export_csv(self, output_dir: str | Path, result: ModelResult | None = None) -> dict[str, Path]:
         """Export one CSV per statement and per analysis table into ``output_dir``."""
         from financial_model.exporters.csv_exporter import CSVExporter
 
         result = result or self.calculate()
-        return CSVExporter().export_result(result, output_dir, extras=self.analysis_tables(result))
+        return CSVExporter().export_result(result, output_dir, extras=self.all_tables(result))
 
     def export_json(self, path: str | Path, result: ModelResult | None = None) -> Path:
         """Export statements, balance checks and analysis tables to JSON."""
         from financial_model.exporters.json_exporter import JSONExporter
 
         result = result or self.calculate()
-        return JSONExporter().export_result(result, path, extras=self.analysis_tables(result))
+        return JSONExporter().export_result(result, path, extras=self.all_tables(result))
 
     def to_yaml(self, path: str | Path) -> None:
         """
@@ -371,6 +484,8 @@ class FinancialModel:
             "is_total": item.is_total,
             "description": item.description,
         }
+        if item.formula is not None:
+            d["formula"] = item.formula
         if item.calculation_rule:
             d["calculation_rule"] = item.calculation_rule.value
         if item.calculation_params:

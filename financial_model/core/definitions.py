@@ -33,7 +33,7 @@ from financial_model.core.line_item import Driver
 
 BUILTIN_DIR = Path(__file__).resolve().parent.parent / "models" / "definitions"
 #: Keys that belong to one file only and are not inherited through ``extends``.
-NOT_INHERITED = frozenset({"aliases", "abstract"})
+NOT_INHERITED = frozenset({"aliases", "abstract", "starter"})
 
 
 class DefinitionError(ValueError):

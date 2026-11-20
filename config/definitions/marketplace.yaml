@@ -1,0 +1,26 @@
+# Example of a model type defined entirely in YAML (no Python). Make it available with
+#   models: {definition_paths: [config/definitions]}   or   FIN_MODELS_DEFINITION_PATHS=config/definitions
+# then `financial-model init --type marketplace` / `model_type: marketplace`. See docs/models/definitions.md.
+model_type: marketplace
+aliases: [two-sided]
+extends: three-statement
+name: Marketplace Model
+description: Two-sided marketplace - GMV x take rate, with payment costs per transaction
+drivers:
+  starting_gmv: {value: 50000000, description: GMV in the first period, unit: $}
+  gmv_growth: {value: [0.6, 0.45, 0.35, 0.25, 0.2], description: GMV growth, unit: "%"}
+  take_rate: {value: 0.12, description: Share of GMV kept as revenue, unit: "%"}
+  avg_order_value: {value: 80, description: Average order value, unit: $}
+  cost_per_order: {value: 0.9, description: Payment + fraud cost per order, unit: $}
+line_items:
+  income_statement:
+    GMV: {formula: "prev('GMV', starting_gmv) * (1 + gmv_growth) if t > 0 else starting_gmv", order: 5, description: Gross merchandise value}
+    Orders: {formula: "line('GMV') / avg_order_value", order: 6, unit: "#"}
+    Revenue: {formula: "line('GMV') * take_rate"}
+    COGS: {formula: "-line('Orders') * cost_per_order - line('Revenue') * cogs_pct"}
+    Revenue Growth: null
+analysis:
+  Marketplace KPIs:
+    Take Rate: "safe_div(line('Revenue'), line('GMV'))"
+    Contribution per Order: "safe_div(line('Gross Profit'), line('Orders'))"
+    Cumulative GMV: "cumulative('GMV')"

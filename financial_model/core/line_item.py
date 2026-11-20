@@ -128,8 +128,14 @@ class LineItem:
     order: float = 0
     is_total: bool = False
     description: str = ""
+    # Formula in the safe expression language (financial_model.core.expressions); evaluated per period.
+    formula: str | None = None
 
     def __post_init__(self) -> None:
+        if self.formula is not None:
+            from financial_model.core.expressions import compile_formula
+
+            compile_formula(self.formula)  # reject invalid formulas when the model is built
         if isinstance(self.line_type, str):
             self.line_type = LineItemType(self.line_type)
         if isinstance(self.calculation_rule, str):
@@ -163,6 +169,13 @@ class LineItem:
             return 0.0
 
         if self.line_type == LineItemType.CALCULATED:
+            if self.formula is not None:
+                from financial_model.core.expressions import Context, evaluate
+
+                return evaluate(
+                    self.formula,
+                    Context(model_data, period_idx, assumptions, self.statement_type, len(model_data.columns)),
+                )
             if self.custom_formula:
                 return float(self._call_custom(model_data, period_idx, assumptions))
             return self._apply_builtin_rule(model_data, period_idx, assumptions)

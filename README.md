@@ -10,7 +10,7 @@ Extensible, config-driven financial modeling in Python. Build three-statement mo
 - **M&A Model**: Accretion/dilution by year, synergy phase-in, contribution analysis
 - **Budget Model**: Bottom-up driver trees (ARR, headcount, departments), quarterly granularity
 - **Business Models**: PaaS (usage-based), B2B SaaS (sales-led) and B2C subscription companies, forecast from customer acquisition, churn, expansion and pricing into tied three statements, with a Unit Economics table (CAC, LTV, NRR, payback, rule of 40). See `docs/models/business-models.md`
-- **Config-Driven**: All assumptions, line items, and topology in YAML — no code changes needed
+- **Config-Driven**: All assumptions, line items, and topology in YAML — no code changes needed. Every model's defaults live in `models/definitions/*.yaml`, and a new model type is just a YAML file with safe formulas (`docs/models/definitions.md`)
 - **Data Pipeline**: Derive drivers from your own CSV / Excel / JSON statements (offline), from Yahoo Finance (optional), or from any plugin provider; or generate synthetic data
 - **Multi-Format Export**: Excel (formatted), CSV, JSON — including each model's analysis tables (DCF valuation & sensitivity, LBO sources/uses, debt schedule & returns, M&A accretion)
 - **Charts**: Interactive Plotly dashboards for every model type, as one self-contained HTML file

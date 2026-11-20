@@ -188,7 +188,7 @@ async def calculate_model(request: CalculateRequest) -> dict[str, Any]:
     try:
         model = _config_to_model(request.config)
         result = model.calculate(scenario=request.scenario)
-        return _result_to_dict(result, model.analysis_tables(result))
+        return _result_to_dict(result, model.all_tables(result))
     except Exception as e:
         raise _http_error(e) from e
 

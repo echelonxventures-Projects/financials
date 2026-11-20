@@ -15,5 +15,3 @@ unit_economics_labels:
   lifetime_value: Lifetime Value (gross-margin basis)
   ltv_cac: LTV / CAC
   cac_payback: CAC Payback (months)
-# Business types bring their own starters; do not inherit the three-statement ones.
-starter: null

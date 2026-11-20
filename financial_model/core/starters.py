@@ -39,6 +39,20 @@ def _walk(node: Any, parts: list[str]) -> list[tuple[Any, str]]:
     return found
 
 
+def _implied_starter(definition: dict[str, Any]) -> dict[str, Any]:
+    """A definition without a ``starter``: its own drivers (those differing from its parent) as the config."""
+    chain = definition.get("_chain") or []
+    parent = load_definition(chain[1]).get("drivers", {}) if len(chain) > 1 else {}
+    own = {k: v for k, v in (definition.get("drivers") or {}).items() if parent.get(k) != v}
+    config = {
+        "name": definition.get("name") or definition["model_type"],
+        "model_type": definition["model_type"],
+        "periods": {"type": (definition.get("periods") or {}).get("type", "annual")},
+        "assumptions": {"drivers": own, "scenarios": definition.get("starter_scenarios") or {}},
+    }
+    return {"fallback_variant": "default", "period_paths": ["periods"], "variants": {"default": config}}
+
+
 def variants(model_type: str) -> list[str]:
     return list((load_definition(model_type).get("starter") or {}).get("variants") or {})
 
@@ -50,7 +64,7 @@ def starter_config(
     definition = load_definition(model_type)
     spec = definition.get("starter")
     if not spec or not spec.get("variants"):
-        raise DefinitionError(f"definition '{model_type}' has no starter section")
+        spec = _implied_starter(definition)
     options = spec["variants"]
     chosen = variant if variant in options else spec.get("fallback_variant")
     if chosen not in options:

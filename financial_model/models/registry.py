@@ -52,7 +52,7 @@ _plugins_loaded = False
 
 
 def load_model_plugins() -> None:
-    """Register models published under the ``financial_model.models`` entry point (once)."""
+    """Register entry-point model classes and definition-only model types (once)."""
     global _plugins_loaded
     if _plugins_loaded:
         return
@@ -62,6 +62,55 @@ def load_model_plugins() -> None:
             register_model(name, cls)
         except TypeError:
             continue
+    register_definition_models()
+
+
+#: Model types created from definition files (not Python classes); rebuilt by reload_definitions().
+DEFINED_TYPES: set[str] = set()
+
+
+def _engine_for(definition: dict[str, Any]) -> type[FinancialModel]:
+    """The nearest Python engine in a definition's ``extends`` chain (the base engine if none)."""
+    for ancestor in definition.get("_chain", [])[1:]:
+        if ancestor in MODEL_CLASSES and ancestor not in DEFINED_TYPES:
+            return MODEL_CLASSES[ancestor]
+    return FinancialModel
+
+
+def register_definition_models() -> list[str]:
+    """Make every non-abstract ``<model_type>.yaml`` without a Python class a usable model type."""
+    from financial_model.core.definitions import available_definitions, load_definition
+
+    added: list[str] = []
+    for key in available_definitions():
+        if key in COMPOSITE_TYPES or (key in MODEL_CLASSES and key not in DEFINED_TYPES):
+            continue
+        definition = load_definition(key)
+        if definition.get("abstract"):
+            continue
+        engine = _engine_for(definition)
+        cls = type(
+            "".join(part.title() for part in key.replace("_", "-").split("-")) + "Model",
+            (engine,),
+            {"model_type": key, "__doc__": definition.get("description") or f"Model defined in {key}.yaml"},
+        )
+        MODEL_CLASSES[key] = cls
+        DEFINED_TYPES.add(key)
+        added.append(key)
+    return added
+
+
+def reload_definitions() -> None:
+    """Re-read definition files and aliases (after editing them or changing ``models.definition_paths``)."""
+    from financial_model.core.definitions import clear_cache
+
+    clear_cache()
+    for key in list(DEFINED_TYPES):
+        MODEL_CLASSES.pop(key, None)
+    DEFINED_TYPES.clear()
+    ALIASES.clear()
+    ALIASES.update(_definition_aliases())
+    register_definition_models()
 
 
 def normalize_model_type(model_type: str | None) -> str:

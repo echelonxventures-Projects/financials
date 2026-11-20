@@ -66,9 +66,10 @@ class LineItemConfig(BaseModel):
     driver: DriverConfig | None = None
     format: str = "{:,.0f}"
     unit: str = "$"
-    order: int = 0
+    order: float = 0
     is_total: bool = False
     description: str = ""
+    formula: str | None = Field(None, description="Safe expression evaluated per period (docs/models/definitions.md)")
 
 
 class StatementConfig(BaseModel):

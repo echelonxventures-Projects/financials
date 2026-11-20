@@ -312,7 +312,7 @@
         "order": {
           "default": 0,
           "title": "Order",
-          "type": "integer"
+          "type": "number"
         },
         "is_total": {
           "default": false,
@@ -323,6 +323,19 @@
           "default": "",
           "title": "Description",
           "type": "string"
+        },
+        "formula": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Safe expression evaluated per period (docs/models/definitions.md)",
+          "title": "Formula"
         }
       },
       "required": [

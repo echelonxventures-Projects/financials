@@ -17,6 +17,7 @@ nav:
       - M&A: models/ma.md
       - Budget: models/budget.md
       - PaaS / B2B / B2C: models/business-models.md
+      - Definitions & YAML-only models: models/definitions.md
   - CLI & API: interfaces.md
   - Other languages: other-languages.md
   - Data sources: data.md
