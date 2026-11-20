@@ -20,3 +20,23 @@ data:
 
 logging:
   level: INFO
+
+# Commercial multi-tenant mode: hosted PaaS API, B2B organisations, B2C self-serve.
+# Off by default. See docs/commercial.md.
+platform:
+  enabled: false
+  database: sqlite:///financial_platform.db   # or sqlite:////data/platform.db in a container
+  secret_key: ""            # REQUIRED in production (signs login tokens): FIN_PLATFORM_SECRET_KEY
+  token_ttl_hours: 24
+  allow_signup: true        # POST /v1/signup for individuals (B2C)
+  default_plan: free        # plan for new individual accounts
+  default_org_plan: team    # plan for new organisations
+  plans:                    # change or add tiers; null removes one
+    pro: {price_monthly: 19, runs_per_month: 5000}
+    # startup: {name: Startup, audience: organization, price_monthly: 199, seats: 10, runs_per_month: 100000}
+  billing:
+    provider: manual        # manual (offline invoices + `financial-model platform set-plan`) | stripe | plugin
+    stripe:
+      secret_key: ""        # FIN_PLATFORM_BILLING_STRIPE_SECRET_KEY
+      webhook_secret: ""    # FIN_PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET; endpoint: POST /v1/billing/webhook
+      prices: {}            # plan -> Stripe price id, e.g. {pro: price_123, team: price_456}

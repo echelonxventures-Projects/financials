@@ -69,11 +69,14 @@ def create_app(settings: dict[str, Any] | None = None) -> FastAPI:
         application.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
-            allow_methods=["GET", "POST"],
-            allow_headers=["Content-Type", "X-API-Key"],
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=["Content-Type", "X-API-Key", "Authorization"],
         )
 
-    api_key = str(api_cfg.get("api_key") or os.environ.get("FIN_API_KEY", ""))
+    platform_cfg = cfg.get("platform", {}) or {}
+    platform_mode = bool(platform_cfg.get("enabled"))
+    # In platform mode tenants authenticate with their own keys; the shared key is not used.
+    api_key = "" if platform_mode else str(api_cfg.get("api_key") or os.environ.get("FIN_API_KEY", ""))
     max_bytes = int(float(api_cfg.get("max_request_mb", 10)) * 1024 * 1024)
 
     @application.middleware("http")
@@ -87,7 +90,16 @@ def create_app(settings: dict[str, Any] | None = None) -> FastAPI:
             return JSONResponse({"detail": f"request body exceeds {max_bytes} bytes"}, status_code=413)
         return await call_next(request)
 
-    application.include_router(router)
+    if platform_mode:
+        from financial_model.platform.api import install_platform
+        from financial_model.platform.service import PlatformService
+
+        service = PlatformService.from_settings(platform_cfg)
+        if service.secret_is_ephemeral:
+            logger.warning("platform.secret_key is not set: login tokens will not survive a restart")
+        install_platform(application, router, service)
+    else:
+        application.include_router(router)
     return application
 
 

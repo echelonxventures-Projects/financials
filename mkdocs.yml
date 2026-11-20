@@ -21,6 +21,7 @@ nav:
   - Other languages: other-languages.md
   - Data sources: data.md
   - Self-hosting: self-hosting.md
+  - Commercial platform (PaaS / B2B / B2C): commercial.md
   - Deployment: deployment.md
   - Compatibility: compatibility.md
 markdown_extensions:

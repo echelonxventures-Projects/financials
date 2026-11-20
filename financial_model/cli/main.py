@@ -413,6 +413,11 @@ def validate(
     )
 
 
+from financial_model.cli.platform_cmds import platform_app  # noqa: E402
+
+app.add_typer(platform_app, name="platform")
+
+
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #

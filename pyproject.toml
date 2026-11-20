@@ -87,8 +87,10 @@ required-imports = ["from __future__ import annotations"]
 # Typer reads command signatures with typing.get_type_hints at runtime; on Python 3.9 that
 # cannot evaluate `X | None`, so CLI parameters use Optional[X].
 "financial_model/cli/main.py" = ["UP045", "UP007"]
+"financial_model/cli/platform_cmds.py" = ["UP045", "UP007"]
 "tests/*" = ["ARG", "B", "SIM", "PTH", "N", "E741", "E712", "F401", "F841"]
 "financial_model/utils/*" = ["N818", "SIM"]
+"financial_model/platform/*" = ["N818"]  # HTTP-style error names (NotFound, Forbidden...)
 
 [tool.ruff.format]
 quote-style = "double"

@@ -1,0 +1,31 @@
+# Hosted, multi-tenant (PaaS / B2B / B2C) deployment: see docs/commercial.md.
+#   FIN_PLATFORM_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))") \
+#     docker compose -f deploy/compose.platform.yaml up -d --build
+# Accounts, keys and usage live in SQLite on the `platform-data` volume. Put a TLS-terminating
+# proxy (Caddy, nginx, a cloud load balancer) in front; never expose it over plain HTTP.
+services:
+  api:
+    build: ..
+    image: financial-model:latest
+    ports:
+      - "8000:8000"
+    environment:
+      FIN_PLATFORM_ENABLED: "true"
+      FIN_PLATFORM_DATABASE: sqlite:////data/platform.db
+      FIN_PLATFORM_SECRET_KEY: ${FIN_PLATFORM_SECRET_KEY:?set FIN_PLATFORM_SECRET_KEY}
+      FIN_PLATFORM_ALLOW_SIGNUP: ${FIN_PLATFORM_ALLOW_SIGNUP:-true}
+      FIN_PLATFORM_BILLING_PROVIDER: ${FIN_PLATFORM_BILLING_PROVIDER:-manual}
+      FIN_PLATFORM_BILLING_STRIPE_SECRET_KEY: ${FIN_PLATFORM_BILLING_STRIPE_SECRET_KEY:-}
+      FIN_PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET: ${FIN_PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET:-}
+      FIN_API_CORS_ORIGINS: ${FIN_API_CORS_ORIGINS:-}
+      FIN_LOGGING_LEVEL: ${FIN_LOGGING_LEVEL:-INFO}
+    # Plan prices / Stripe price ids are easiest in a settings file:
+    #   - ./financial.yaml:/app/financial.yaml:ro
+    volumes:
+      - platform-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+volumes:
+  platform-data:

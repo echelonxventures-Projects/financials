@@ -31,7 +31,8 @@ import yaml
 from financial_model import __version__
 
 # Every key here is read somewhere: api.* by the API app and `financial-model serve`,
-# data.* by the data providers (rate limits apply to remote ones), logging.level by both entry points.
+# data.* by the data providers (rate limits apply to remote ones), logging.level by both entry points,
+# platform.* by the multi-tenant mode of the API and `financial-model platform`.
 _BUILTIN_DEFAULTS: dict[str, Any] = {
     "app": {
         "name": "Financial Model",
@@ -61,6 +62,28 @@ _BUILTIN_DEFAULTS: dict[str, Any] = {
     },
     "logging": {
         "level": "INFO",
+    },
+    # Commercial multi-tenant mode (PaaS / B2B / B2C): see docs/commercial.md.
+    # Off by default, so a self-hosted install behaves exactly as before.
+    "platform": {
+        "enabled": False,
+        # sqlite:///path.db (default store) or a plugin scheme.
+        "database": "sqlite:///financial_platform.db",
+        # Signs login tokens. Set it (FIN_PLATFORM_SECRET_KEY) so tokens survive restarts and replicas agree.
+        "secret_key": "",
+        "token_ttl_hours": 24,
+        "password_iterations": 600000,
+        # B2C self-serve sign-up at POST /v1/signup.
+        "allow_signup": True,
+        "default_plan": "free",
+        "default_org_plan": "team",
+        # Overrides / additions to the plan catalogue (financial_model/platform/plans.py).
+        "plans": {},
+        "billing": {
+            # manual (offline invoicing) | stripe | a plugin provider
+            "provider": "manual",
+            "stripe": {"secret_key": "", "webhook_secret": "", "prices": {}},
+        },
     },
 }
 

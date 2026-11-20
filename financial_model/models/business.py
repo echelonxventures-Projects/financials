@@ -211,8 +211,9 @@ class BusinessModel(ThreeStatementModel):
             monthly_gp = monthly * margin if margin is not None else None
             value = monthly_gp * 12 / churn if monthly_gp is not None and churn > 0 else None
             ltv.append(value)
-            ratio.append(_safe_div(value, cac[i]) if value is not None and cac[i] else None)
-            payback.append(_safe_div(cac[i], monthly_gp) if cac[i] is not None and monthly_gp else None)
+            c = cac[i]
+            ratio.append(_safe_div(value, c) if value is not None and c else None)
+            payback.append(_safe_div(c, monthly_gp) if c is not None and monthly_gp else None)
         return {
             "Revenue per Customer per Month": arpa,
             "Lifetime Value (gross-margin basis)": ltv,

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Commercial platform (`platform.enabled`, off by default): B2C self-serve sign-up, B2B organisations with members, roles and seats, a configurable plan catalogue (Free, Pro, Team, Business, Enterprise) enforced on every model endpoint, per-tenant API keys and signed login tokens, monthly usage metering, and pluggable billing (`manual`, `stripe` with signed webhooks, or a plugin). `/v1` account API, `financial-model platform` operator commands, `deploy/compose.platform.yaml`, `docs/commercial.md`. Standard library only (SQLite store, pluggable)
 - Business-model types `paas`, `b2b-saas` and `b2c-subscription` (aliases `platform`, `b2b`, `b2c`...): a customer engine drives revenue, COGS and S&M of a full three-statement model; a `Unit Economics` analysis table (customers, ARR, NRR/GRR, CAC, LTV, LTV/CAC, payback, rule of 40) in every export and the API; `financial-model init --type` templates and example configs in `config/`
 - Python 3.9+ with no upper bound (was 3.11+). CI tests 3.9 through 3.14, the newest stable `3.x` on Linux, macOS and Windows, the free-threaded 3.14t build, every dependency at its declared minimum, and (weekly) the newest pre-release dependencies. See `docs/compatibility.md`
 - `scripts/min_constraints.py`: pip constraints pinning each runtime dependency to its floor

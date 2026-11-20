@@ -16,6 +16,7 @@ Extensible, config-driven financial modeling in Python. Build three-statement mo
 - **Charts**: Interactive Plotly dashboards for every model type, as one self-contained HTML file
 - **Interfaces**: CLI, REST API (FastAPI), Python library
 - **Agnostic**: Lean core install with optional extras; Linux / macOS / Windows; any ASGI server; recipes for systemd, launchd, Windows, any OCI runtime (Docker, Podman...), Compose, Kubernetes and PaaS; data providers and model types plug in via entry points
+- **Commercial platform** (opt-in): run it as a hosted PaaS API with B2C self-serve accounts, B2B organisations (members, roles, seats), plan entitlements and quotas, per-tenant API keys, usage metering and pluggable billing (manual invoicing or Stripe). See `docs/commercial.md`
 - **Self-hosted**: optional API key, CORS, request limits and fetch rate limits via a settings file or `FIN_*` env vars; no CDN or cloud services required
 - **Testing**: Property-based (Hypothesis), hand-derived golden master, statement tie-out checks, CI/CD
 
@@ -77,6 +78,7 @@ financial_model/
 │   ├── config_loader.py# Runtime settings (defaults < YAML < FIN_* env)
 │   ├── cli/            # Typer CLI
 │   ├── api/            # FastAPI REST API
+│   ├── platform/       # Commercial mode: tenants, plans, keys, metering, billing, /v1 API
 ├── deploy/             # systemd, launchd, Windows, Compose, Kubernetes recipes
 ├── config/             # Example model configs (three-statement, DCF, LBO, budget, M&A) + settings example
 ├── docs/               # MkDocs documentation
