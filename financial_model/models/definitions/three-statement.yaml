@@ -227,6 +227,52 @@ structure:
     Beginning Cash Balance: {line_type: "input", order: 150, driver: "beginning_cash", description: "Beginning cash"}
     Ending Cash Balance: {line_type: "aggregate", order: 160, children: [Beginning Cash Balance, Net Change in Cash], is_total: true, description: "Ending cash"}
 
+# Charts drawn for this model (exports, dashboards, `financial-model chart`, the API), in order.
+# kind: bar | line | waterfall | heatmap | pie. source: a statement (income_statement,
+# balance_sheet, cash_flow) or an engine table (see docs/models/definitions.md). A series is a
+# line name or {line|column|key, name, divide_by, abs, match, group, rename}; overlays are lines
+# drawn over the bars; requires skips the chart when a series is missing; colours are roles from
+# presentation.charts. Change, add or remove (null) charts like any other definition entry.
+charts:
+  profitability:
+    group: statements
+    kind: bar
+    source: income_statement
+    title: Revenue & Profitability
+    yaxis: $
+    series: [Revenue, Gross Profit, Operating Income, Net Income]
+  margins:
+    group: statements
+    kind: line
+    source: income_statement
+    title: Margins
+    yaxis: "% of revenue"
+    yformat: ".0%"
+    requires: [Revenue]
+    series:
+    - {name: Gross Margin, line: Gross Profit, divide_by: Revenue}
+    - {name: Operating Margin, line: Operating Income, divide_by: Revenue}
+    - {name: Net Margin, line: Net Income, divide_by: Revenue}
+  cash_flow:
+    group: statements
+    kind: bar
+    source: cash_flow
+    title: Cash Flow by Activity
+    yaxis: $
+    barmode: relative
+    series:
+    - {name: Operating, line: Operating Cash Flow}
+    - {name: Investing, line: Investing Cash Flow}
+    - {name: Financing, line: Financing Cash Flow}
+    overlays:
+    - {name: Ending Cash, source: balance_sheet, line: Cash & Cash Equivalents, color: overlay_line}
+  balance_sheet:
+    group: statements
+    kind: bar
+    source: balance_sheet
+    title: Balance Sheet
+    yaxis: $
+    series: [Total Assets, Total Liabilities, Total Equity]
 starter_scenarios: {}
 # Starter config written by `financial-model init --type three-statement [--industry <variant>]`.
 # period_paths get start_year/years; truncate_to_years lists are cut to the year count;

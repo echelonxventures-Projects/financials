@@ -45,6 +45,11 @@ models:
   # (defaults, starters, labels, or whole new declarative model types).
   definition_paths: []
 
+# Safety limits of the formula language (line-item formulas, named expressions, chart values).
+formulas:
+  max_length: 4000   # characters per formula
+  max_depth: 32      # nesting of named expressions (stops cycles)
+
 # Look of exported workbooks and charts. Override any key in your settings file, e.g.
 #   presentation: {charts: {palette: ["#0f766e", "#b45309"]}, excel: {header: {fill: "1F2937"}}}
 presentation:
@@ -99,6 +104,8 @@ presentation:
     legend: {orientation: h, yanchor: bottom, y: 1.02, xanchor: right, x: 1}
     hovermode: x unified
     value_format: ",.0f"
+    text_format: ",.0f"            # value labels on waterfall bars and heatmap cells
+    waterfall_hovermode: closest
     page:                          # export_dashboard HTML page
       light: {background: "#f8fafc", text: "#0f172a"}
       dark: {background: "#0b1120", text: "#e2e8f0"}

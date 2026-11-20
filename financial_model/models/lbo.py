@@ -342,6 +342,10 @@ class LBOModel(ThreeStatementModel):
             custom_formula=sweep_repayment,
         )
 
+    def chart_groups(self) -> dict[str, list[str]]:
+        """Named series groups for chart specs (``series: [{group: tranches}]``)."""
+        return {"tranches": list(self.tranches)}
+
     @property
     def lbo_lines(self) -> dict[str, str]:
         """Names of the single debt-schedule lines (definition ``layout.<role>.name``)."""

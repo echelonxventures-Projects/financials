@@ -368,6 +368,37 @@ starter:
         acquirer_shares: 10000000
         acquirer_pe: 25.0
 # Descriptions of the deal terms (JSON Schema, docs).
+# Charts of the merger (fields as in three-statement.yaml); source `analysis` reads the model's tables.
+charts:
+  ma_accretion:
+    kind: bar
+    source: analysis
+    table: Accretion Dilution
+    title: EPS Accretion / (Dilution)
+    yaxis: "% vs standalone"
+    yformat: ".0%"
+    barmode: null                # one series: no grouping
+    color_by_sign: true          # presentation.charts positive / negative
+    text_format: "+.1%"
+    series: [{name: Accretion / (Dilution), column: accretion_dilution_pct}]
+  ma_eps:
+    kind: line
+    source: analysis
+    table: Accretion Dilution
+    title: EPS
+    yaxis: $
+    yformat: ",.2f"
+    series:
+    - {name: Standalone EPS, column: acquirer_eps}
+    - {name: Pro Forma EPS, column: pf_eps}
+  ma_contribution:
+    kind: bar
+    source: analysis
+    table: Contribution
+    title: Year-1 Contribution
+    yaxis: $
+    barmode: stack
+    series: [{column: Acquirer}, {column: Target}]
 deal_descriptions:
   synergies: Annual run-rate pre-tax synergies
   acquirer_share_price: "Default: acquirer year-1 EPS x acquirer_pe"

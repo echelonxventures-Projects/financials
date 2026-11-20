@@ -36,6 +36,41 @@ drivers:
     value: 12.0
     description: Exit EV/EBITDA multiple
     unit: x
+# Charts added to the inherited three-statement charts (see three-statement.yaml).
+charts:
+  dcf_fcf:
+    group: dcf
+    kind: bar
+    source: dcf
+    x: periods
+    title: Unlevered Free Cash Flow
+    yaxis: $
+    series:
+    - {name: Free Cash Flow, key: fcf}
+    - {name: PV of FCF, key: pv_fcf}
+  dcf_bridge:
+    group: dcf
+    kind: waterfall
+    source: dcf
+    title: EV to Equity Bridge (Gordon growth)
+    yaxis: $
+    steps:                       # value: an expression over the DCF results
+    - {label: PV of FCF, value: sum(pv_fcf)}
+    - {label: PV of Terminal Value, value: pv_terminal_gordon}
+    - {label: Enterprise Value, value: ev_gordon, measure: total}
+    - {label: "Less: Net Debt", value: -net_debt}
+    - {label: Equity Value, value: equity_gordon, measure: total}
+  dcf_sensitivity:
+    group: dcf
+    kind: heatmap
+    source: dcf_sensitivity
+    title: Equity Value Sensitivity
+    xaxis: WACC
+    yaxis: Terminal growth
+    colorscale: heatmap_scale
+    colorbar: Equity
+    hovertemplate: "WACC %{x}<br>Growth %{y}<br>Equity %{z:,.0f}<extra></extra>"
+    hovermode: closest
 starter_scenarios: {}
 # Default WACC x terminal-growth grid of the sensitivity table.
 sensitivity:

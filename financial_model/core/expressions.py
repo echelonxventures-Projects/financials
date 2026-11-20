@@ -35,7 +35,7 @@ from __future__ import annotations
 import ast
 import math
 import operator
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import Any
@@ -44,8 +44,23 @@ import pandas as pd
 
 from financial_model.core.line_item import Driver, lookup_value
 
-MAX_LENGTH = 4000  # characters per formula; guards against pathological inputs
-MAX_DEPTH = 32  # nesting of named expressions
+#: Functions of value expressions (``evaluate_values``): over named numbers and lists, not periods.
+VALUE_FUNCTIONS = frozenset({"sum", "len", "safe_div", "clamp", "min", "max", "abs", "round"})
+
+
+@lru_cache(maxsize=1)
+def limits() -> dict[str, int]:
+    """``formulas.max_length`` / ``formulas.max_depth`` from the settings (read once; ``clear_limits`` after a change)."""
+    from financial_model.config_loader import get_config
+
+    cfg = get_config().get("formulas") or {}
+    return {"max_length": int(cfg.get("max_length") or 0), "max_depth": int(cfg.get("max_depth") or 0)}
+
+
+def clear_limits() -> None:
+    """Re-read the formula limits from the settings (and forget compiled formulas)."""
+    limits.cache_clear()
+    compile_formula.cache_clear()
 
 
 class FormulaError(ValueError):
@@ -91,7 +106,7 @@ FUNCTIONS = frozenset(
 SPECIAL_NAMES = frozenset({"t", "n_periods", "periods_per_year", "year"})
 
 
-def _check(node: ast.AST, source: str) -> None:
+def _check(node: ast.AST, source: str, functions: frozenset[str] = FUNCTIONS) -> None:
     allowed = (
         ast.Expression,
         ast.BinOp,
@@ -113,8 +128,8 @@ def _check(node: ast.AST, source: str) -> None:
         if not isinstance(child, allowed):
             raise FormulaError(f"'{type(child).__name__}' is not allowed in formulas: {source}")
         if isinstance(child, ast.Call):
-            if not isinstance(child.func, ast.Name) or child.func.id not in FUNCTIONS:
-                raise FormulaError(f"unknown function in formula (allowed: {', '.join(sorted(FUNCTIONS))}): {source}")
+            if not isinstance(child.func, ast.Name) or child.func.id not in functions:
+                raise FormulaError(f"unknown function in formula (allowed: {', '.join(sorted(functions))}): {source}")
             if child.keywords:
                 raise FormulaError(f"keyword arguments are not supported in formulas: {source}")
         if isinstance(child, ast.Constant) and not isinstance(child.value, (int, float, str, bool, type(None))):
@@ -122,17 +137,18 @@ def _check(node: ast.AST, source: str) -> None:
 
 
 @lru_cache(maxsize=4096)
-def compile_formula(source: str) -> ast.Expression:
+def compile_formula(source: str, functions: frozenset[str] = FUNCTIONS) -> ast.Expression:
     """Parse and validate a formula (cached)."""
     if not isinstance(source, str) or not source.strip():
         raise FormulaError("formula must be a non-empty string")
-    if len(source) > MAX_LENGTH:
-        raise FormulaError(f"formula longer than {MAX_LENGTH} characters")
+    max_length = limits()["max_length"]
+    if len(source) > max_length:
+        raise FormulaError(f"formula longer than {max_length} characters")
     try:
         tree = ast.parse(source.strip(), mode="eval")
     except SyntaxError as exc:
         raise FormulaError(f"invalid formula syntax: {source} ({exc.msg})") from exc
-    _check(tree, source)
+    _check(tree, source, functions)
     return tree
 
 
@@ -219,6 +235,24 @@ class _Evaluator:
             return round(args[0], int(args[1]) if len(args) > 1 else 0)
         raise FormulaError(f"unknown function {fn}")  # pragma: no cover - rejected at compile time
 
+    def name(self, key: str) -> Any:
+        ctx = self.ctx
+        special = {
+            "t": ctx.idx,
+            "n_periods": ctx.n_periods,
+            "periods_per_year": ctx.periods_per_year,
+            "year": ctx.year,
+        }
+        if key in special:
+            return float(special[key])
+        if key not in ctx.drivers and ctx.expressions and key in ctx.expressions:
+            max_depth = limits()["max_depth"]
+            if ctx.depth >= max_depth:
+                raise FormulaError(f"named expressions nested deeper than {max_depth} (a cycle?): {self.source}")
+            sub = ctx.expressions[key]
+            return _Evaluator(replace(ctx, depth=ctx.depth + 1), sub).eval(compile_formula(sub))
+        return self._driver(key, ctx.idx)
+
     # -- tree walk -----------------------------------------------------------
     def eval(self, node: ast.AST) -> Any:
         if isinstance(node, ast.Expression):
@@ -230,21 +264,7 @@ class _Evaluator:
                 else node.value
             )
         if isinstance(node, ast.Name):
-            ctx = self.ctx
-            special = {
-                "t": ctx.idx,
-                "n_periods": ctx.n_periods,
-                "periods_per_year": ctx.periods_per_year,
-                "year": ctx.year,
-            }
-            if node.id in special:
-                return float(special[node.id])
-            if node.id not in ctx.drivers and ctx.expressions and node.id in ctx.expressions:
-                if ctx.depth >= MAX_DEPTH:
-                    raise FormulaError(f"named expressions nested deeper than {MAX_DEPTH} (a cycle?): {self.source}")
-                sub = ctx.expressions[node.id]
-                return _Evaluator(replace(ctx, depth=ctx.depth + 1), sub).eval(compile_formula(sub))
-            return self._driver(node.id, ctx.idx)
+            return self.name(node.id)
         if isinstance(node, ast.BinOp):
             left, right = self.eval(node.left), self.eval(node.right)
             try:
@@ -291,4 +311,36 @@ def evaluate(source: str, ctx: Context) -> float:
     result = float(value)
     if math.isnan(result) or math.isinf(result):
         raise FormulaError(f"formula produced {result}: {source}")
+    return result
+
+
+class _ValueEvaluator(_Evaluator):
+    """Evaluates an expression over named values (numbers or lists) instead of a period."""
+
+    def __init__(self, names: Mapping[str, Any], source: str):
+        self.names, self.source = names, source
+
+    def name(self, key: str) -> Any:
+        if key not in self.names:
+            raise FormulaError(f"unknown name '{key}' (available: {', '.join(sorted(self.names))}): {self.source}")
+        value = self.names[key]
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else value
+
+    def call(self, fn: str, args: list[Any]) -> Any:
+        flat = list(args[0]) if len(args) == 1 and isinstance(args[0], (list, tuple)) else args
+        if fn == "sum":
+            return float(sum(flat))
+        if fn == "len":
+            return float(len(flat))
+        if fn in ("min", "max"):
+            return (min if fn == "min" else max)(flat)
+        return super().call(fn, args)
+
+
+def evaluate_values(source: str, names: Mapping[str, Any]) -> float:
+    """Evaluate ``source`` over ``names`` (e.g. ``"sum(pv_fcf) - net_debt"``); same safety rules as formulas."""
+    value = _ValueEvaluator(names, source).eval(compile_formula(source, VALUE_FUNCTIONS))
+    result = float(value)
+    if math.isnan(result) or math.isinf(result):
+        raise FormulaError(f"expression produced {result}: {source}")
     return result

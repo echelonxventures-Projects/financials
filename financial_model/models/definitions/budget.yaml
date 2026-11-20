@@ -130,6 +130,40 @@ drivers:
     value: 0
     description: Beginning cash
     unit: $
+# Charts of the budget (see three-statement.yaml for the fields). `match` picks every line by name.
+charts:
+  arr:
+    kind: bar
+    source: income_statement
+    title: ARR Movements
+    yaxis: $
+    barmode: relative
+    series: [New ARR, Expansion ARR, Churned ARR]
+    overlays:
+    - line: Ending ARR
+      axis: y2
+      layout: {yaxis2: {overlaying: y, side: right, tickformat: ",.0f", showgrid: false}}
+  opex:
+    kind: bar
+    source: income_statement
+    title: Operating Expense by Department
+    yaxis: $
+    barmode: stack
+    series: [{match: {suffix: " Expense", exclude_prefix: Total}, abs: true}]
+  headcount:
+    kind: bar
+    source: income_statement
+    title: Headcount by Department
+    yaxis: FTE
+    barmode: stack
+    series: [{match: {suffix: " Headcount"}, rename: {" Headcount": ""}}]
+  revenue:
+    kind: bar
+    source: income_statement
+    title: Revenue vs Operating Income
+    yaxis: $
+    series: [Revenue]
+    overlays: [Operating Income]
 starter_scenarios: {}
 # Starter config written by `financial-model init --type budget [--industry <variant>]`.
 # period_paths get start_year/years; truncate_to_years lists are cut to the year count;

@@ -80,6 +80,38 @@ drivers:
     value: 5
     description: Hold period
     unit: years
+# Charts added to the inherited three-statement charts. `group: tranches` is every tranche of the model.
+charts:
+  lbo_debt:
+    group: lbo
+    kind: bar
+    source: debt_schedule
+    title: Debt Paydown by Tranche
+    yaxis: $
+    barmode: stack
+    series: [{group: tranches}, {column: Revolver}]
+    overlays:
+    - {column: Cash, color: overlay_line}
+  lbo_sources:
+    group: lbo
+    kind: pie
+    source: sources_uses
+    table: sources
+    labels: Source
+    values: Amount
+    positive_only: true
+    hole: 0.5
+    title: Sources of Funds
+  lbo_returns:
+    group: lbo
+    kind: waterfall
+    source: returns
+    title: "Sponsor Returns — {moic:.2f}x MOIC, {irr:.1%} IRR"
+    yaxis: $
+    steps:
+    - {label: Equity Invested, value: equity_invested, measure: absolute}
+    - {label: Value Created, value: equity_value_at_exit - equity_invested}
+    - {label: Equity at Exit, value: equity_value_at_exit, measure: total}
 starter_scenarios: {}
 # Debt tranches, in seniority order. Each needs `<key>_pct`, `<key>_rate` (and `<key>_amort` when
 # amortizing) drivers. Add, remove or rename tranches here; the schedule, interest lines, balance

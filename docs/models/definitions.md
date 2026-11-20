@@ -6,7 +6,7 @@ or remove line items with formulas, so **a new model type needs only a YAML file
 
 | Built-in definition | Holds |
 |---|---|
-| `three-statement.yaml` | **every line of the three statements** (`structure`), the opening balance sheet (`opening_balances`, `opening_retained_earnings`), named `expressions`, every driver's default value, description and unit; aliases (`3s`, `ts`...); `init` starters |
+| `three-statement.yaml` | **every line of the three statements** (`structure`), the statement charts (`charts`), the opening balance sheet (`opening_balances`, `opening_retained_earnings`), named `expressions`, every driver's default value, description and unit; aliases (`3s`, `ts`...); `init` starters |
 | `dcf.yaml` (extends three-statement) | WACC / terminal-value drivers, the sensitivity grid |
 | `lbo.yaml` (extends three-statement) | deal and debt drivers, **the tranche set** (add a seller note or a unitranche by adding an entry), where the debt-schedule lines go (`layout`: names, orders, totals) |
 | `budget.yaml` | its statements (`structure`), the lines built per department (`department_template`), departments built by default, the seed for new departments, special driver prefixes (`department_keys`) |
@@ -63,6 +63,51 @@ formulas that any line can use as a bare name, e.g. `depreciation_charge: "abs(d
 
 Budget departments come from `department_template` (`{dept}` = department name, `{key}` = driver
 prefix, `offset` added to `order_start + position x order_step`, `rollup_line` added to `rollup`).
+
+## Charts are data
+
+`charts` lists the charts a model has, in order; definitions that extend another inherit its charts
+and can change one field, add charts, or remove one with `null`.
+
+```yaml
+charts:
+  margins:
+    kind: line                     # bar | line | waterfall | heatmap | pie
+    source: income_statement       # where the numbers come from (below)
+    title: Margins
+    yaxis: "% of revenue"
+    yformat: ".0%"
+    requires: [Revenue]            # skip the chart when a series is missing
+    series:
+    - {name: Gross Margin, line: Gross Profit, divide_by: Revenue}
+  cash_flow:
+    kind: bar
+    source: cash_flow
+    barmode: relative              # group (default) | stack | relative | null
+    series: [Operating Cash Flow]
+    overlays: [{name: Ending Cash, source: balance_sheet, line: Cash & Cash Equivalents, color: overlay_line}]
+  bridge:
+    kind: waterfall
+    source: dcf
+    title: "Bridge ({ev_gordon:,.0f})"   # {name} = a value of the source
+    steps: [{label: EV, value: ev_gordon, measure: total}, {label: Net debt, value: -net_debt}]
+```
+
+| Source | Series are | Used by |
+|---|---|---|
+| `income_statement`, `balance_sheet`, `cash_flow` | lines (x = periods) | all statement models |
+| `dcf` (`x: periods`), `returns` | named values | DCF / LBO |
+| `dcf_sensitivity` | the WACC x growth grid (`heatmap`) | DCF |
+| `debt_schedule` | columns; `{group: tranches}` = every tranche | LBO |
+| `sources_uses` (`table: sources` / `uses`) | columns (`pie`: `labels`, `values`) | LBO |
+| `analysis` (`table: <name>`) | columns of an analysis table | any model, M&A |
+
+A series is a line name, or `{line | column | key, name, divide_by, abs, rename}`, or
+`{match: {prefix, suffix, contains, exclude_prefix, exclude_suffix}}` for every line whose name
+matches. Bars can be `color_by_sign` with a `text_format`; colours are roles from
+`presentation.charts`. Waterfall `value`s are expressions over the source's values (`sum`, `len`,
+`min`, `max`, `abs`, `round`, `safe_div`, arithmetic), checked like formulas. Python code can add a
+source with `financial_model.visualization.chart_builder.register_chart_source(name, fn)`.
 
 ## New model types without code
 

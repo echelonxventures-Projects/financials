@@ -62,6 +62,9 @@ def _reset_cache() -> None:
     """Clear the cached default config (tests, or after changing env/settings files)."""
     global _CACHED_CONFIG
     _CACHED_CONFIG = None
+    from financial_model.core.expressions import clear_limits  # values read once from the settings
+
+    clear_limits()
 
 
 def _load_yaml(path: str | Path) -> dict[str, Any]:
