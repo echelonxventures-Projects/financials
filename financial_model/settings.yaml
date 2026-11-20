@@ -112,6 +112,88 @@ presentation:
       max_width: 1100px
       title_size: 22px
 
+  console:                         # statements printed by `financial-model run`
+    label_width: 40
+    column_width: 16
+    value_format: ",.0f"
+    percent_format: ".1%"          # lines whose unit is %
+    missing: "-"
+    max_balance_errors: 5          # balance errors listed under the balance status
+    statement_titles: {income_statement: Income Statement, balance_sheet: Balance Sheet, cash_flow: Cash Flow}
+
+# Every message the command line prints. {name} is filled in (Python format specs allowed);
+# translate or reword any of them in your settings file.
+cli:
+  messages:
+    version: "financial-model {version}"
+    error: "Error: {message}"
+    list_item: "  - {item}"
+    created: "Created {output} with {model_type} template for {industry}"
+    exported: "Exported to {output}"
+    exported_csv: "Exported CSVs to {output}"
+    exported_json: "Exported JSON to {output}"
+    exported_tables: "\nExported to {output}"
+    full_model_exported: "\nFull model exported to {output}"
+    charts_written: "Wrote {count} charts to {path}"
+    chart_files_written: "Wrote {count} chart files to {output}"
+    wrote: "Wrote {output}"
+    fetched: "Saved {name} ({provider}) to {output}"
+    provider: "{name:12s} [{flags}] {description}"
+    provider_remote: remote
+    provider_local: local
+    provider_cli_only: CLI only
+    synthetic_written: "Generated synthetic {industry} data to {output}"
+    load_failed: "Failed to load config: {error}"
+    side_invalid: "{side} model does not validate/balance"
+    valid_ma: "Config is valid: OK (ma, acquirer and target balance)"
+    valid: "Config is valid: OK ({model_type}, {periods} periods, scenarios: {scenarios})"
+    base_only: base only
+    validation_errors: "Validation errors:"
+    does_not_balance: "Model runs but does not balance:"
+    config_not_found: "config file not found: {path}"
+    invalid_config: "invalid config {file}: {detail}"
+    missing_key: "missing key {key}"
+    wrong_config_type: "{path} is a '{declared}' config; this command needs {needs}"
+    command_needs: "this command needs {needs}"
+    needs_ma: an M&A deal config
+    needs_single: a three-statement, dcf, lbo, budget or business-model config
+    stdin_empty: no config on stdin
+    stdin_invalid: "stdin is not valid JSON or YAML: {error}"
+    stdin_not_mapping: "stdin: expected a mapping at the top level"
+    stdout_json_only: "only json can be written to stdout (-o -)"
+    bad_format: "format must be excel, csv or json"
+    bs_balanced: "BS Balanced: {balanced} (max diff: {max_diff:,.2f})"
+    cf_balanced: "CF Balanced: {balanced} (max diff: {max_diff:,.2f})"
+    balance_error: "  ! {error}"
+    model_title: "\n=== {name} ==="
+    model_fallback_name: Model
+    periods: "Periods: {count} ({labels})"
+    scenario: "Scenario: {scenario}"
+    statement_title: "\n--- {title} ---"
+    # financial-model platform ...
+    price_on_request: contact sales
+    price: "{value:,.2f} {currency}"
+    per_seat: /seat
+    per_month: /mo
+    plan_line: "{key} ({name}) - {audience} - {fee}"
+    unlimited: unlimited
+    included: "{units:g} included"
+    unit_price: "{price:g}/unit"
+    up_to: " up to {units:g}"
+    metering_line: "    {metric}: {included}, overage {overage}"
+    rates: " ({rates})"
+    signup_needs_password: --signup needs --password
+    user_signed_up: "user {user}  account {account} ({kind}, {plan})"
+    api_key_once: "api key (shown once): {key}"
+    user_created: "user {user}"
+    account_created: "account {account}  kind {kind}  plan {plan}  owner {owner}"
+    member_added: "{email} is now {role} of {account}"
+    key_issued: "key {key_id}"
+    plan_set: "{account} -> {plan} ({status})"
+    usage_item: "{metric} {units:g}"
+    no_usage: no usage
+    tenant_line: "{account}  {kind:<12} {plan:<10} {status:<9} {used:<30} {name}"
+
 # Input guards. Ticker patterns are regular expressions per exchange (GENERIC is the fallback);
 # ranges are [min, max] bounds for named financial parameters (null = unbounded).
 validation:

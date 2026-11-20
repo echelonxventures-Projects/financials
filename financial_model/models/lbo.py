@@ -90,6 +90,12 @@ class LBOModel(ThreeStatementModel):
         self.tables: dict[str, str] = self.setting("tables") or {}
         self._sweep_wc: dict[str, Any] = self.setting("sweep_working_capital") or {}
         self.tranches, self.amortizing, self.interest_lines = _tranche_tables(self.setting("tranches") or [])
+        # Tranches the cash sweep prepays, in order (`sweep_order`; default: the amortising tranches).
+        order = self.setting("sweep_order")
+        self.sweep_order: tuple[str, ...] = tuple(str(n) for n in order) if order is not None else self.amortizing
+        unknown = [n for n in self.sweep_order if n not in self.tranches]
+        if unknown:
+            raise ValueError(f"sweep_order names unknown tranches: {', '.join(unknown)}")
         self._apply_overrides(overrides)
         self._add_lbo_line_items()
 
@@ -231,7 +237,7 @@ class LBOModel(ThreeStatementModel):
         excess = max(0.0, cash_before_sweep - _dv(drivers, "min_cash", idx))
         sweep_available = excess * min(max(_dv(drivers, "sweep_pct", idx), 0.0), 1.0)
 
-        for name in self.amortizing:
+        for name in self.sweep_order:
             tranche = schedule[name]
             sweep = min(sweep_available, max(0.0, tranche["closing"]))
             tranche["sweep"] = sweep

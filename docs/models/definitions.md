@@ -202,6 +202,15 @@ Formulas are single expressions evaluated per period, also allowed in model conf
 | `safe_div(a, b, default=0)`, `clamp(x, lo, hi)`, `min`, `max`, `abs`, `round` | helpers |
 | `+ - * / // % **`, comparisons, `and or not`, `a if c else b` | operators (`x / 0` is 0) |
 
+## Method choices
+
+| Definition key | Model | Meaning (built-in) |
+|---|---|---|
+| `discounting: {cash_flow_timing, terminal_timing}` | dcf | when in each period cash flows / the terminal value are discounted (`1.0` end of period; `0.5` = mid-year convention) |
+| `sensitivity: {label_format, index_name, ...}` | dcf | grid ranges and labels |
+| `sweep_order` | lbo | tranches the cash sweep prepays, in order (`null` = amortising tranches) |
+| `balancing` | all | tie tolerance, solve passes and convergence tolerances |
+
 ## Console output
 
 `financial-model dcf`, `lbo`, `ma` (and `run` on an M&A config) print the definition's `console` blocks

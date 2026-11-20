@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- An unknown `--scenario` in `run`, `dcf`, `lbo` and `chart` is a one-line `Error:` with exit 1 instead of a traceback (`ScenarioError`)
+
 ### Added
 
+- Every CLI message is a template in `cli.messages` and the statement printout layout is `presentation.console` (settings, translatable). Calculation method choices are definition data: DCF discount timing (`discounting`, e.g. mid-year convention) and sensitivity labels, LBO `sweep_order`. Output unchanged
 - Engines read statement lines through roles: `lines` (role -> line), `line_groups` and `balancing` (tie tolerance, solve passes and tolerances) in `three-statement.yaml` drive the balancer, DCF, LBO, M&A and business engines, so renaming a line the engines use is data (`lines: {revolver: Credit Facility}`). LBO close re-cut (`opening_at_close`), sweep working capital, exit debt and implied entry EBITDA; M&A contribution metrics; business-engine lines; output labels and analysis table names; and the `dcf` / `lbo` / `ma` console output (`console`) are definition data. Outputs are unchanged
 - Charts are data: each definition's `charts` section says which charts a model has and what they plot (bar, line, waterfall, heatmap, pie; series from statement lines, engine tables or named values, with `divide_by`, `match`, `group`, overlays and `requires`), inherited through `extends`. New chart data sources with `register_chart_source`; waterfall values are safe expressions (`sum(pv_fcf) - net_debt`). The formula limits are settings (`formulas.max_length`, `formulas.max_depth`). Charts are unchanged
 - The statements themselves are data: the three-statement layout (every line, rule or formula, order, total), the opening balance sheet and opening retained earnings are `structure`, `opening_balances` and `opening_retained_earnings` in `three-statement.yaml`; the budget's statements and per-department lines (`department_template`, `department_keys`); where the LBO debt-schedule lines go (`layout`). Formula language: `running(expr, start)` and named `expressions`. Workbook and chart styling (`presentation.excel`, `presentation.charts`), ticker patterns and parameter ranges (`validation`) and rate-limit defaults are settings. Outputs are unchanged

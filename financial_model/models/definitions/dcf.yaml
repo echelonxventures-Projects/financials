@@ -95,6 +95,11 @@ sensitivity:
   wacc_range: [0.07, 0.13]
   growth_range: [0.01, 0.04]
   steps: 5
+  label_format: ".1%"               # row / column labels
+  index_name: "Terminal growth \\ WACC"
+# Discounting convention: the point in each period at which cash flows (and, in the last
+# period, the terminal value) are discounted. 1.0 = end of period; 0.5 = mid-year convention.
+discounting: {cash_flow_timing: 1.0, terminal_timing: 1.0}
 # Starter config written by `financial-model init --type dcf [--industry <variant>]`.
 # period_paths get start_year/years; truncate_to_years lists are cut to the year count;
 # cap_at_years values are capped at it. Unknown industries use fallback_variant.

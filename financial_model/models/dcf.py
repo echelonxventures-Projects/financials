@@ -66,6 +66,12 @@ class DCFModel(ThreeStatementModel):
             "wacc": cost_of_equity * (1 - debt_ratio) + after_tax_cod * debt_ratio,
         }
 
+    def discount_timing(self) -> tuple[float, float]:
+        """When in each period cash flows and the terminal value are discounted (``discounting``:
+        1.0 = end of period, 0.5 = mid-year convention)."""
+        spec = self.setting("discounting") or {}
+        return float(spec.get("cash_flow_timing", 1.0)), float(spec.get("terminal_timing", 1.0))
+
     def free_cash_flows(self, result: ModelResult, tax_rate: float) -> list[dict[str, float]]:
         """Unlevered FCF per period: EBIT*(1-t) + D&A - capex + change in NWC."""
         is_data, bs_data, cf_data = result.income_statement, result.balance_sheet, result.cash_flow
@@ -118,16 +124,18 @@ class DCFModel(ThreeStatementModel):
         fcf_rows = self.free_cash_flows(result, tax)
         fcf = [r["fcf"] for r in fcf_rows]
         n = len(fcf)
-        discount_factors = [1 / (1 + wacc) ** (i + 1) for i in range(n)]
+        cf_at, tv_at = self.discount_timing()
+        discount_factors = [1 / (1 + wacc) ** (i + cf_at) for i in range(n)]
+        terminal_factor = 1 / (1 + wacc) ** (n - 1 + tv_at) if n else 0.0
         pv_fcf = [fcf[i] * discount_factors[i] for i in range(n)]
 
         terminal_fcf = fcf[-1] * (1 + tg) if n else 0.0
         terminal_value_gordon = terminal_fcf / (wacc - tg) if wacc > tg else 0.0
-        pv_terminal_gordon = terminal_value_gordon * (discount_factors[-1] if n else 0.0)
+        pv_terminal_gordon = terminal_value_gordon * terminal_factor
 
         terminal_ebitda = (fcf_rows[-1]["ebit"] + fcf_rows[-1]["dna"]) if n else 0.0
         terminal_value_multiple = terminal_ebitda * exit_mult
-        pv_terminal_multiple = terminal_value_multiple * (discount_factors[-1] if n else 0.0)
+        pv_terminal_multiple = terminal_value_multiple * terminal_factor
 
         ev_gordon = sum(pv_fcf) + pv_terminal_gordon
         ev_multiple = sum(pv_fcf) + pv_terminal_multiple
@@ -206,16 +214,19 @@ class DCFModel(ThreeStatementModel):
         wacc_vals = np.linspace(wacc_range[0], wacc_range[1], steps)
         growth_vals = np.linspace(growth_range[0], growth_range[1], steps)
 
+        grid = self.setting("sensitivity") or {}
+        label = str(grid.get("label_format") or "")
         table = pd.DataFrame(
-            index=[f"{g:.1%}" for g in growth_vals], columns=[f"{w:.1%}" for w in wacc_vals], dtype=float
+            index=[format(g, label) for g in growth_vals], columns=[format(w, label) for w in wacc_vals], dtype=float
         )
+        cf_at, tv_at = self.discount_timing()
         for i, g in enumerate(growth_vals):
             for j, w in enumerate(wacc_vals):
-                pv_fcf = sum(fcf[k] / (1 + w) ** (k + 1) for k in range(len(fcf)))
+                pv_fcf = sum(fcf[k] / (1 + w) ** (k + cf_at) for k in range(len(fcf)))
                 tv = fcf[-1] * (1 + g) / (w - g) if (fcf and w > g) else 0.0
-                pv_tv = tv / (1 + w) ** len(fcf) if fcf else 0.0
+                pv_tv = tv / (1 + w) ** (len(fcf) - 1 + tv_at) if fcf else 0.0
                 table.iloc[i, j] = pv_fcf + pv_tv - base_dcf["net_debt"]
-        table.index.name = "Terminal growth \\ WACC"
+        table.index.name = grid.get("index_name")
         return table
 
     # ------------------------------------------------------------------ #

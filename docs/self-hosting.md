@@ -30,6 +30,8 @@ for every key. Model assumptions are separate: they live in the model YAML you p
 | `logging.level` | `INFO` | Log level |
 | `presentation.excel.*` | see `financial_model/settings.yaml` | Workbook look: fonts, header fill, borders, number formats, %/x hints, column widths, sheet and column titles, frozen panes |
 | `presentation.charts.*` | see `financial_model/settings.yaml` | Chart look: palette, positive/negative/total colours, themes, size, fonts, margins, legend, dashboard page colours, value-label format |
+| `presentation.console.*` | see `financial_model/settings.yaml` | Statements printed by `financial-model run`: column widths, number formats, statement titles |
+| `cli.messages.*` | see `financial_model/settings.yaml` | Every message the command line prints (reword or translate; `{name}` placeholders) |
 | `formulas.max_length` / `formulas.max_depth` | `4000` / `32` | Longest accepted formula (characters); deepest nesting of named expressions |
 | `validation.tickers` / `validation.ranges` | see `financial_model/settings.yaml` | Ticker patterns per exchange; `[min, max]` bounds of named financial parameters |
 

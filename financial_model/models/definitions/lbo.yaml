@@ -179,6 +179,8 @@ tranches:
 - {name: Term Loan B, key: tlb, amortizing: true, interest_line: TLB Interest}
 - {name: Subordinated Debt, key: sub, amortizing: false, interest_line: Sub Interest}
 - {name: Mezzanine Debt, key: mezz, amortizing: false, interest_line: Mezz Interest}
+# Tranches the cash sweep prepays, in order (null = the amortising tranches, in tranche order).
+sweep_order: null
 # Where the debt schedule appears in the statements. `{name}` is the tranche name; tranche
 # interest lines share the order band [interest_order, interest_order + 1); `add_to` lists the
 # totals a line is added to. The amounts come from the debt-schedule engine.

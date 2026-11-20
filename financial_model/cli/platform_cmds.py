@@ -17,6 +17,8 @@ from typing import Any, Optional
 
 import typer
 
+from financial_model.cli.messages import say
+
 platform_app = typer.Typer(help="Operate the commercial platform: accounts, plans, keys, usage.", no_args_is_help=True)
 
 SettingsOpt = typer.Option(None, "--settings", help="Runtime settings YAML (default: FIN_CONFIG_PATH / financial.yaml)")
@@ -36,7 +38,7 @@ def _service(settings: Optional[Path], database: Optional[str]) -> Any:
     try:
         return PlatformService.from_settings(cfg)
     except ValueError as exc:
-        typer.echo(f"Error: {exc}", err=True)
+        typer.echo(say("error", message=exc), err=True)
         raise typer.Exit(1) from exc
 
 
@@ -47,12 +49,12 @@ def _run(fn: Any) -> Any:
     try:
         return fn()
     except (PlatformError, BillingError, ValueError) as exc:
-        typer.echo(f"Error: {exc}", err=True)
+        typer.echo(say("error", message=exc), err=True)
         raise typer.Exit(1) from exc
 
 
 def _fmt(value: Any, currency: str) -> str:
-    return "contact sales" if value is None else f"{value:,.2f} {currency}".strip()
+    return say("price_on_request") if value is None else say("price", value=value, currency=currency).strip()
 
 
 @platform_app.command("plans")
@@ -64,14 +66,16 @@ def plans_cmd(settings: Optional[Path] = SettingsOpt, as_json: bool = typer.Opti
         typer.echo(json.dumps({"currency": cat.currency, "plans": [p.to_dict() for p in cat.plans.values()]}, indent=2))
         return
     for p in cat.plans.values():
-        fee = _fmt(p.price_monthly, cat.currency) + ("/seat" if p.per_seat else "") + "/mo"
-        typer.echo(f"{p.key} ({p.name}) - {', '.join(p.audience)} - {fee}")
+        fee = _fmt(p.price_monthly, cat.currency) + (say("per_seat") if p.per_seat else "") + say("per_month")
+        typer.echo(say("plan_line", key=p.key, name=p.name, audience=", ".join(p.audience), fee=fee))
         for metric, rule in p.metering.items():
-            included = "unlimited" if rule.unlimited else f"{rule.included:g} included"
+            included = say("unlimited") if rule.unlimited else say("included", units=rule.included)
             rates = ", ".join(
-                f"{t.unit_price:g}/unit" + (f" up to {t.up_to:g}" if t.up_to is not None else "") for t in rule.tiers
+                say("unit_price", price=t.unit_price) + (say("up_to", units=t.up_to) if t.up_to is not None else "")
+                for t in rule.tiers
             )
-            typer.echo(f"    {metric}: {included}, overage {rule.overage}" + (f" ({rates})" if rates else ""))
+            line = say("metering_line", metric=metric, included=included, overage=rule.overage)
+            typer.echo(line + (say("rates", rates=rates) if rates else ""))
 
 
 @platform_app.command("create-user")
@@ -87,13 +91,14 @@ def create_user(
     svc = _service(settings, database)
     if signup:
         if not password:
-            typer.echo("Error: --signup needs --password", err=True)
+            typer.echo(say("error", message=say("signup_needs_password")), err=True)
             raise typer.Exit(1)
         user, tenant, key = _run(lambda: svc.signup(email, password, name))
-        typer.echo(f"user {user.id}  account {tenant.id} ({tenant.kind}, {tenant.plan})\napi key (shown once): {key}")
+        typer.echo(say("user_signed_up", user=user.id, account=tenant.id, kind=tenant.kind, plan=tenant.plan))
+        typer.echo(say("api_key_once", key=key))
         return
     user = _run(lambda: svc.create_user(email, password, name))
-    typer.echo(f"user {user.id}")
+    typer.echo(say("user_created", user=user.id))
 
 
 @platform_app.command("create-account")
@@ -113,7 +118,7 @@ def create_account(
     )
     account_kind = kind or str(svc.catalog.get("default_account_kind"))
     tenant = _run(lambda: svc.create_account(account_kind, name, owner, plan))
-    typer.echo(f"account {tenant.id}  kind {tenant.kind}  plan {tenant.plan}  owner {owner.email}")
+    typer.echo(say("account_created", account=tenant.id, kind=tenant.kind, plan=tenant.plan, owner=owner.email))
 
 
 @platform_app.command("add-member")
@@ -128,7 +133,8 @@ def add_member(
     """Add a user to an account (respects seats and the kind's member limit)."""
     svc = _service(settings, database)
     user = _run(lambda: svc.add_member(tenant_id, email, role, password))
-    typer.echo(f"{user.email} is now {role or svc.catalog.get('default_member_role')} of {tenant_id}")
+    role_name = role or svc.catalog.get("default_member_role")
+    typer.echo(say("member_added", email=user.email, role=role_name, account=tenant_id))
 
 
 @platform_app.command("issue-key")
@@ -141,7 +147,8 @@ def issue_key(
     """Issue a service API key for an account (printed once)."""
     svc = _service(settings, database)
     plain, record = _run(lambda: svc.issue_key(tenant_id, None, name))
-    typer.echo(f"key {record.id}\napi key (shown once): {plain}")
+    typer.echo(say("key_issued", key_id=record.id))
+    typer.echo(say("api_key_once", key=plain))
 
 
 @platform_app.command("set-plan")
@@ -155,7 +162,7 @@ def set_plan(
     """Change an account's plan / status (e.g. after an offline invoice is paid)."""
     svc = _service(settings, database)
     tenant = _run(lambda: svc.set_plan(tenant_id, plan, status))
-    typer.echo(f"{tenant.id} -> {tenant.plan} ({tenant.status})")
+    typer.echo(say("plan_set", account=tenant.id, plan=tenant.plan, status=tenant.status))
 
 
 @platform_app.command("tenants")
@@ -163,8 +170,9 @@ def tenants(settings: Optional[Path] = SettingsOpt, database: Optional[str] = Da
     """List accounts with kind, plan, status and this month's usage."""
     svc = _service(settings, database)
     for t in svc.store.list_tenants():
-        used = ", ".join(f"{k} {v:g}" for k, v in svc.usage(t.id)["metrics"].items()) or "no usage"
-        typer.echo(f"{t.id}  {t.kind:<12} {t.plan:<10} {t.status:<9} {used:<30} {t.name}")
+        metrics = svc.usage(t.id)["metrics"].items()
+        used = ", ".join(say("usage_item", metric=k, units=v) for k, v in metrics) or say("no_usage")
+        typer.echo(say("tenant_line", account=t.id, kind=t.kind, plan=t.plan, status=t.status, used=used, name=t.name))
 
 
 @platform_app.command("usage")

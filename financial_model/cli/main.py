@@ -14,6 +14,7 @@ import typer
 import yaml
 
 from financial_model import __version__, config_loader
+from financial_model.cli.messages import console_style, say
 from financial_model.core.expressions import format_text
 from financial_model.core.model import FinancialModel, ModelResult
 from financial_model.data.loader import config_from_statements, derive_drivers_from_financials
@@ -41,7 +42,7 @@ __all__ = ["app", "MODEL_CLASSES"]
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(f"financial-model {__version__}")
+        typer.echo(say("version", version=__version__))
         raise typer.Exit()
 
 
@@ -62,8 +63,16 @@ def _normalize_type(model_type: str | None) -> str:
 
 
 def _fail(message: str) -> NoReturn:
-    typer.echo(f"Error: {message}", err=True)
+    typer.echo(say("error", message=message), err=True)
     raise typer.Exit(1)
+
+
+def _calculate(model: Any, scenario: str | None) -> ModelResult:
+    """``model.calculate``; an unknown scenario or invalid input is a one-line error, not a traceback."""
+    try:
+        return model.calculate(scenario=scenario)
+    except ValueError as exc:
+        _fail(str(exc))
 
 
 # --------------------------------------------------------------------------- #
@@ -94,7 +103,7 @@ def init(
     config = _generate_config(model_type, industry, years, start_year)
     with output.open("w", encoding="utf-8") as f:
         yaml.dump(config, f, sort_keys=False, default_flow_style=False)
-    typer.echo(f"Created {output} with {model_type} template for {industry}")
+    typer.echo(say("created", output=output, model_type=model_type, industry=industry))
 
 
 @app.command()
@@ -118,7 +127,7 @@ def run(
     if isinstance(model, MergerModel):
         _run_merger(model, scenario, output, format)
         return
-    result = model.calculate(scenario=scenario)
+    result = _calculate(model, scenario)
 
     if _json_to_stdout(output, format):
         typer.echo(JSONExporter().dumps_result(result, model.all_tables(result)))
@@ -126,13 +135,13 @@ def run(
         fmt = _resolve_format(output, format)
         if fmt == "excel":
             model.export_excel(str(output), result)
-            typer.echo(f"Exported to {output}")
+            typer.echo(say("exported", output=output))
         elif fmt == "csv":
             _export_csv(result, output, model.all_tables(result))
-            typer.echo(f"Exported CSVs to {output}")
+            typer.echo(say("exported_csv", output=output))
         else:
             _export_json(result, output, model.all_tables(result))
-            typer.echo(f"Exported JSON to {output}")
+            typer.echo(say("exported_json", output=output))
         _print_balance_status(result)
     else:
         _print_summary(result, model)
@@ -147,7 +156,7 @@ def dcf(
     """Run DCF valuation on a model."""
     model = _load_model(config, "dcf")
     assert isinstance(model, DCFModel)
-    result = model.calculate(scenario=scenario)
+    result = _calculate(model, scenario)
     dcf_result = model.calculate_dcf(result)
 
     fcf = pd.DataFrame(dcf_result["fcf_detail"], index=dcf_result["periods"])
@@ -156,7 +165,7 @@ def dcf(
 
     if output:
         model.export_excel(str(output), result)
-        typer.echo(f"\nFull model exported to {output}")
+        typer.echo(say("full_model_exported", output=output))
 
 
 @app.command()
@@ -168,7 +177,7 @@ def lbo(
     """Run LBO analysis."""
     model = _load_model(config, "lbo")
     assert isinstance(model, LBOModel)
-    result = model.calculate(scenario=scenario)
+    result = _calculate(model, scenario)
     lbo_result = model.calculate_returns(result)
     su = model.sources_uses(result)
 
@@ -177,7 +186,7 @@ def lbo(
 
     if output:
         model.export_excel(str(output), result)
-        typer.echo(f"\nFull model exported to {output}")
+        typer.echo(say("full_model_exported", output=output))
 
 
 @app.command()
@@ -213,16 +222,19 @@ def chart(
 
     model = _load_any(config, model_type)
     builder = ChartBuilder(theme=theme)
-    charts = builder.model_charts(model, scenario=scenario)
+    try:
+        charts = builder.model_charts(model, scenario=scenario)
+    except ValueError as exc:
+        _fail(str(exc))
     if output.suffix.lower() in (".html", ".htm"):
         title = getattr(model, "name", "Model") + (f" — {scenario}" if scenario else "")
         path = builder.export_dashboard(charts, output, title=title, offline=not cdn)
-        typer.echo(f"Wrote {len(charts)} charts to {path}")
+        typer.echo(say("charts_written", count=len(charts), path=path))
     else:
         output.mkdir(parents=True, exist_ok=True)
         for name, fig in charts.items():
             builder.to_html(fig, output / f"{name}.html", offline=not cdn)
-        typer.echo(f"Wrote {len(charts)} chart files to {output}")
+        typer.echo(say("chart_files_written", count=len(charts), output=output))
 
 
 @app.command()
@@ -291,17 +303,17 @@ def fetch(
     config = _data_to_config(source, data, years)
     with output.open("w", encoding="utf-8") as f:
         yaml.dump(config, f, sort_keys=False, default_flow_style=False)
-    typer.echo(f"Saved {config['name']} ({data.get('provider', provider)}) to {output}")
+    typer.echo(say("fetched", name=config["name"], provider=data.get("provider", provider), output=output))
 
 
 @app.command()
 def providers() -> None:
     """List the data providers available to `fetch` (built-in and plugins)."""
     for name, prov in available_providers().items():
-        flags = ["remote" if prov.remote else "local"]
+        flags = [say("provider_remote" if prov.remote else "provider_local")]
         if not prov.allow_in_api:
-            flags.append("CLI only")
-        typer.echo(f"{name:12s} [{', '.join(flags)}] {prov.description}")
+            flags.append(say("provider_cli_only"))
+        typer.echo(say("provider", name=name, flags=", ".join(flags), description=prov.description))
 
 
 @app.command()
@@ -314,7 +326,7 @@ def schema(
     text = config_json_schema_text()
     if output:
         output.write_text(text, encoding="utf-8")
-        typer.echo(f"Wrote {output}", err=True)
+        typer.echo(say("wrote", output=output), err=True)
     else:
         typer.echo(text, nl=False)
 
@@ -333,7 +345,7 @@ def openapi(
     text = json.dumps(create_app({}).openapi(), indent=2) + "\n"
     if output:
         output.write_text(text, encoding="utf-8")
-        typer.echo(f"Wrote {output}", err=True)
+        typer.echo(say("wrote", output=output), err=True)
     else:
         typer.echo(text, nl=False)
 
@@ -357,7 +369,7 @@ def synthetic(
     config = _synthetic_to_config(data, industry, len(periods), periods[0].year)
     with output.open("w", encoding="utf-8") as f:
         yaml.dump(config, f, sort_keys=False, default_flow_style=False)
-    typer.echo(f"Generated synthetic {industry} data to {output}")
+    typer.echo(say("synthetic_written", industry=industry, output=output))
 
 
 @app.command()
@@ -370,37 +382,35 @@ def validate(
     except typer.Exit:
         raise
     except Exception as exc:  # noqa: BLE001 - surface any parse/build error to the user
-        typer.echo(f"Failed to load config: {exc}", err=True)
+        typer.echo(say("load_failed", error=exc), err=True)
         raise typer.Exit(1) from exc
 
     if isinstance(loaded, MergerModel):
         for side, sub in (("acquirer", loaded.acquirer), ("target", loaded.target)):
             res = sub.calculate()
             if sub.validate() or not (res.bs_balance_result.balanced and res.cf_balance_result.balanced):
-                typer.echo(f"{side} model does not validate/balance", err=True)
+                typer.echo(say("side_invalid", side=side), err=True)
                 raise typer.Exit(1)
         loaded.calculate_accretion_dilution()
-        typer.echo("Config is valid: OK (ma, acquirer and target balance)")
+        typer.echo(say("valid_ma"))
         return
     model = loaded
 
     errors = model.validate()
     if errors:
-        typer.echo("Validation errors:", err=True)
+        typer.echo(say("validation_errors"), err=True)
         for e in errors:
-            typer.echo(f"  - {e}", err=True)
+            typer.echo(say("list_item", item=e), err=True)
         raise typer.Exit(1)
 
     result = model.calculate()
     if not result.bs_balance_result.balanced or not result.cf_balance_result.balanced:
-        typer.echo("Model runs but does not balance:", err=True)
+        typer.echo(say("does_not_balance"), err=True)
         for e in [*result.bs_balance_result.errors, *result.cf_balance_result.errors]:
-            typer.echo(f"  - {e}", err=True)
+            typer.echo(say("list_item", item=e), err=True)
         raise typer.Exit(1)
-    typer.echo(
-        f"Config is valid: OK ({model.model_type}, {len(model.periods)} periods, "
-        f"scenarios: {', '.join(model.assumptions.scenario_names()) or 'base only'})"
-    )
+    scenarios = ", ".join(model.assumptions.scenario_names()) or say("base_only")
+    typer.echo(say("valid", model_type=model.model_type, periods=len(model.periods), scenarios=scenarios))
 
 
 from financial_model.cli.platform_cmds import platform_app  # noqa: E402
@@ -425,32 +435,30 @@ def _load_any(config_path: Path, model_type: str | None = None) -> Any:
         config = _read_stdin_config()
         config_path = Path.cwd() / "<stdin>"  # relative paths in the config resolve from the cwd
     elif not config_path.exists():
-        _fail(f"config file not found: {config_path}")
+        _fail(say("config_not_found", path=config_path))
     else:
         try:
             config = FinancialModel.load_config(config_path)
         except (ValueError, yaml.YAMLError) as exc:
-            _fail(f"invalid config {config_path.name}: {exc}")
+            _fail(say("invalid_config", file=config_path.name, detail=exc))
     declared = _normalize_type(config.get("model_type"))
     key = _normalize_type(model_type or declared)
     if (key == "ma") != (declared == "ma"):
-        raise typer.BadParameter(
-            f"{config_path} is a '{declared}' config; this command needs "
-            + ("an M&A deal config" if key == "ma" else "a three-statement, dcf, lbo, budget or business-model config")
-        )
+        needs = say("needs_ma" if key == "ma" else "needs_single")
+        raise typer.BadParameter(say("wrong_config_type", path=config_path, declared=declared, needs=needs))
     try:
         return build_model(config, base_dir=config_path.parent, model_type=key)
     except (ValueError, KeyError, TypeError) as exc:
         # One line on stderr + exit 1, so scripts in any language can surface it.
-        detail = f"missing key {exc}" if isinstance(exc, KeyError) else str(exc)
-        _fail(f"invalid config {config_path.name}: {detail}")
+        detail = say("missing_key", key=exc) if isinstance(exc, KeyError) else str(exc)
+        _fail(say("invalid_config", file=config_path.name, detail=detail))
 
 
 def _load_model(config_path: Path, model_type: str | None = None) -> FinancialModel:
     """Load a single-entity model (three-statement / dcf / lbo / budget) from YAML."""
     model = _load_any(config_path, model_type)
     if not isinstance(model, FinancialModel):
-        raise typer.BadParameter("this command needs a three-statement, dcf, lbo, budget or business-model config")
+        raise typer.BadParameter(say("command_needs", needs=say("needs_single")))
     return model
 
 
@@ -516,7 +524,7 @@ def _run_merger(model: MergerModel, scenario: str | None, output: Path | None, f
             CSVExporter().export_tables(tables, output)
         else:
             JSONExporter().export_tables(tables, output)
-        typer.echo(f"\nExported to {output}")
+        typer.echo(say("exported_tables", output=output))
 
 
 STDIN = STDOUT = "-"
@@ -526,13 +534,13 @@ def _read_stdin_config() -> dict[str, Any]:
     """A config piped on stdin: JSON or YAML (YAML is a superset of JSON)."""
     text = sys.stdin.read()
     if not text.strip():
-        _fail("no config on stdin")
+        _fail(say("stdin_empty"))
     try:
         config = yaml.safe_load(text)
     except yaml.YAMLError as exc:
-        _fail(f"stdin is not valid JSON or YAML: {exc}")
+        _fail(say("stdin_invalid", error=exc))
     if not isinstance(config, dict):
-        _fail("stdin: expected a mapping at the top level")
+        _fail(say("stdin_not_mapping"))
     return config
 
 
@@ -540,7 +548,7 @@ def _json_to_stdout(output: Path | None, fmt: str | None) -> bool:
     """`-o -`, or `-f json` without `-o`, writes JSON to stdout (nothing else is printed)."""
     if output is not None and str(output) == STDOUT:
         if fmt and fmt.lower() != "json":
-            raise typer.BadParameter("only json can be written to stdout (-o -)")
+            raise typer.BadParameter(say("stdout_json_only"))
         return True
     return output is None and bool(fmt) and str(fmt).lower() == "json"
 
@@ -551,7 +559,7 @@ def _resolve_format(output: Path, fmt: str | None) -> str:
         if fmt in ("xlsx", "xls"):
             fmt = "excel"
         if fmt not in ("excel", "csv", "json"):
-            raise typer.BadParameter("format must be excel, csv or json")
+            raise typer.BadParameter(say("bad_format"))
         return fmt
     suffix = output.suffix.lower()
     if suffix in (".xlsx", ".xls"):
@@ -591,10 +599,11 @@ def _synthetic_to_config(data: dict[str, Any], industry: str, years: int, start_
 
 
 def _print_balance_status(result: ModelResult) -> None:
-    typer.echo(f"BS Balanced: {result.bs_balance_result.balanced} (max diff: {result.bs_balance_result.max_diff:,.2f})")
-    typer.echo(f"CF Balanced: {result.cf_balance_result.balanced} (max diff: {result.cf_balance_result.max_diff:,.2f})")
-    for err in [*result.bs_balance_result.errors, *result.cf_balance_result.errors][:5]:
-        typer.echo(f"  ! {err}")
+    bs, cf = result.bs_balance_result, result.cf_balance_result
+    typer.echo(say("bs_balanced", balanced=bs.balanced, max_diff=bs.max_diff))
+    typer.echo(say("cf_balanced", balanced=cf.balanced, max_diff=cf.max_diff))
+    for err in [*bs.errors, *cf.errors][: int(console_style().get("max_balance_errors", 0))]:
+        typer.echo(say("balance_error", error=err))
 
 
 def _format_statement(df: pd.DataFrame, result: ModelResult, stmt: Any = None) -> str:
@@ -605,36 +614,42 @@ def _format_statement(df: pd.DataFrame, result: ModelResult, stmt: Any = None) -
     else:
         pct_lines = set()
 
+    style = console_style()
+    label_w, col_w = int(style["label_width"]), int(style["column_width"])
+    pct_spec, value_spec, missing = str(style["percent_format"]), str(style["value_format"]), str(style["missing"])
+
     def fmt_row(name: Any) -> Any:
-        if name in pct_lines:
-            return lambda x: f"{x:.1%}"
-        return lambda x: f"{x:,.0f}"
+        spec = pct_spec if name in pct_lines else value_spec
+        return lambda x: format(x, spec)
 
     rows = []
-    header = f"{'':40s}" + "".join(f"{str(c):>16s}" for c in out.columns)
+    header = " " * label_w + "".join(f"{str(c):>{col_w}s}" for c in out.columns)
     rows.append(header)
     for name, row in out.iterrows():
         f = fmt_row(name)
-        cells = "".join(f"{(f(v) if pd.notna(v) else '-'):>16s}" for v in row)
-        rows.append(f"{str(name)[:40]:40s}{cells}")
+        cells = "".join(f"{(f(v) if pd.notna(v) else missing):>{col_w}s}" for v in row)
+        rows.append(f"{str(name)[:label_w]:{label_w}s}{cells}")
     del formatters
     return "\n".join(rows)
 
 
 def _print_summary(result: ModelResult, model: FinancialModel | None = None) -> None:
     """Print model summary to console."""
-    typer.echo(f"\n=== {result.metadata.get('model_name', 'Model')} ===")
-    typer.echo(f"Periods: {len(result.periods)} ({', '.join(p.label for p in result.periods)})")
+    name = result.metadata.get("model_name") or say("model_fallback_name")
+    typer.echo(say("model_title", name=name))
+    labels = ", ".join(p.label for p in result.periods)
+    typer.echo(say("periods", count=len(result.periods), labels=labels))
     if result.metadata.get("scenario"):
-        typer.echo(f"Scenario: {result.metadata['scenario']}")
+        typer.echo(say("scenario", scenario=result.metadata["scenario"]))
     _print_balance_status(result)
 
-    for title, df, stmt in (
-        ("Income Statement", result.income_statement, model.income_statement if model else None),
-        ("Balance Sheet", result.balance_sheet, model.balance_sheet if model else None),
-        ("Cash Flow", result.cash_flow, model.cash_flow if model else None),
+    titles = console_style().get("statement_titles") or {}
+    for key, df, stmt in (
+        ("income_statement", result.income_statement, model.income_statement if model else None),
+        ("balance_sheet", result.balance_sheet, model.balance_sheet if model else None),
+        ("cash_flow", result.cash_flow, model.cash_flow if model else None),
     ):
-        typer.echo(f"\n--- {title} ---")
+        typer.echo(say("statement_title", title=titles.get(key, key)))
         typer.echo(_format_statement(df, result, stmt))
 
 

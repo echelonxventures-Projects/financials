@@ -31,6 +31,10 @@ from financial_model.core.period import PeriodIndex, PeriodType
 from financial_model.core.statement import Statement, StatementType
 
 
+class ScenarioError(ValueError):
+    """A scenario name the model does not define."""
+
+
 @dataclass
 class ModelResult:
     """Container for model outputs."""
@@ -347,7 +351,7 @@ class FinancialModel:
             and scenario not in self.assumptions.scenarios
             and scenario != "base"
         ):
-            raise ValueError(
+            raise ScenarioError(
                 f"Unknown scenario '{scenario}'. Available: {', '.join(self.assumptions.scenario_names())}"
             )
 
