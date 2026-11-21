@@ -15,6 +15,7 @@ from financial_model.core.definitions import load_definition
 from financial_model.core.model import ScenarioError
 from financial_model.core.period import PeriodIndex
 from financial_model.models.registry import MODEL_CLASSES, reload_definitions
+from financial_model.utils.optional import is_available
 
 CONFIG = Path(__file__).resolve().parent.parent / "config"
 
@@ -42,7 +43,16 @@ def _model(key):
 
 
 class TestUnknownScenario:
-    @pytest.mark.parametrize("command", ["run", "dcf", "chart"])
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "run",
+            "dcf",
+            pytest.param(
+                "chart", marks=pytest.mark.skipif(not is_available("plotly"), reason="needs the charts extra")
+            ),
+        ],
+    )
     def test_one_line_error(self, command, tmp_path):
         args = [command, str(CONFIG / "dcf_saas.yaml"), "--scenario", "nope"]
         if command == "chart":
