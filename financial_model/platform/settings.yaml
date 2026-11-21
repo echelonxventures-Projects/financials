@@ -8,13 +8,30 @@ database: sqlite:///financial_platform.db
 # Catalogue files merged in order; `builtin` = the shipped catalog.yaml.
 catalog: [builtin]
 
-# Signs login tokens. Set it in production so tokens survive restarts and replicas agree.
+# Signs login tokens. Required to serve the platform: tokens must survive restarts and
+# every replica must agree. Generate one with:
+#   python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 secret_key: ""
+# `serve` refuses to start without a secret_key of at least this many characters.
+# Set require_secret_key: false only for local experiments (a random per-process secret
+# is used, so every restart signs everyone out).
+require_secret_key: true
+secret_key_min_length: 32
 token_ttl_hours: 24
 password_iterations: 600000
 password_min_length: 8
 api_key_prefix: fm
 allow_signup: true
+
+# Failed sign-ins are counted in the platform database (so all workers and replicas
+# share the count) over a sliding window. Past a limit, /v1/login answers 429 until
+# older failures leave the window. 0 disables a limit. Behind a proxy, run the server
+# with the client address forwarded (uvicorn --proxy-headers / FORWARDED_ALLOW_IPS) or
+# every caller shares the proxy's address.
+login_throttle:
+  window_seconds: 900
+  max_failures_per_email: 5
+  max_failures_per_address: 50
 
 billing:
   # manual | stripe | a plugin provider name. Each provider reads the block named after it.

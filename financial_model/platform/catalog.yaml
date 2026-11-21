@@ -210,6 +210,8 @@ messages:
   unknown_account: "no account {account}"
   key_limit: "the {plan} plan allows {limit:g} active API key(s)"
   bad_login: "invalid email or password"
+  too_many_logins: "too many failed sign-in attempts; try again in {seconds} seconds"
+  secret_key_required: "platform.secret_key (FIN_PLATFORM_SECRET_KEY) must be set to at least {length} characters to serve the platform; generate one with: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\""
   no_accounts: "this user does not belong to any account"
   not_member: "you are not a member of that account"
   bad_key: "invalid or revoked API key"

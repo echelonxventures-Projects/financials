@@ -20,10 +20,14 @@ from pydantic import BaseModel
 
 from financial_model.models.registry import normalize_model_type
 from financial_model.platform.billing import BillingError
-from financial_model.platform.service import PlatformError, PlatformService, Principal
+from financial_model.platform.service import PlatformError, PlatformService, Principal, TooManyAttempts
 
 
 def _http(exc: Exception) -> HTTPException:
+    if isinstance(exc, TooManyAttempts):
+        return HTTPException(
+            status_code=exc.status_code, detail=str(exc), headers={"Retry-After": str(exc.retry_after)}
+        )
     if isinstance(exc, PlatformError):
         return HTTPException(status_code=exc.status_code, detail=str(exc))
     return HTTPException(status_code=400, detail=str(exc))
@@ -180,7 +184,8 @@ async def signup(body: SignupRequest, request: Request) -> dict[str, Any]:
 
 @v1.post("/login")
 async def login(body: LoginRequest, request: Request) -> dict[str, Any]:
-    token, expires, tenant = _call(_service(request).login, body.email, body.password, body.tenant_id)
+    address = request.client.host if request.client else None
+    token, expires, tenant = _call(_service(request).login, body.email, body.password, body.tenant_id, address)
     return {"token": token, "token_type": "bearer", "expires_at": expires, "tenant_id": tenant.id}
 
 

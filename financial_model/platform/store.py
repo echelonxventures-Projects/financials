@@ -132,6 +132,18 @@ class Store:  # pragma: no cover - interface only
     def mark_event(self, event_id: str) -> bool:
         raise NotImplementedError
 
+    # failed sign-ins (login throttling)
+    def add_login_failure(self, key: str, at: float, prune_before: float) -> None:
+        """Record a failed sign-in for ``key``; failures older than ``prune_before`` may be dropped."""
+        raise NotImplementedError
+
+    def count_login_failures(self, key: str, since: float) -> tuple[int, float | None]:
+        """``(count, oldest timestamp)`` of failures for ``key`` at or after ``since``."""
+        raise NotImplementedError
+
+    def clear_login_failures(self, key: str) -> None:
+        raise NotImplementedError
+
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS tenants (
@@ -157,6 +169,8 @@ CREATE TABLE IF NOT EXISTS usage (
     PRIMARY KEY (tenant_id, period, metric)
 );
 CREATE TABLE IF NOT EXISTS billing_events (id TEXT PRIMARY KEY, received_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS login_failures (key TEXT NOT NULL, at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS login_failures_key ON login_failures(key, at);
 """
 
 
@@ -330,6 +344,23 @@ class SQLiteStore(Store):
         except sqlite3.IntegrityError:
             return False
         return True
+
+    # failed sign-ins -----------------------------------------------------
+    def add_login_failure(self, key: str, at: float, prune_before: float) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM login_failures WHERE at < ?", (prune_before,))
+            self._db.execute("INSERT INTO login_failures (key, at) VALUES (?, ?)", (key, at))
+
+    def count_login_failures(self, key: str, since: float) -> tuple[int, float | None]:
+        row = self._one(
+            "SELECT COUNT(*) AS n, MIN(at) AS oldest FROM login_failures WHERE key = ? AND at >= ?", (key, since)
+        )
+        if row is None or not row["n"]:
+            return 0, None
+        return int(row["n"]), float(row["oldest"])
+
+    def clear_login_failures(self, key: str) -> None:
+        self._exec("DELETE FROM login_failures WHERE key = ?", (key,))
 
 
 StoreFactory = Callable[[str], Store]

@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `serve` refuses to start the platform without a `platform.secret_key` of at least `secret_key_min_length` (32) characters, instead of silently using a per-process secret; `require_secret_key: false` opts out for local runs. Admin CLI commands are unaffected
+- Sign-in throttling: failed logins per email and per client address over a sliding window (`platform.login_throttle`, stored in the platform database so replicas share it); over the limit `/v1/login` returns 429 with `Retry-After`. Unknown emails cost the same hashing work as real ones. Custom `Store` back ends must implement `add_login_failure`, `count_login_failures` and `clear_login_failures`
+
 ### Fixed
+
+- The unknown-scenario CLI test skips its `chart` case when plotly is not installed (core-install CI jobs)
 
 - An unknown `--scenario` in `run`, `dcf`, `lbo` and `chart` is a one-line `Error:` with exit 1 instead of a traceback (`ScenarioError`)
 

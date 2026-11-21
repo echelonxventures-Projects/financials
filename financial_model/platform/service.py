@@ -53,6 +53,22 @@ class QuotaExceeded(PlatformError):
     status_code = 429
 
 
+class TooManyAttempts(PlatformError):
+    """Too many failed sign-ins; ``retry_after`` is in seconds."""
+
+    status_code = 429
+
+    def __init__(self, message: str, retry_after: int):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class ConfigurationError(PlatformError):
+    """The platform settings are not safe to serve with."""
+
+    status_code = 500
+
+
 class NotFound(PlatformError):
     status_code = 404
 
@@ -100,6 +116,9 @@ class PlatformService:
         password_min_length: int | None = None,
         api_key_prefix: str | None = None,
         allow_signup: bool | None = None,
+        require_secret_key: bool | None = None,
+        secret_key_min_length: int | None = None,
+        login_throttle: dict[str, Any] | None = None,
     ):
         base = builtin_settings()
 
@@ -118,6 +137,21 @@ class PlatformService:
         self.password_min_length = int(pick(password_min_length, "password_min_length"))
         self.keys = KeyFormat(str(pick(api_key_prefix, "api_key_prefix")))
         self.allow_signup = bool(pick(allow_signup, "allow_signup"))
+        self.require_secret_key = bool(pick(require_secret_key, "require_secret_key"))
+        self.secret_key_min_length = int(pick(secret_key_min_length, "secret_key_min_length"))
+        self._configured_secret = str(secret or "")
+        throttle = {**(base.get("login_throttle") or {}), **(login_throttle or {})}
+        self.login_window = float(throttle.get("window_seconds") or 0)
+        self.login_limits = {
+            "email": int(throttle.get("max_failures_per_email") or 0),
+            "address": int(throttle.get("max_failures_per_address") or 0),
+        }
+        self._dummy_hash: str | None = None
+
+    def check_serving_config(self) -> None:
+        """Raise :class:`ConfigurationError` if these settings are unsafe to serve the platform with."""
+        if self.require_secret_key and len(self._configured_secret) < self.secret_key_min_length:
+            raise ConfigurationError(self.catalog.message("secret_key_required", length=self.secret_key_min_length))
 
     @property
     def plans(self) -> dict[str, Plan]:
@@ -139,6 +173,9 @@ class PlatformService:
             password_min_length=int(cfg["password_min_length"]),
             api_key_prefix=str(cfg["api_key_prefix"]),
             allow_signup=bool(cfg["allow_signup"]),
+            require_secret_key=bool(cfg["require_secret_key"]),
+            secret_key_min_length=int(cfg["secret_key_min_length"]),
+            login_throttle=dict(cfg.get("login_throttle") or {}),
         )
 
     # ------------------------------------------------------------------ #
@@ -261,10 +298,41 @@ class PlatformService:
         self.store.add_key(record)
         return plain, record
 
-    def login(self, email: str, password: str, tenant_id: str | None = None) -> tuple[str, int, Tenant]:
-        user = self.store.get_user_by_email(email.strip().lower())
-        if user is None or not verify_password(password, user.password_hash):
+    def _throttle_keys(self, email: str, address: str | None) -> list[tuple[str, int]]:
+        keys = [(f"email:{email}", self.login_limits["email"])]
+        if address:
+            keys.append((f"address:{address}", self.login_limits["address"]))
+        return [(k, limit) for k, limit in keys if limit > 0 and self.login_window > 0]
+
+    def _check_throttle(self, keys: list[tuple[str, int]], now: float) -> None:
+        for key, limit in keys:
+            count, oldest = self.store.count_login_failures(key, now - self.login_window)
+            if count >= limit:
+                wait = max(1, int((oldest or now) + self.login_window - now + 0.999))
+                raise TooManyAttempts(self.catalog.message("too_many_logins", seconds=wait), wait)
+
+    def _password_ok(self, password: str, user: User | None) -> bool:
+        if user is not None and user.password_hash:
+            return verify_password(password, user.password_hash)
+        # Same work for unknown emails, so response time does not reveal which emails exist.
+        if self._dummy_hash is None:
+            self._dummy_hash = hash_password(secrets.token_hex(8), self.password_iterations)
+        verify_password(password, self._dummy_hash)
+        return False
+
+    def login(
+        self, email: str, password: str, tenant_id: str | None = None, address: str | None = None
+    ) -> tuple[str, int, Tenant]:
+        email = email.strip().lower()
+        keys = self._throttle_keys(email, address)
+        now = time.time()
+        self._check_throttle(keys, now)
+        user = self.store.get_user_by_email(email)
+        if not self._password_ok(password, user) or user is None:
+            for key, _ in keys:
+                self.store.add_login_failure(key, now, prune_before=now - self.login_window)
             raise AuthError(self.catalog.message("bad_login"))
+        self.store.clear_login_failures(f"email:{email}")
         tenants = self.store.tenants_for_user(user.id)
         if not tenants:
             raise AuthError(self.catalog.message("no_accounts"))

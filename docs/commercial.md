@@ -70,6 +70,33 @@ FIN_PLATFORM_SECRET_KEY=... docker compose -f deploy/compose.platform.yaml up -d
 Put a TLS-terminating proxy in front: API keys and passwords must never cross the
 network in plain HTTP.
 
+`serve` refuses to start the platform unless `secret_key` is set and at least
+`secret_key_min_length` (32) characters long. For a throwaway local run only,
+`require_secret_key: false` falls back to a random per-process secret (every restart
+signs everyone out). The `financial-model platform` admin commands never issue tokens,
+so they work without it.
+
+### Sign-in throttling
+
+Failed sign-ins are recorded in the platform database, so every worker and replica
+sharing it sees the same count. Over a sliding window, too many failures for one email,
+or from one client address, make `/v1/login` answer `429` with `Retry-After` until the
+oldest failure leaves the window (a correct password does not bypass it). A successful
+sign-in clears that email's count. Unknown emails take the same hashing work as real
+ones, so timing does not reveal which accounts exist.
+
+```yaml
+platform:
+  login_throttle:
+    window_seconds: 900
+    max_failures_per_email: 5
+    max_failures_per_address: 50   # 0 disables either limit
+```
+
+Behind a proxy, forward the client address (`financial-model serve` runs uvicorn; set
+`FORWARDED_ALLOW_IPS` to the proxy's address so `X-Forwarded-For` is honoured),
+otherwise every caller shares the proxy's address and its limit.
+
 ## Plans and pay-to-use
 
 A plan has a fixed fee (optional), limits, the models and features it includes, and a
@@ -229,7 +256,7 @@ All commands take `--settings financial.yaml` and `--database sqlite:///...`.
 
 Accounts, keys and usage live in SQLite (standard library, one file, WAL mode): enough
 for one node with several workers. For several nodes, implement
-`financial_model.platform.Store` and register a URL scheme with `register_store` or the
+`financial_model.platform.Store` (including the `*_login_failure(s)` methods) and register a URL scheme with `register_store` or the
 `financial_model.platform_stores` entry point. Login tokens are signed, not stored, so
 any replica with the same `secret_key` accepts them.
 

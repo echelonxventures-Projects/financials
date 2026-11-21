@@ -17,7 +17,14 @@ from financial_model.models.business import business_template
 from financial_model.platform.billing import BillingError, StripeBilling
 from financial_model.platform.catalog import BUILTIN_PATH, Catalog, CatalogError, MeterRule, builtin_settings
 from financial_model.platform.security import KeyFormat, hash_password, sign_token, verify_password, verify_token
-from financial_model.platform.service import NotEntitled, PlatformService, QuotaExceeded
+from financial_model.platform.service import (
+    AuthError,
+    ConfigurationError,
+    NotEntitled,
+    PlatformService,
+    QuotaExceeded,
+    TooManyAttempts,
+)
 from financial_model.platform.store import open_store
 
 WEBHOOK_SECRET = "whsec_test"
@@ -28,7 +35,7 @@ def _settings(**platform):
     base = {
         "enabled": True,
         "database": "sqlite:///:memory:",
-        "secret_key": "test-secret",
+        "secret_key": "test-secret-" + "x" * 32,
         "password_iterations": 1_000,
         "billing": {
             "provider": "stripe",
@@ -504,3 +511,90 @@ class TestCatalogue:
         svc.record(who.tenant.id, "runs")
         with pytest.raises(QuotaExceeded):
             svc.check(who, model_type="paas", metric="runs")
+
+
+class TestSecretKeyRequired:
+    @pytest.mark.parametrize("secret", ["", "too-short"])
+    def test_serve_refuses_without_a_strong_secret(self, secret):
+        with pytest.raises(ConfigurationError, match="FIN_PLATFORM_SECRET_KEY"):
+            create_app(_settings(secret_key=secret))
+
+    def test_can_opt_out_for_local_experiments(self):
+        app = create_app(_settings(secret_key="", require_secret_key=False))
+        assert app.state.platform.secret_is_ephemeral
+
+    def test_minimum_length_is_a_setting(self):
+        create_app(_settings(secret_key="sixteen-chars-ok", secret_key_min_length=16))
+
+    def test_admin_service_works_without_a_secret(self):
+        # The CLI manages accounts and keys; it never issues tokens, so it needs no secret.
+        svc = PlatformService.from_settings({"database": "sqlite:///:memory:", "password_iterations": 1_000})
+        _, _, key = svc.signup("cli@example.com", "password1")
+        assert svc.authenticate(api_key=key).user.email == "cli@example.com"
+
+
+class TestLoginThrottle:
+    def _svc(self, **throttle):
+        limits = {"window_seconds": 60, "max_failures_per_email": 3, "max_failures_per_address": 5, **throttle}
+        svc = PlatformService(password_iterations=1_000, login_throttle=limits)
+        svc.signup("ada@example.com", "correct horse")
+        return svc
+
+    def _fail(self, svc, email="ada@example.com", address="10.0.0.1", times=1):
+        for _ in range(times):
+            with pytest.raises(AuthError):
+                svc.login(email, "wrong pass", address=address)
+
+    def test_locks_an_email_after_the_limit_even_with_the_right_password(self):
+        svc = self._svc()
+        self._fail(svc, times=3)
+        with pytest.raises(TooManyAttempts) as caught:
+            svc.login("ada@example.com", "correct horse", address="10.0.0.2")
+        assert 1 <= caught.value.retry_after <= 60
+
+    def test_success_clears_the_email_count(self):
+        svc = self._svc()
+        self._fail(svc, times=2)
+        svc.login("ADA@example.com", "correct horse")
+        self._fail(svc, times=2)
+        svc.login("ada@example.com", "correct horse")
+
+    def test_unknown_emails_count_against_the_address(self):
+        svc = self._svc()
+        for i in range(5):
+            self._fail(svc, email=f"nobody{i}@example.com")
+        with pytest.raises(TooManyAttempts):
+            svc.login("ada@example.com", "correct horse", address="10.0.0.1")
+        svc.login("ada@example.com", "correct horse", address="10.0.0.9")
+
+    def test_window_expiry_unlocks(self, monkeypatch):
+        svc = self._svc()
+        self._fail(svc, times=3)
+        later = time.time() + 61
+        monkeypatch.setattr(time, "time", lambda: later)
+        svc.login("ada@example.com", "correct horse")
+
+    def test_zero_disables(self):
+        svc = self._svc(max_failures_per_email=0, max_failures_per_address=0)
+        self._fail(svc, times=10)
+        svc.login("ada@example.com", "correct horse")
+
+    def test_count_is_shared_through_the_database(self, tmp_path):
+        url = f"sqlite:///{tmp_path / 'p.db'}"
+        limits = {"window_seconds": 60, "max_failures_per_email": 2}
+        first = PlatformService(open_store(url), password_iterations=1_000, login_throttle=limits)
+        first.signup("ada@example.com", "correct horse")
+        self._fail(first, times=2)
+        second = PlatformService(open_store(url), password_iterations=1_000, login_throttle=limits)
+        with pytest.raises(TooManyAttempts):
+            second.login("ada@example.com", "correct horse")
+
+    def test_http_answers_429_with_retry_after(self):
+        client = _client(login_throttle={"max_failures_per_email": 2})
+        _signup(client)
+        for _ in range(2):
+            assert client.post("/v1/login", json={"email": "ada@example.com", "password": "nope"}).status_code == 401
+        r = client.post("/v1/login", json={"email": "ada@example.com", "password": "correct horse"})
+        assert r.status_code == 429
+        assert int(r.headers["Retry-After"]) >= 1
+        assert "too many failed sign-in attempts" in r.json()["detail"]

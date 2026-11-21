@@ -95,6 +95,7 @@ def create_app(settings: dict[str, Any] | None = None) -> FastAPI:
         from financial_model.platform.service import PlatformService
 
         service = PlatformService.from_settings(platform_cfg)
+        service.check_serving_config()
         if service.secret_is_ephemeral:
             logger.warning("platform.secret_key is not set: login tokens will not survive a restart")
         install_platform(application, router, service)
