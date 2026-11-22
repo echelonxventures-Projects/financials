@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">SSO Providers</h1>
+    <p class="page-subtitle">Configure Single Sign-On providers (OIDC, SAML, Custom)</p>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-primary" onclick="openSSOModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Provider
+    </button>
+  </div>
+</div>
+
+{% if not enabled %}
+<div class="card">
+  <div class="card-body text-center" style="padding: var(--space-12);">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: var(--space-4); opacity: 0.5;">
+      <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="6" y1="19" x2="6.01" y2="19"/><line x1="10" y1="19" x2="10.01" y2="19"/><line x1="14" y1="19" x2="14.01" y2="19"/>
+    </svg>
+    <h3 style="margin-bottom: var(--space-2);">SSO Providers Disabled</h3>
+    <p style="color: var(--color-fg-muted); margin-bottom: var(--space-4);">Enable the SSO feature in Platform Settings to configure providers.</p>
+    <button class="btn btn-primary" onclick="navigate('settings')">Go to Settings</button>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Provider</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Auto-Provision</th>
+            <th>Default Role</th>
+            <th>Default Kind</th>
+            <th>Default Plan</th>
+            <th>Domain Hints</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="ssoTableBody">
+          {% for provider in providers %}
+          <tr>
+            <td>
+              <div style="font-weight: 500;">{{ provider.name }}</div>
+              <div class="text-muted" style="font-size: var(--text-xs);">{{ provider.key }}</div>
+            </td>
+            <td><span class="badge badge-info">{{ provider.type }}</span></td>
+            <td><span class="badge {% if provider.enabled %}badge-success{% else %}badge-neutral{% endif %}">{{ 'Enabled' if provider.enabled else 'Disabled' }}</span></td>
+            <td><span class="badge {% if provider.auto_provision %}badge-success{% else %}badge-neutral{% endif %}">{{ 'Yes' if provider.auto_provision else 'No' }}</span></td>
+            <td>{{ provider.default_role }}</td>
+            <td>{{ provider.default_account_kind }}</td>
+            <td>{{ provider.default_plan }}</td>
+            <td>
+              {% if provider.domain_hints %}
+                <div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">
+                  {% for hint in provider.domain_hints %}
+                  <span class="badge badge-neutral badge-sm">{{ hint }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="btn-group">
+                <button class="btn btn-ghost btn-sm" onclick="editSSO('{{ provider.key }}')" title="Edit">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-sm danger" onclick="deleteSSO('{{ provider.key }}')" title="Delete">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- SSO Type Information -->
+<div class="grid grid-3 mt-6">
+  <div class="card">
+    <div class="card-body">
+      <div class="card-title">OIDC (OpenID Connect)</div>
+      <div class="text-muted" style="font-size: var(--text-sm); margin-bottom: var(--space-3);">Google, Microsoft, Okta, Auth0, GitHub, Generic</div>
+      <ul style="font-size: var(--text-sm); color: var(--color-fg-muted); line-height: 1.8;">
+        <li>Auto-discovers from .well-known/openid-configuration</li>
+        <li>Supports authorization code flow with PKCE</li>
+        <li>JWT token validation with JWKS</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <div class="card-title">SAML 2.0</div>
+      <div class="text-muted" style="font-size: var(--text-sm); margin-bottom: var(--space-3);">Enterprise IdPs (Okta, Azure AD, Ping, etc.)</div>
+      <ul style="font-size: var(--text-sm); color: var(--color-fg-muted); line-height: 1.8;">
+        <li>SP-initiated and IdP-initiated flows</li>
+        <li>Metadata XML configuration</li>
+        <li>Attribute mapping for user provisioning</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <div class="card-title">Custom</div>
+      <div class="text-muted" style="font-size: var(--text-sm); margin-bottom: var(--space-3);">Custom OAuth2 or proprietary implementations</div>
+      <ul style="font-size: var(--text-sm); color: var(--color-fg-muted); line-height: 1.8;">
+        <li>Flexible configuration for non-standard providers</li>
+        <li>Custom token endpoint and user info mapping</li>
+        <li>Webhook-based user synchronization</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- SSO Provider Modal -->
+<div id="ssoModalContainer"></div>
+
+<script>
+// SSO Type configurations
+const SSO_TYPES = {
+  oidc: {
+    label: 'OpenID Connect (OIDC)',
+    fields: [
+      { name: 'issuer', label: 'Issuer URL', type: 'url', placeholder: 'https://accounts.google.com', required: true, hint: 'OIDC issuer (e.g., https://accounts.google.com)' },
+      { name: 'client_id', label: 'Client ID', type: 'text', placeholder: 'your-client-id', required: true },
+      { name: 'client_secret', label: 'Client Secret', type: 'password', placeholder: '••••••••', required: true },
+      { name: 'scopes', label: 'Scopes', type: 'text', placeholder: 'openid email profile', hint: 'Space-separated scopes' },
+    ]
+  },
+  saml: {
+    label: 'SAML 2.0',
+    fields: [
+      { name: 'entity_id', label: 'Entity ID', type: 'text', placeholder: 'https://idp.example.com', required: true },
+      { name: 'sso_url', label: 'SSO URL', type: 'url', placeholder: 'https://idp.example.com/sso', required: true },
+      { name: 'certificate', label: 'X.509 Certificate', type: 'textarea', placeholder: '-----BEGIN CERTIFICATE-----...', required: true, rows: 6 },
+      { name: 'attribute_mapping', label: 'Attribute Mapping (JSON)', type: 'textarea', placeholder: '{"email": "email", "name": "displayName"}', rows: 4 },
+    ]
+  },
+  custom: {
+    label: 'Custom OAuth2',
+    fields: [
+      { name: 'auth_url', label: 'Authorization URL', type: 'url', placeholder: 'https://custom.com/oauth/authorize', required: true },
+      { name: 'token_url', label: 'Token URL', type: 'url', placeholder: 'https://custom.com/oauth/token', required: true },
+      { name: 'userinfo_url', label: 'User Info URL', type: 'url', placeholder: 'https://custom.com/oauth/userinfo', required: true },
+      { name: 'client_id', label: 'Client ID', type: 'text', placeholder: 'your-client-id', required: true },
+      { name: 'client_secret', label: 'Client Secret', type: 'password', placeholder: '••••••••', required: true },
+      { name: 'scopes', label: 'Scopes', type: 'text', placeholder: 'openid email profile', hint: 'Space-separated scopes' },
+      { name: 'user_mapping', label: 'User Mapping (JSON)', type: 'textarea', placeholder: '{"email": "email", "name": "name"}', rows: 4 },
+    ]
+  }
+};
+
+async function loadSSOData() {
+  try {
+    const response = await AdminAPI.apiRequest('/sso/providers');
+    renderSSOTable(response.providers || []);
+  } catch (error) {
+    console.error('Failed to load SSO providers:', error);
+    showToast('Failed to load SSO providers', 'error');
+  }
+}
+
+function renderSSOTable(providers) {
+  const tbody = document.getElementById('ssoTableBody');
+  if (!tbody) return;
+
+  if (!providers.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="9" style="text-align: center; padding: var(--space-8); color: var(--color-fg-muted);">
+          No SSO providers configured. Click "Add Provider" to create one.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = providers.map(p => `
+    <tr>
+      <td>
+        <div style="font-weight: 500;">${escapeHtml(p.name)}</div>
+        <div class="text-muted" style="font-size: var(--text-xs);">${escapeHtml(p.key)}</div>
+      </td>
+      <td><span class="badge badge-info">${escapeHtml(p.type)}</span></td>
+      <td><span class="badge ${p.enabled ? 'badge-success' : 'badge-neutral'}">${p.enabled ? 'Enabled' : 'Disabled'}</span></td>
+      <td><span class="badge ${p.auto_provision ? 'badge-success' : 'badge-neutral'}">${p.auto_provision ? 'Yes' : 'No'}</span></td>
+      <td>${escapeHtml(p.default_role)}</td>
+      <td>${escapeHtml(p.default_account_kind)}</td>
+      <td>${escapeHtml(p.default_plan)}</td>
+      <td>
+        ${p.domain_hints && p.domain_hints.length ? p.domain_hints.map(h => `<span class="badge badge-neutral badge-sm">${escapeHtml(h)}</span>`).join('') : '<span class="text-muted">—</span>'}
+      </td>
+      <td>
+        <div class="btn-group">
+          <button class="btn btn-ghost btn-sm" onclick="editSSO('${escapeHtml(p.key)}')" title="Edit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="btn btn-ghost btn-sm danger" onclick="deleteSSO('${escapeHtml(p.key)}')" title="Delete">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openSSOModal(provider = null) {
+  const isEdit = !!provider;
+  const title = isEdit ? `Edit Provider: ${provider.name}` : 'Add SSO Provider';
+  const typeConfig = SSO_TYPES[provider?.type] || SSO_TYPES.oidc;
+
+  const typeOptions = Object.entries(SSO_TYPES).map(([key, cfg]) =>
+    `<option value="${key}" ${isEdit && provider.type === key ? 'selected' : ''}>${cfg.label}</option>`
+  ).join('');
+
+  const configFields = typeConfig.fields.map(field => `
+    <div class="form-group">
+      <label for="sso_${field.name}">${field.label} ${field.required ? '<span class="required">*</span>' : ''}</label>
+      ${field.type === 'textarea' ?
+        `<textarea id="sso_${field.name}" name="config[${field.name}]" rows="${field.rows || 4}" placeholder="${escapeHtml(field.placeholder || '')}" ${field.required ? 'required' : ''}>${isEdit && provider.config[field.name] ? escapeHtml(provider.config[field.name]) : ''}</textarea>` :
+        `<input type="${field.type}" id="sso_${field.name}" name="config[${field.name}]" placeholder="${escapeHtml(field.placeholder || '')}" value="${isEdit && provider.config[field.name] ? escapeHtml(provider.config[field.name]) : ''}" ${field.required ? 'required' : ''}>`
+      }
+      ${field.hint ? `<div class="form-hint">${escapeHtml(field.hint)}</div>` : ''}
+    </div>
+  `).join('');
+
+  const body = `
+    <form id="ssoForm">
+      <div class="form-group">
+        <label for="ssoKey">Key <span class="required">*</span></label>
+        <input type="text" id="ssoKey" name="key" placeholder="e.g., google" required ${isEdit ? 'readonly' : ''} value="${isEdit ? escapeHtml(provider.key) : ''}">
+        <div class="form-hint">Unique identifier (lowercase, underscores only)</div>
+      </div>
+      <div class="form-group">
+        <label for="ssoName">Name <span class="required">*</span></label>
+        <input type="text" id="ssoName" name="name" placeholder="Google" required value="${isEdit ? escapeHtml(provider.name) : ''}">
+      </div>
+      <div class="form-group">
+        <label for="ssoType">Type <span class="required">*</span></label>
+        <select id="ssoType" name="type" required onchange="updateSSOFields(this.value)" ${isEdit ? 'disabled' : ''}>
+          ${typeOptions}
+        </select>
+      </div>
+      <div id="ssoConfigFields">
+        ${configFields}
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label class="checkbox-label">
+            <input type="checkbox" name="enabled" ${isEdit ? (provider.enabled ? 'checked' : '') : 'checked'}>
+            <span>Enabled</span>
+          </label>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label class="checkbox-label">
+            <input type="checkbox" name="auto_provision" ${isEdit ? (provider.auto_provision ? 'checked' : '') : 'checked'}>
+            <span>Auto-provision accounts</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="ssoDefaultRole">Default Role</label>
+          <input type="text" id="ssoDefaultRole" name="default_role" value="${isEdit ? escapeHtml(provider.default_role) : 'member'}" placeholder="member">
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="ssoDefaultKind">Default Account Kind</label>
+          <input type="text" id="ssoDefaultKind" name="default_account_kind" value="${isEdit ? escapeHtml(provider.default_account_kind) : 'organization'}" placeholder="organization">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="ssoDefaultPlan">Default Plan</label>
+          <input type="text" id="ssoDefaultPlan" name="default_plan" value="${isEdit ? escapeHtml(provider.default_plan) : 'free'}" placeholder="free">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="ssoDomainHints">Domain Hints (comma-separated)</label>
+        <input type="text" id="ssoDomainHints" name="domain_hints" placeholder="example.com, corp.example.com" value="${isEdit && provider.domain_hints ? provider.domain_hints.join(', ') : ''}">
+        <div class="form-hint">Email domains that should use this provider automatically</div>
+      </div>
+    </form>
+  `;
+
+  const footer = `
+    <button class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+    <button class="btn btn-danger" onclick="deleteSSO('${isEdit ? escapeHtml(provider.key) : ''}')">Delete</button>
+    <button class="btn btn-primary" onclick="saveSSO('${isEdit ? escapeHtml(provider.key) : ''}')">${isEdit ? 'Update' : 'Create'}</button>
+  `;
+
+  const modal = AdminAPI.createModal(title, body, footer);
+  modal.id = 'ssoModal';
+}
+
+function updateSSOFields(type) {
+  const container = document.getElementById('ssoConfigFields');
+  const typeConfig = SSO_TYPES[type] || SSO_TYPES.oidc;
+
+  container.innerHTML = typeConfig.fields.map(field => `
+    <div class="form-group">
+      <label for="sso_${field.name}">${field.label} ${field.required ? '<span class="required">*</span>' : ''}</label>
+      ${field.type === 'textarea' ?
+        `<textarea id="sso_${field.name}" name="config[${field.name}]" rows="${field.rows || 4}" placeholder="${escapeHtml(field.placeholder || '')}" ${field.required ? 'required' : ''}></textarea>` :
+        `<input type="${field.type}" id="sso_${field.name}" name="config[${field.name}]" placeholder="${escapeHtml(field.placeholder || '')}" ${field.required ? 'required' : ''}>`
+      }
+      ${field.hint ? `<div class="form-hint">${escapeHtml(field.hint)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+async function saveSSO(key) {
+  const form = document.getElementById('ssoForm');
+  if (!validateForm(form)) return;
+
+  const data = serializeForm(form);
+  data.enabled = data.enabled === 'on';
+  data.auto_provision = data.auto_provision === 'on';
+  data.domain_hints = data.domain_hints ? data.domain_hints.split(',').map(d => d.trim()).filter(Boolean) : [];
+  // config is already nested from form fields
+
+  try {
+    const endpoint = key ? `/sso/providers/${key}` : '/sso/providers';
+    const method = key ? 'PUT' : 'POST';
+    await AdminAPI.apiRequest(endpoint, { method, body: JSON.stringify(data) });
+
+    showToast(key ? 'Provider updated' : 'Provider created', 'success');
+    closeModal(document.querySelector('#ssoModal .modal-close'));
+    await loadSSOData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function editSSO(key) {
+  try {
+    const provider = await AdminAPI.apiRequest(`/sso/providers/${key}`);
+    openSSOModal(provider);
+  } catch (error) {
+    showToast('Failed to load provider', 'error');
+  }
+}
+
+async function deleteSSO(key) {
+  if (!key || !confirm('Delete this SSO provider? This cannot be undone.')) return;
+
+  try {
+    await AdminAPI.apiRequest(`/sso/providers/${key}`, { method: 'DELETE' });
+    showToast('Provider deleted', 'success');
+    await loadSSOData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'sso') loadSSOData();
+});
+
+window.refreshSSO = loadSSOData;
+</script>
+{% endblock %}

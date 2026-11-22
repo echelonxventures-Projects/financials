@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Default Metering Rules</h1>
+    <p class="page-subtitle">Configure default included quantities and overage pricing for metrics (used when plans don't override)</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Default Metering</h2>
+    <p class="card-subtitle">These defaults apply to all plans unless a plan explicitly overrides them for a specific metric.</p>
+  </div>
+  <div class="card-body" style="padding: 0;">
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>Unit</th>
+            <th>Default Included</th>
+            <th>Default Overage ($/unit)</th>
+            <th>Overage Action</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="defaultMeteringTableBody">
+          {% for metric in default_metering %}
+          <tr>
+            <td>
+              <div style="font-weight: 500; font-family: var(--font-mono);">{{ metric.key }}</div>
+              <div class="text-muted" style="font-size: var(--text-xs);">{{ metric.name }}</div>
+            </td>
+            <td><span class="badge badge-neutral">{{ metric.unit }}</span></td>
+            <td>
+              {% if metric.included !== null and metric.included !== undefined %}
+              <input type="number" class="form-input form-input-sm" name="included[{{ metric.key }}]" value="{{ metric.included }}" min="0" style="width: 100px;">
+              {% else %}
+              <input type="number" class="form-input form-input-sm" name="included[{{ metric.key }}]" placeholder="Unlimited" min="0" style="width: 100px;">
+              <div class="form-hint" style="margin-top: var(--space-1);">Empty = unlimited</div>
+              {% endif %}
+            </td>
+            <td>
+              <input type="number" class="form-input form-input-sm" name="overage[{{ metric.key }}]" value="{{ metric.overage_price or '' }}" min="0" step="0.0001" placeholder="0" style="width: 100px;">
+              <div class="form-hint" style="margin-top: var(--space-1);">In dollars per unit (e.g., 0.02)</div>
+            </td>
+            <td>
+              <select name="overage_action[{{ metric.key }}]" class="form-select form-select-sm" style="width: 140px;">
+                <option value="block" {% if metric.overage_action == 'block' %}selected{% endif %}>Block</option>
+                <option value="bill" {% if metric.overage_action == 'bill' %}selected{% endif %}>Bill</option>
+              </select>
+            </td>
+            <td>
+              <button class="btn btn-ghost btn-sm" onclick="resetMetricDefaults('{{ metric.key }}')" title="Reset to system default">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M21 12v5h-5"/></svg>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="form-actions" style="margin-top: var(--space-4);">
+  <button class="btn btn-primary" onclick="saveDefaultMetering()">Save All Default Metering</button>
+</div>
+
+<!-- Current Plan Overrides Reference -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Plan Metering Overrides</h2>
+    <p class="card-subtitle">Plans that override these defaults (for reference)</p>
+  </div>
+  <div class="card-body">
+    <div id="planOverrides" class="text-muted">Loading...</div>
+  </div>
+</div>
+
+<script>
+async function loadDefaultMeteringData() {
+  try {
+    const [dmRes, plansRes] = await Promise.all([
+      AdminAPI.apiRequest('/default-metering'),
+      AdminAPI.apiRequest('/metering')
+    ]);
+    renderDefaultMetering(dmRes.default_metering || []);
+    renderPlanOverrides(plansRes.metering || {});
+  } catch (error) {
+    console.error('Failed to load default metering:', error);
+    showToast('Failed to load default metering', 'error');
+  }
+}
+
+function renderDefaultMetering(metrics) {
+  const tbody = document.getElementById('defaultMeteringTableBody');
+  if (!tbody) return;
+
+  if (!metrics.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: var(--space-8); color: var(--color-fg-muted);">No metrics configured</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = metrics.map(m => `
+    <tr>
+      <td>
+        <div style="font-weight: 500; font-family: var(--font-mono);">${escapeHtml(m.key)}</div>
+        <div class="text-muted" style="font-size: var(--text-xs);">${escapeHtml(m.name || m.key)}</div>
+      </td>
+      <td><span class="badge badge-neutral">${escapeHtml(m.unit || 'units')}</span></td>
+      <td>
+        ${m.included !== null && m.included !== undefined ?
+          `<input type="number" class="form-input form-input-sm" name="included[${escapeHtml(m.key)}]" value="${m.included}" min="0" style="width: 100px;">` :
+          `<input type="number" class="form-input form-input-sm" name="included[${escapeHtml(m.key)}]" placeholder="Unlimited" min="0" style="width: 100px;">
+           <div class="form-hint" style="margin-top: var(--space-1);">Empty = unlimited</div>`
+        }
+      </td>
+      <td>
+        <input type="number" class="form-input form-input-sm" name="overage[${escapeHtml(m.key)}]" value="${m.overage_price || ''}" min="0" step="0.0001" placeholder="0" style="width: 100px;">
+        <div class="form-hint" style="margin-top: var(--space-1);">In dollars per unit (e.g., 0.02)</div>
+      </td>
+      <td>
+        <select name="overage_action[${escapeHtml(m.key)}]" class="form-select form-select-sm" style="width: 140px;">
+          <option value="block" ${m.overage_action === 'block' ? 'selected' : ''}>Block</option>
+          <option value="bill" ${m.overage_action === 'bill' ? 'selected' : ''}>Bill</option>
+        </select>
+      </td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="resetMetricDefaults('${escapeHtml(m.key)}')" title="Reset to system default">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M21 12v5h-5"/></svg>
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderPlanOverrides(metering) {
+  const container = document.getElementById('planOverrides');
+  if (!container) return;
+
+  if (!Object.keys(metering).length) {
+    container.innerHTML = '<p>No plan metering overrides configured</p>';
+    return;
+  }
+
+  let html = '<div style="display: flex; flex-wrap: wrap; gap: var(--space-4);">';
+  Object.entries(metering).forEach(([planKey, metrics]) => {
+    html += `
+      <div style="flex: 1; min-width: 300px;">
+        <h4 style="margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: 600;">${escapeHtml(planKey)}</h4>
+        <div class="table-container">
+          <table class="table">
+            <thead><tr><th>Metric</th><th>Included</th><th>Overage ($/unit)</th><th>Action</th></tr></thead>
+            <tbody>
+    `;
+    Object.entries(metrics).forEach(([metric, config]) => {
+      html += `
+        <tr>
+          <td>${escapeHtml(metric)}</td>
+          <td>${config.included !== null && config.included !== undefined ? escapeHtml(String(config.included)) : '∞'}</td>
+          <td>${config.overage !== null && config.overage !== undefined ? '$' + (config.overage / 100).toFixed(4) : '—'}</td>
+          <td><span class="badge ${config.overage ? 'badge-success' : 'badge-danger'}">${config.overage ? 'Bill' : 'Block'}</span></td>
+        </tr>
+      `;
+    });
+    html += '</tbody></table></div></div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+async function saveDefaultMetering() {
+  const form = document.querySelector('form') || document.createElement('form');
+  const container = document.getElementById('defaultMeteringTableBody');
+  const data = { default_metering: {} };
+
+  container.querySelectorAll('tr').forEach(row => {
+    const metricKey = row.querySelector('[name^="included["]')?.name?.match(/included\[(.+)\]/)?.[1];
+    if (!metricKey) return;
+
+    const includedInput = row.querySelector(`[name="included[${metricKey}]"]`);
+    const overageInput = row.querySelector(`[name="overage[${metricKey}]"]`);
+    const actionSelect = row.querySelector(`[name="overage_action[${metricKey}]"]`);
+
+    data.default_metering[metricKey] = {
+      included: includedInput?.value ? parseInt(includedInput.value) : null,
+      overage: overageInput?.value ? Math.round(parseFloat(overageInput.value) * 100) : null,
+      overage_action: actionSelect?.value || 'block',
+    };
+  });
+
+  try {
+    await AdminAPI.apiRequest('/default-metering', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Default metering saved', 'success');
+    loadDefaultMeteringData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+function resetMetricDefaults(metricKey) {
+  // Would need to fetch system defaults
+  showToast('Reset not implemented', 'info');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'default-metering') loadDefaultMeteringData();
+});
+
+window.refreshDefaultMetering = loadDefaultMeteringData;
+</script>
+{% endblock %}

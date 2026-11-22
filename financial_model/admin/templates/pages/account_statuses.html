@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Account Statuses</h1>
+    <p class="page-subtitle">Configure account lifecycle statuses and their behaviors</p>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-primary" onclick="openStatusModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Status
+    </button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Account Status Definitions</h2>
+    <p class="card-subtitle">Statuses control account behavior. One status must be marked as initial.</p>
+  </div>
+  <div class="card-body" style="padding: 0;">
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Blocked</th>
+            <th>Use Lapsed Plan</th>
+            <th>Message</th>
+            <th>Initial</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="statusesTableBody">
+          {% for status in statuses %}
+          <tr>
+            <td>
+              <div style="font-weight: 500;">{{ status.key }}</div>
+            </td>
+            <td><span class="badge {% if status.blocked %}badge-danger{% else %}badge-success{% endif %}">{{ 'Yes' if status.blocked else 'No' }}</span></td>
+            <td><span class="badge {% if status.use_lapsed_plan %}badge-warning{% else %}badge-neutral{% endif %}">{{ 'Yes' if status.use_lapsed_plan else 'No' }}</span></td>
+            <td class="text-muted" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ status.message or '—' }}</td>
+            <td><span class="badge {% if status.is_initial %}badge-info{% else %}badge-neutral{% endif %}">{{ 'Yes' if status.is_initial else 'No' }}</span></td>
+            <td>
+              <div class="btn-group">
+                <button class="btn btn-ghost btn-sm" onclick="editStatus('{{ status.key }}')" title="Edit">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                {% if not status.is_initial %}
+                <button class="btn btn-ghost btn-sm danger" onclick="deleteStatus('{{ status.key }}')" title="Delete">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Initial Status Selector -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Initial Status</h2>
+  </div>
+  <div class="card-body">
+    <form id="initialStatusForm">
+      <div class="form-group">
+        <label for="initialStatus">Initial Account Status <span class="required">*</span></label>
+        <select id="initialStatus" name="initial_status" required>
+          {% for status in statuses %}
+          <option value="{{ status.key }}" {% if status.is_initial %}selected{% endif %}>{{ status.key }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Set Initial Status</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Status Modal -->
+<div id="statusModalContainer"></div>
+
+<script>
+async function loadStatusesData() {
+  try {
+    const response = await AdminAPI.apiRequest('/account-statuses');
+    renderStatusesTable(response.statuses || []);
+    populateInitialStatus(response.initial_status);
+  } catch (error) {
+    console.error('Failed to load account statuses:', error);
+    showToast('Failed to load account statuses', 'error');
+  }
+}
+
+function renderStatusesTable(statuses) {
+  const tbody = document.getElementById('statusesTableBody');
+  if (!tbody) return;
+
+  if (!statuses.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: var(--space-8); color: var(--color-fg-muted);">No statuses configured</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = statuses.map(s => `
+    <tr>
+      <td><div style="font-weight: 500;">${escapeHtml(s.key)}</div></td>
+      <td><span class="badge ${s.blocked ? 'badge-danger' : 'badge-success'}">${s.blocked ? 'Yes' : 'No'}</span></td>
+      <td><span class="badge ${s.use_lapsed_plan ? 'badge-warning' : 'badge-neutral'}">${s.use_lapsed_plan ? 'Yes' : 'No'}</span></td>
+      <td class="text-muted" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(s.message || '—')}</td>
+      <td><span class="badge ${s.is_initial ? 'badge-info' : 'badge-neutral'}">${s.is_initial ? 'Yes' : 'No'}</span></td>
+      <td>
+        <div class="btn-group">
+          <button class="btn btn-ghost btn-sm" onclick="editStatus('${escapeHtml(s.key)}')" title="Edit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          ${!s.is_initial ? `<button class="btn btn-ghost btn-sm danger" onclick="deleteStatus('${escapeHtml(s.key)}')" title="Delete"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function populateInitialStatus(initialStatus) {
+  // Initial status is shown in the table badges
+}
+
+function openStatusModal(status = null) {
+  const isEdit = !!status;
+  const title = isEdit ? `Edit Status: ${status.key}` : 'Add Account Status';
+
+  const body = `
+    <form id="statusForm">
+      <input type="hidden" name="key" value="${isEdit ? escapeHtml(status.key) : ''}" ${isEdit ? 'readonly' : ''}>
+      <div class="form-group">
+        <label for="statusKey">Key <span class="required">*</span></label>
+        <input type="text" id="statusKey" name="key" placeholder="e.g., suspended" required ${isEdit ? 'readonly' : ''} value="${isEdit ? escapeHtml(status.key) : ''}">
+        <div class="form-hint">Unique identifier (lowercase, underscores only)</div>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" name="blocked" ${isEdit ? (status.blocked ? 'checked' : '') : ''}>
+          <span>Blocked (refuse metered calls)</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" name="use_lapsed_plan" ${isEdit ? (status.use_lapsed_plan ? 'checked' : '') : ''}>
+          <span>Use Lapsed Plan (apply lapsed plan limits while keeping data)</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label for="statusMessage">Message</label>
+        <textarea id="statusMessage" name="message" rows="3" placeholder="Message shown when account is blocked...">${isEdit ? escapeHtml(status.message || '') : ''}</textarea>
+      </div>
+      ${!isEdit ? `
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" name="is_initial" id="statusIsInitial">
+          <span>Set as initial status for new accounts</span>
+        </label>
+      </div>
+      ` : ''}
+    </form>
+  `;
+
+  const footer = `
+    <button class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+    ${!isEdit ? '' : `<button class="btn btn-danger" onclick="deleteStatus('${escapeHtml(status.key)}')">Delete</button>`}
+    <button class="btn btn-primary" onclick="saveStatus('${isEdit ? escapeHtml(status.key) : ''}')">${isEdit ? 'Update' : 'Create'}</button>
+  `;
+
+  const modal = AdminAPI.createModal(title, body, footer);
+  modal.id = 'statusModal';
+}
+
+async function saveStatus(key) {
+  const form = document.getElementById('statusForm');
+  if (!validateForm(form)) return;
+
+  const data = serializeForm(form);
+  data.blocked = data.blocked === 'on';
+  data.use_lapsed_plan = data.use_lapsed_plan === 'on';
+  data.is_initial = data.is_initial === 'on';
+
+  try {
+    const endpoint = key ? `/account-statuses/${key}` : '/account-statuses';
+    const method = key ? 'PUT' : 'POST';
+    await AdminAPI.apiRequest(endpoint, { method, body: JSON.stringify(data) });
+    showToast(key ? 'Status updated' : 'Status created', 'success');
+    closeModal(document.querySelector('#statusModal .modal-close'));
+    await loadStatusesData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function editStatus(key) {
+  try {
+    const response = await AdminAPI.apiRequest('/account-statuses');
+    const status = response.statuses.find(s => s.key === key);
+    if (status) openStatusModal(status);
+  } catch (error) {
+    showToast('Failed to load status', 'error');
+  }
+}
+
+async function deleteStatus(key) {
+  if (!confirm('Delete this status? This cannot be undone.')) return;
+  try {
+    await AdminAPI.apiRequest(`/account-statuses/${key}`, { method: 'DELETE' });
+    showToast('Status deleted', 'success');
+    await loadStatusesData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+document.getElementById('initialStatusForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = serializeForm(e.target);
+  try {
+    await AdminAPI.apiRequest('/account-statuses/initial', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Initial status updated', 'success');
+    await loadStatusesData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'account-statuses') loadStatusesData();
+});
+
+window.refreshAccountStatuses = loadStatusesData;
+</script>
+{% endblock %}

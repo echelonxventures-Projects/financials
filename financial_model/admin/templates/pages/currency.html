@@ -1,0 +1,443 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Currency & Regional</h1>
+    <p class="page-subtitle">Configure platform currency, supported countries, and regional settings</p>
+  </div>
+</div>
+
+<!-- Currency Settings -->
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Platform Currency</h2>
+  </div>
+  <div class="card-body">
+    <form id="currencyForm">
+      <div class="form-group">
+        <label for="platformCurrency">Default Currency <span class="required">*</span></label>
+        <select id="platformCurrency" name="currency" required>
+          <option value="USD" {% if currency == 'USD' %}selected{% endif %}>USD - US Dollar</option>
+          <option value="EUR" {% if currency == 'EUR' %}selected{% endif %}>EUR - Euro</option>
+          <option value="GBP" {% if currency == 'GBP' %}selected{% endif %}>GBP - British Pound</option>
+          <option value="CAD" {% if currency == 'CAD' %}selected{% endif %}>CAD - Canadian Dollar</option>
+          <option value="AUD" {% if currency == 'AUD' %}selected{% endif %}>AUD - Australian Dollar</option>
+          <option value="JPY" {% if currency == 'JPY' %}selected{% endif %}>JPY - Japanese Yen</option>
+          <option value="CHF" {% if currency == 'CHF' %}selected{% endif %}>CHF - Swiss Franc</option>
+          <option value="CNY" {% if currency == 'CNY' %}selected{% endif %}>CNY - Chinese Yuan</option>
+          <option value="INR" {% if currency == 'INR' %}selected{% endif %}>INR - Indian Rupee</option>
+          <option value="BRL" {% if currency == 'BRL' %}selected{% endif %}>BRL - Brazilian Real</option>
+          <option value="MXN" {% if currency == 'MXN' %}selected{% endif %}>MXN - Mexican Peso</option>
+          <option value="SGD" {% if currency == 'SGD' %}selected{% endif %}>SGD - Singapore Dollar</option>
+          <option value="HKD" {% if currency == 'HKD' %}selected{% endif %}>HKD - Hong Kong Dollar</option>
+          <option value="NZD" {% if currency == 'NZD' %}selected{% endif %}>NZD - New Zealand Dollar</option>
+          <option value="SEK" {% if currency == 'SEK' %}selected{% endif %}>SEK - Swedish Krona</option>
+          <option value="NOK" {% if currency == 'NOK' %}selected{% endif %}>NOK - Norwegian Krone</option>
+          <option value="DKK" {% if currency == 'DKK' %}selected{% endif %}>DKK - Danish Krone</option>
+          <option value="PLN" {% if currency == 'PLN' %}selected{% endif %}>PLN - Polish Złoty</option>
+          <option value="CZK" {% if currency == 'CZK' %}selected{% endif %}>CZK - Czech Koruna</option>
+          <option value="HUF" {% if currency == 'HUF' %}selected{% endif %}>HUF - Hungarian Forint</option>
+          <option value="ILS" {% if currency == 'ILS' %}selected{% endif %}>ILS - Israeli New Shekel</option>
+          <option value="KRW" {% if currency == 'KRW' %}selected{% endif %}>KRW - South Korean Won</option>
+          <option value="TWD" {% if currency == 'TWD' %}selected{% endif %}>TWD - New Taiwan Dollar</option>
+          <option value="THB" {% if currency == 'THB' %}selected{% endif %}>THB - Thai Baht</option>
+          <option value="IDR" {% if currency == 'IDR' %}selected{% endif %}>IDR - Indonesian Rupiah</option>
+          <option value="PHP" {% if currency == 'PHP' %}selected{% endif %}>PHP - Philippine Peso</option>
+          <option value="ZAR" {% if currency == 'ZAR' %}selected{% endif %}>ZAR - South African Rand</option>
+          <option value="AED" {% if currency == 'AED' %}selected{% endif %}>AED - UAE Dirham</option>
+          <option value="SAR" {% if currency == 'SAR' %}selected{% endif %}>SAR - Saudi Riyal</option>
+          <option value="TRY" {% if currency == 'TRY' %}selected{% endif %}>TRY - Turkish Lira</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="currencyDisplay">Display Format</label>
+        <select id="currencyDisplay" name="display_format">
+          <option value="symbol" {% if display_format == 'symbol' %}selected{% endif %}>Symbol ($1,234.56)</option>
+          <option value="code" {% if display_format == 'code' %}selected{% endif %}>Code (USD 1,234.56)</option>
+          <option value="name" {% if display_format == 'name' %}selected{% endif %}>Name (1,234.56 US Dollars)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="decimalPlaces">Decimal Places</label>
+          <input type="number" id="decimalPlaces" name="decimal_places" min="0" max="4" value="{{ decimal_places or 2 }}">
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="thousandsSeparator">Thousands Separator</label>
+          <input type="text" id="thousandsSeparator" name="thousands_separator" maxlength="1" value="{{ thousands_separator or ',' }}">
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="decimalSeparator">Decimal Separator</label>
+          <input type="text" id="decimalSeparator" name="decimal_separator" maxlength="1" value="{{ decimal_separator or '.' }}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save Currency Settings</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Supported Countries -->
+<div class="card mt-6">
+  < <div class="card-header">
+    <h2 class="card-title">Supported Countries</h2>
+    <div class="card-actions">
+      <button class="btn btn-primary btn-sm" onclick="openCountryModal()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Country
+      </button>
+    </div>
+  </div>
+  <div class="card-body" style="padding: 0;">
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Name</th>
+            <th>Currency</th>
+            <th>Tax Region</th>
+            <th>Enabled</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="countriesTableBody">
+          {% for country in countries %}
+          <tr>
+            <td><code>{{ country.code }}</code></td>
+            <td>{{ country.name }}</td>
+            <td>{{ country.currency }}</td>
+            <td>{{ country.tax_region or '—' }}</td>
+            <td><span class="badge {% if country.enabled %}badge-success{% else %}badge-neutral{% endif %}">{{ 'Yes' if country.enabled else 'No' }}</span></td>
+            <td>
+              <div class="btn-group">
+                <button class="btn btn-ghost btn-sm" onclick="editCountry('{{ country.code }}')" title="Edit">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-sm danger" onclick="deleteCountry('{{ country.code }}')" title="Delete">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Timezone Settings -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Timezone Settings</h2>
+  </div>
+  <div class="card-body">
+    <form id="timezoneForm">
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="defaultTimezone">Default Timezone</label>
+          <select id="defaultTimezone" name="default_timezone">
+            <option value="UTC" {% if default_timezone == 'UTC' %}selected{% endif %}>UTC</option>
+            <option value="America/New_York" {% if default_timezone == 'America/New_York' %}selected{% endif %}>America/New_York (ET)</option>
+            <option value="America/Chicago" {% if default_timezone == 'America/Chicago' %}selected{% endif %}>America/Chicago (CT)</option>
+            <option value="America/Denver" {% if default_timezone == 'America/Denver' %}selected{% endif %}>America/Denver (MT)</option>
+            <option value="America/Los_Angeles" {% if default_timezone == 'America/Los_Angeles' %}selected{% endif %}>America/Los_Angeles (PT)</option>
+            <option value="Europe/London" {% if default_timezone == 'Europe/London' %}selected{% endif %}>Europe/London (GMT/BST)</option>
+            <option value="Europe/Paris" {% if default_timezone == 'Europe/Paris' %}selected{% endif %}>Europe/Paris (CET/CEST)</option>
+            <option value="Europe/Berlin" {% if default_timezone == 'Europe/Berlin' %}selected{% endif %}>Europe/Berlin (CET/CEST)</option>
+            <option value="Asia/Tokyo" {% if default_timezone == 'Asia/Tokyo' %}selected{% endif %}>Asia/Tokyo (JST)</option>
+            <option value="Asia/Shanghai" {% if default_timezone == 'Asia/Shanghai' %}selected{% endif %}>Asia/Shanghai (CST)</option>
+            <option value="Asia/Singapore" {% if default_timezone == 'Asia/Singapore' %}selected{% endif %}>Asia/Singapore (SGT)</option>
+            <option value="Australia/Sydney" {% if default_timezone == 'Australia/Sydney' %}selected{% endif %}>Australia/Sydney (AEST/AEDT)</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label class="checkbox-label">
+            <input type="checkbox" name="use_user_timezone" {{ use_user_timezone ? 'checked' : '' }}>
+            <span>Use user's browser timezone</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save Timezone Settings</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Country Modal -->
+<div id="countryModalContainer"></div>
+
+<script>
+const COMMON_COUNTRIES = [
+  {code: 'US', name: 'United States', currency: 'USD', tax_region: 'US'},
+  {code: 'CA', name: 'Canada', currency: 'CAD', tax_region: 'CA'},
+  {code: 'GB', name: 'United Kingdom', currency: 'GBP', tax_region: 'UK'},
+  {code: 'DE', name: 'Germany', currency: 'EUR', tax_region: 'EU'},
+  {code: 'FR', name: 'France', currency: 'EUR', tax_region: 'EU'},
+  {code: 'IT', name: 'Italy', currency: 'EUR', tax_region: 'EU'},
+  {code: 'ES', name: 'Spain', currency: 'EUR', tax_region: 'EU'},
+  {code: 'NL', name: 'Netherlands', currency: 'EUR', tax_region: 'EU'},
+  {code: 'BE', name: 'Belgium', currency: 'EUR', tax_region: 'EU'},
+  {code: 'AT', name: 'Austria', currency: 'EUR', tax_region: 'EU'},
+  {code: 'CH', name: 'Switzerland', currency: 'CHF', tax_region: 'CH'},
+  {code: 'AU', name: 'Australia', currency: 'AUD', tax_region: 'AU'},
+  {code: 'JP', name: 'Japan', currency: 'JPY', tax_region: 'JP'},
+  {code: 'CN', name: 'China', currency: 'CNY', tax_region: 'CN'},
+  {code: 'IN', name: 'India', currency: 'INR', tax_region: 'IN'},
+  {code: 'BR', name: 'Brazil', currency: 'BRL', tax_region: 'BR'},
+  {code: 'MX', name: 'Mexico', currency: 'MXN', tax_region: 'MX'},
+  {code: 'SG', name: 'Singapore', currency: 'SGD', tax_region: 'SG'},
+  {code: 'HK', name: 'Hong Kong', currency: 'HKD', tax_region: 'HK'},
+  {code: 'NZ', name: 'New Zealand', currency: 'NZD', tax_region: 'NZ'},
+  {code: 'SE', name: 'Sweden', currency: 'SEK', tax_region: 'EU'},
+  {code: 'NO', name: 'Norway', currency: 'NOK', tax_region: 'NO'},
+  {code: 'DK', name: 'Denmark', currency: 'DKK', tax_region: 'EU'},
+  {code: 'PL', name: 'Poland', currency: 'PLN', tax_region: 'EU'},
+  {code: 'CZ', name: 'Czech Republic', currency: 'CZK', tax_region: 'EU'},
+  {code: 'HU', name: 'Hungary', currency: 'HUF', tax_region: 'EU'},
+  {code: 'IL', name: 'Israel', currency: 'ILS', tax_region: 'IL'},
+  {code: 'KR', name: 'South Korea', currency: 'KRW', tax_region: 'KR'},
+  {code: 'TW', name: 'Taiwan', currency: 'TWD', tax_region: 'TW'},
+  {code: 'TH', name: 'Thailand', currency: 'THB', tax_region: 'TH'},
+  {code: 'ID', name: 'Indonesia', currency: 'IDR', tax_region: 'ID'},
+  {code: 'PH', name: 'Philippines', currency: 'PHP', tax_region: 'PH'},
+  {code: 'ZA', name: 'South Africa', currency: 'ZAR', tax_region: 'ZA'},
+  {code: 'AE', name: 'UAE', currency: 'AED', tax_region: 'AE'},
+  {code: 'SA', name: 'Saudi Arabia', currency: 'SAR', tax_region: 'SA'},
+  {code: 'TR', name: 'Turkey', currency: 'TRY', tax_region: 'TR'},
+];
+
+async function loadCurrencyData() {
+  try {
+    const [currencyRes, countriesRes, tzRes] = await Promise.all([
+      AdminAPI.apiRequest('/currency'),
+      AdminAPI.apiRequest('/countries'),
+      AdminAPI.apiRequest('/timezone')
+    ]);
+    populateCurrencyForm(currencyRes);
+    renderCountriesTable(countriesRes.countries || []);
+    populateTimezoneForm(tzRes);
+  } catch (error) {
+    console.error('Failed to load currency data:', error);
+    showToast('Failed to load currency data', 'error');
+  }
+}
+
+function populateCurrencyForm(data) {
+  document.getElementById('platformCurrency').value = data.currency || 'USD';
+  document.getElementById('currencyDisplay').value = data.display_format || 'symbol';
+  document.getElementById('decimalPlaces').value = data.decimal_places || 2;
+  document.getElementById('thousandsSeparator').value = data.thousands_separator || ',';
+  document.getElementById('decimalSeparator').value = data.decimal_separator || '.';
+}
+
+function renderCountriesTable(countries) {
+  const tbody = document.getElementById('countriesTableBody');
+  if (!tbody) return;
+
+  if (!countries.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: var(--space-8); color: var(--color-fg-muted);">No countries configured</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = countries.map(c => `
+    <tr>
+      <td><code>${escapeHtml(c.code)}</code></td>
+      <td>${escapeHtml(c.name)}</td>
+      <td>${escapeHtml(c.currency)}</td>
+      <td>${escapeHtml(c.tax_region || '—')}</td>
+      <td><span class="badge ${c.enabled ? 'badge-success' : 'badge-neutral'}">${c.enabled ? 'Yes' : 'No'}</span></td>
+      <td>
+        <div class="btn-group">
+          <button class="btn btn-ghost btn-sm" onclick="editCountry('${escapeHtml(c.code)}')" title="Edit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="btn btn-ghost btn-sm danger" onclick="deleteCountry('${escapeHtml(c.code)}')" title="Delete">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function populateTimezoneForm(data) {
+  document.getElementById('defaultTimezone').value = data.default_timezone || 'UTC';
+  document.querySelector('[name="use_user_timezone"]').checked = data.use_user_timezone || false;
+}
+
+document.getElementById('currencyForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = serializeForm(e.target);
+  data.decimal_places = parseInt(data.decimal_places) || 2;
+  try {
+    await AdminAPI.apiRequest('/currency', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Currency settings saved', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.getElementById('timezoneForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = serializeForm(e.target);
+  data.use_user_timezone = data.use_user_timezone === 'on';
+  try {
+    await AdminAPI.apiRequest('/timezone', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Timezone settings saved', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+function openCountryModal(country = null) {
+  const isEdit = !!country;
+  const title = isEdit ? `Edit Country: ${country.name}` : 'Add Country';
+
+  const countryOptions = COMMON_COUNTRIES.map(c =>
+    `<option value="${c.code}" ${isEdit && country.code === c.code ? 'selected' : ''}>${c.code} - ${c.name}</option>`
+  ).join('');
+
+  const body = `
+    <form id="countryForm">
+      <input type="hidden" name="code" value="${isEdit ? escapeHtml(country.code) : ''}" ${isEdit ? 'readonly' : ''}>
+      <div class="form-group">
+        <label for="countryCode">Country Code <span class="required">*</span></label>
+        <select id="countryCode" name="code" required ${isEdit ? 'disabled' : ''}>
+          <option value="">Select a country...</option>
+          ${countryOptions}
+          <option value="custom">Custom (enter manually)</option>
+        </select>
+      </div>
+      <div class="form-group" id="customCodeField" style="display: none;">
+        <label for="customCode">Custom Code</label>
+        <input type="text" id="customCode" name="custom_code" placeholder="XX" maxlength="2" style="text-transform: uppercase;">
+      </div>
+      <div class="form-group">
+        <label for="countryName">Name <span class="required">*</span></label>
+        <input type="text" id="countryName" name="name" placeholder="Country Name" required value="${isEdit ? escapeHtml(country.name) : ''}">
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="countryCurrency">Currency</label>
+          <select id="countryCurrency" name="currency">
+            <option value="USD" ${isEdit && country.currency === 'USD' ? 'selected' : ''}>USD</option>
+            <option value="EUR" ${isEdit && country.currency === 'EUR' ? 'selected' : ''}>EUR</option>
+            <option value="GBP" ${isEdit && country.currency === 'GBP' ? 'selected' : ''}>GBP</option>
+            <option value="CAD" ${isEdit && country.currency === 'CAD' ? 'selected' : ''}>CAD</option>
+            <option value="AUD" ${isEdit && country.currency === 'AUD' ? 'selected' : ''}>AUD</option>
+            <option value="JPY" ${isEdit && country.currency === 'JPY' ? 'selected' : ''}>JPY</option>
+            <option value="CHF" ${isEdit && country.currency === 'CHF' ? 'selected' : ''}>CHF</option>
+            <option value="CNY" ${isEdit && country.currency === 'CNY' ? 'selected' : ''}>CNY</option>
+            <option value="INR" ${isEdit && country.currency === 'INR' ? 'selected' : ''}>INR</option>
+            <option value="BRL" ${isEdit && country.currency === 'BRL' ? 'selected' : ''}>BRL</option>
+            <option value="MXN" ${isEdit && country.currency === 'MXN' ? 'selected' : ''}>MXN</option>
+            <option value="SGD" ${isEdit && country.currency === 'SGD' ? 'selected' : ''}>SGD</option>
+            <option value="HKD" ${isEdit && country.currency === 'HKD' ? 'selected' : ''}>HKD</option>
+            <option value="NZD" ${isEdit && country.currency === 'NZD' ? 'selected' : ''}>NZD</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="countryTaxRegion">Tax Region</label>
+          <input type="text" id="countryTaxRegion" name="tax_region" placeholder="US" value="${isEdit ? escapeHtml(country.tax_region || '') : ''}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" name="enabled" ${isEdit ? (country.enabled ? 'checked' : '') : 'checked'}>
+          <span>Enabled</span>
+        </label>
+      </div>
+    </form>
+  `;
+
+  const footer = `
+    <button class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+    ${!isEdit ? '' : `<button class="btn btn-danger" onclick="deleteCountry('${escapeHtml(country.code)}')">Delete</button>`}
+    <button class="btn btn-primary" onclick="saveCountry('${isEdit ? escapeHtml(country.code) : ''}')">${isEdit ? 'Update' : 'Create'}</button>
+  `;
+
+  const modal = AdminAPI.createModal(title, body, footer);
+  modal.id = 'countryModal';
+
+  document.getElementById('countryCode').addEventListener('change', (e) => {
+    const customField = document.getElementById('customCodeField');
+    const codeSelect = e.target;
+    const nameInput = document.getElementById('countryName');
+    const currencySelect = document.getElementById('countryCurrency');
+    const taxRegionInput = document.getElementById('countryTaxRegion');
+
+    if (codeSelect.value === 'custom') {
+      customField.style.display = 'block';
+      nameInput.value = '';
+      nameInput.readOnly = false;
+      currencySelect.value = 'USD';
+      taxRegionInput.value = '';
+    } else if (codeSelect.value) {
+      customField.style.display = 'none';
+      const c = COMMON_COUNTRIES.find(x => x.code === codeSelect.value);
+      if (c) {
+        nameInput.value = c.name;
+        nameInput.readOnly = true;
+        currencySelect.value = c.currency;
+        taxRegionInput.value = c.tax_region;
+      }
+    }
+  });
+}
+
+async function saveCountry(code) {
+  const form = document.getElementById('countryForm');
+  if (!validateForm(form)) return;
+
+  const data = serializeForm(form);
+  if (data.custom_code) {
+    data.code = data.custom_code.toUpperCase();
+  }
+  data.enabled = data.enabled === 'on';
+  delete data.custom_code;
+
+  try {
+    const endpoint = code ? `/countries/${code}` : '/countries';
+    const method = code ? 'PUT' : 'POST';
+    await AdminAPI.apiRequest(endpoint, { method, body: JSON.stringify(data) });
+    showToast(code ? 'Country updated' : 'Country created', 'success');
+    closeModal(document.querySelector('#countryModal .modal-close'));
+    loadCurrencyData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function editCountry(code) {
+  try {
+    const response = await AdminAPI.apiRequest('/countries');
+    const country = response.countries.find(c => c.code === code);
+    if (country) openCountryModal(country);
+  } catch (error) {
+    showToast('Failed to load country', 'error');
+  }
+}
+
+async function deleteCountry(code) {
+  if (!confirm('Delete this country? This cannot be undone.')) return;
+  try {
+    await AdminAPI.apiRequest(`/countries/${code}`, { method: 'DELETE' });
+    showToast('Country deleted', 'success');
+    loadCurrencyData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'currency') loadCurrencyData();
+});
+
+window.refreshCurrency = loadCurrencyData;
+</script>
+{% endblock %}

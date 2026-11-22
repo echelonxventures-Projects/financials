@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="claude:viewport-fit-sides" content="cover">
+  <title>Admin Login - Financial Model Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/admin/static/css/admin.css">
+  <style>
+    .login-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-4);
+    }
+    .login-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      padding: var(--space-8);
+    }
+    .login-header {
+      text-align: center;
+      margin-bottom: var(--space-8);
+    }
+    .login-logo {
+      width: 64px;
+      height: 64px;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto var(--space-4);
+      color: white;
+      font-weight: 700;
+      font-size: var(--text-2xl);
+    }
+    .login-title {
+      font-size: var(--text-2xl);
+      font-weight: 700;
+      color: var(--color-fg);
+      margin-bottom: var(--space-2);
+    }
+    .login-subtitle {
+      color: var(--color-fg-muted);
+      font-size: var(--text-sm);
+    }
+    .login-form .form-group {
+      margin-bottom: var(--space-5);
+    }
+    .login-form label {
+      display: block;
+      font-size: var(--text-sm);
+      font-weight: 500;
+      color: var(--color-fg);
+      margin-bottom: var(--space-2);
+    }
+    .login-form input {
+      width: 100%;
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-base);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg);
+      color: var(--color-fg);
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+    .login-form input:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px var(--color-primary-focus);
+    }
+    .login-form input::placeholder {
+      color: var(--color-fg-subtle);
+    }
+    .login-submit {
+      width: 100%;
+      margin-top: var(--space-2);
+    }
+    .login-footer {
+      margin-top: var(--space-6);
+      text-align: center;
+      font-size: var(--text-sm);
+      color: var(--color-fg-muted);
+    }
+    .login-footer a {
+      color: var(--color-primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .login-footer a:hover {
+      text-decoration: underline;
+    }
+    .login-error {
+      background: var(--color-danger-bg);
+      border: 1px solid var(--color-danger-border);
+      color: var(--color-danger-fg);
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-5);
+      font-size: var(--text-sm);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .login-error svg {
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="login-logo">FM</div>
+        <h1 class="login-title">Admin Portal</h1>
+        <p class="login-subtitle">Sign in to manage the platform</p>
+      </div>
+
+      {% if error %}
+      <div class="login-error" role="alert">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        {{ error }}
+      </div>
+      {% endif %}
+
+      <form class="login-form" method="POST" action="/admin/login" id="loginForm">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" placeholder="admin@example.com" required autocomplete="email" autofocus>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg login-submit">Sign In</button>
+      </form>
+
+      <div class="login-footer">
+        <p>Financial Model Platform v1.0.0</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const originalText = submitBtn.textContent;
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Signing in...';
+
+      try {
+        const formData = new FormData(form);
+        const response = await fetch('/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(formData)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          localStorage.setItem('admin_token', data.token);
+          localStorage.setItem('admin_user', JSON.stringify({ tenant_id: data.tenant_id }));
+          window.location.href = '/admin/pages/dashboard';
+        } else {
+          throw new Error(data.detail || 'Login failed');
+        }
+      } catch (error) {
+        // Show error inline
+        let errorDiv = document.querySelector('.login-error');
+        if (!errorDiv) {
+          errorDiv = document.createElement('div');
+          errorDiv.className = 'login-error';
+          errorDiv.setAttribute('role', 'alert');
+          form.insertBefore(errorDiv, form.firstChild);
+        }
+        errorDiv.innerHTML = `
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          ${error.message}
+        `;
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+      }
+    });
+  </script>
+</body>
+</html>

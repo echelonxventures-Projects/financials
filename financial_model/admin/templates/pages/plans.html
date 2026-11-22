@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Plans & Pricing</h1>
+    <p class="page-subtitle">Manage subscription plans, pricing, features, and limits</p>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-primary" onclick="openPlanModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Plan
+    </button>
+  </div>
+</div>
+
+<div class="grid" id="plansGrid">
+  {% for plan in plans %}
+  <div class="card plan-card" data-plan-key="{{ plan.key }}">
+    <div class="plan-header">
+      <div>
+        <h3 class="plan-name">{{ plan.name }}</h3>
+        <span class="plan-key">{{ plan.key }}</span>
+      </div>
+      {% if plan.price_monthly == 0 and plan.price_yearly == 0 %}
+      <span class="badge badge-success">Free</span>
+      {% else %}
+      <span class="badge badge-info">Paid</span>
+      {% endif %}
+    </div>
+
+    <div class="plan-price">
+      {% if plan.price_monthly > 0 %}
+      <div class="price-row">
+        <span class="price-amount">{{ currency }}{{ '%.2f'|format(plan.price_monthly / 100) }}</span>
+        <span class="price-period">/month</span>
+      </div>
+      {% endif %}
+      {% if plan.price_yearly > 0 %}
+      <div class="price-row">
+        <span class="price-amount">{{ currency }}{{ '%.2f'|format(plan.price_yearly / 100) }}</span>
+        <span class="price-period">/year</span>
+        {% if plan.price_monthly > 0 %}
+        <span class="price-save">({{ '%.0f'|format((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100) }}% off)</span>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if plan.price_monthly == 0 and plan.price_yearly == 0 %}
+      <div class="price-row"><span class="price-amount">Free</span></div>
+      {% endif %}
+    </div>
+
+    {% if plan.description %}
+    <p class="plan-description">{{ plan.description }}</p>
+    {% endif %}
+
+    <div class="plan-meta">
+      <span class="badge badge-neutral">Audience: {{ plan.audience }}</span>
+    </div>
+
+    <div class="plan-features">
+      <h4>Features</h4>
+      <ul>
+        {% for feature in plan.features %}
+        <li>{{ feature }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="plan-limits">
+      <h4>Limits</h4>
+      <ul>
+        {% for key, value in plan.limits.items() %}
+        <li><span class="limit-key">{{ key }}</span><span class="limit-value">{{ value }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="plan-metering">
+      <h4>Metering</h4>
+      {% if plan.metering %}
+        <ul>
+          {% for metric, config in plan.metering.items() %}
+          <li>
+            <span class="metric-name">{{ metric }}</span>
+            <span class="metric-config">Included: {{ config.included or '∞' }}, Overage: {{ currency }}{{ '%.4f'|format(config.overage or 0) }}/unit</span>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted">No metering configured</p>
+      {% endif %}
+    </div>
+
+    <div class="plan-actions">
+      <button class="btn btn-ghost btn-sm" onclick="editPlan('{{ plan.key }}')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Edit
+      </button>
+      <button class="btn btn-ghost btn-sm danger" onclick="deletePlan('{{ plan.key }}')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        Delete
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if not plans %}
+<div class="card">
+  <div class="card-body text-center" style="padding: var(--space-12);">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: var(--space-4); opacity: 0.5;">
+      <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+    <h3 style="margin-bottom: var(--space-2);">No Plans Configured</h3>
+    <p style="color: var(--color-fg-muted); margin-bottom: var(--space-4);">Create your first plan to start offering subscriptions.</p>
+    <button class="btn btn-primary" onclick="openPlanModal()">Create Plan</button>
+  </div>
+</div>
+{% endif %}
+
+<!-- Plan Modal -->
+<div id="planModalContainer"></div>
+
+<style>
+.plan-card { display: flex; flex-direction: column; height: 100%; }
+.plan-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-3); }
+.plan-name { font-size: var(--text-lg); font-weight: 600; margin: 0; }
+.plan-key { font-size: var(--text-xs); color: var(--color-fg-muted); text-transform: uppercase; }
+.plan-price { padding: var(--space-3) 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); margin-bottom: var(--space-3); }
+.price-row { display: flex; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-1); }
+.price-amount { font-size: var(--text-2xl); font-weight: 700; }
+.price-period { color: var(--color-fg-muted); font-size: var(--text-sm); }
+.price-save { color: var(--color-success); font-size: var(--text-xs); font-weight: 500; }
+.plan-description { font-size: var(--text-sm); color: var(--color-fg-muted); margin-bottom: var(--space-3); }
+.plan-meta { margin-bottom: var(--space-3); }
+.plan-features h4, .plan-limits h4, .plan-metering h4 { font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; color: var(--color-fg-muted); margin-bottom: var(--space-2); letter-spacing: 0.05em; }
+.plan-features ul, .plan-limits ul, .plan-metering ul { list-style: none; padding: 0; margin: 0; }
+.plan-features li { font-size: var(--text-sm); padding: var(--space-1) 0; color: var(--color-fg); }
+.plan-features li::before { content: "✓"; color: var(--color-success); margin-right: var(--space-2); font-weight: 600; }
+.plan-limits li { display: flex; justify-content: space-between; font-size: var(--text-sm); padding: var(--space-1) 0; }
+.limit-key { color: var(--color-fg-muted); }
+.limit-value { font-weight: 500; font-family: var(--font-mono); }
+.metric-name { color: var(--color-fg-muted); }
+.metric-config { font-size: var(--text-sm); font-family: var(--font-mono); }
+.plan-actions { display: flex; gap: var(--space-2); margin-top: auto; padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
+</style>
+
+<script>
+async function loadPlansData() {
+  try {
+    const response = await AdminAPI.apiRequest('/plans');
+    renderPlans(response.plans || [], response.currency || 'USD');
+  } catch (error) {
+    console.error('Failed to load plans:', error);
+    showToast('Failed to load plans', 'error');
+  }
+}
+
+function renderPlans(plans, currency) {
+  const grid = document.getElementById('plansGrid');
+  if (!grid) return;
+
+  if (!plans.length) {
+    grid.innerHTML = '';
+    return;
+  }
+
+  grid.innerHTML = plans.map(plan => `
+    <div class="card plan-card" data-plan-key="${escapeHtml(plan.key)}">
+      <div class="plan-header">
+        <div>
+          <h3 class="plan-name">${escapeHtml(plan.name)}</h3>
+          <span class="plan-key">${escapeHtml(plan.key)}</span>
+        </div>
+        ${plan.price_monthly === 0 && plan.price_yearly === 0 ? '<span class="badge badge-success">Free</span>' : '<span class="badge badge-info">Paid</span>'}
+      </div>
+      <div class="plan-price">
+        ${plan.price_monthly > 0 ? `
+        <div class="price-row">
+          <span class="price-amount">${currency}${formatPrice(plan.price_monthly)}</span>
+          <span class="price-period">/month</span>
+        </div>` : ''}
+        ${plan.price_yearly > 0 ? `
+        <div class="price-row">
+          <span class="price-amount">${currency}${formatPrice(plan.price_yearly)}</span>
+          <span class="price-period">/year</span>
+          ${plan.price_monthly > 0 ? `<span class="price-save">(${Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)}% off)</span>` : ''}
+        </div>` : ''}
+        ${plan.price_monthly === 0 && plan.price_yearly === 0 ? '<div class="price-row"><span class="price-amount">Free</span></div>' : ''}
+      </div>
+      ${plan.description ? `<p class="plan-description">${escapeHtml(plan.description)}</p>` : ''}
+      <div class="plan-meta"><span class="badge badge-neutral">Audience: ${escapeHtml(plan.audience)}</span></div>
+      <div class="plan-features">
+        <h4>Features</h4>
+        <ul>${(plan.features || []).map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
+      </div>
+      <div class="plan-limits">
+        <h4>Limits</h4>
+        <ul>${Object.entries(plan.limits || {}).map(([k, v]) => `<li><span class="limit-key">${escapeHtml(k)}</span><span class="limit-value">${escapeHtml(String(v))}</span></li>`).join('')}</ul>
+      </div>
+      <div class="plan-metering">
+        <h4>Metering</h4>
+        ${plan.metering && Object.keys(plan.metering).length ? `
+        <ul>${Object.entries(plan.metering).map(([metric, config]) => `<li><span class="metric-name">${escapeHtml(metric)}</span><span class="metric-config">Included: ${config.included || '∞'}, Overage: ${currency}${formatPrice(config.overage || 0)}/unit</span></li>`).join('')}</ul>
+        ` : '<p class="text-muted">No metering configured</p>'}
+      </div>
+      <div class="plan-actions">
+        <button class="btn btn-ghost btn-sm" onclick="editPlan('${escapeHtml(plan.key)}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit</button>
+        <button class="btn btn-ghost btn-sm danger" onclick="deletePlan('${escapeHtml(plan.key)}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function formatPrice(cents) {
+  return (cents / 100).toFixed(2);
+}
+
+function openPlanModal(plan = null) {
+  const isEdit = !!plan;
+  const title = isEdit ? `Edit Plan: ${plan.name}` : 'Add Plan';
+
+  const body = `
+    <form id="planForm">
+      <input type="hidden" name="key" value="${isEdit ? escapeHtml(plan.key) : ''}" ${isEdit ? 'readonly' : ''}>
+      <div class="form-group">
+        <label for="planKey">Key <span class="required">*</span></label>
+        <input type="text" id="planKey" name="key" placeholder="e.g., pro" required ${isEdit ? 'readonly' : ''} value="${isEdit ? escapeHtml(plan.key) : ''}">
+        <div class="form-hint">Unique identifier (lowercase, underscores only)</div>
+      </div>
+      <div class="form-group">
+        <label for="planName">Name <span class="required">*</span></label>
+        <input type="text" id="planName" name="name" placeholder="Pro Plan" required value="${isEdit ? escapeHtml(plan.name) : ''}">
+      </div>
+      <div class="form-group">
+        <label for="planDescription">Description</label>
+        <textarea id="planDescription" name="description" rows="3" placeholder="Plan description...">${isEdit ? escapeHtml(plan.description || '') : ''}</textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="planAudience">Audience</label>
+          <select id="planAudience" name="audience">
+            <option value="both" ${isEdit && plan.audience === 'both' ? 'selected' : ''}>Both</option>
+            <option value="b2b" ${isEdit && plan.audience === 'b2b' ? 'selected' : ''}>B2B Only</option>
+            <option value="b2c" ${isEdit && plan.audience === 'b2c' ? 'selected' : ''}>B2C Only</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="planCurrency">Currency</label>
+          <input type="text" id="planCurrency" name="currency" value="USD" readonly>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="planPriceMonthly">Monthly Price (cents)</label>
+          <input type="number" id="planPriceMonthly" name="price_monthly" min="0" value="${isEdit ? plan.price_monthly : 0}" placeholder="0">
+          <div class="form-hint">0 for free. In cents (e.g., 2900 = $29.00)</div>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="planPriceYearly">Yearly Price (cents)</label>
+          <input type="number" id="planPriceYearly" name="price_yearly" min="0" value="${isEdit ? plan.price_yearly : 0}" placeholder="0">
+          <div class="form-hint">Optional. In cents.</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="planFeatures">Features (one per line)</label>
+        <textarea id="planFeatures" name="features" rows="5" placeholder="Feature 1&#10;Feature 2&#10;Feature 3">${isEdit && plan.features ? plan.features.join('\n') : ''}</textarea>
+      </div>
+      <div class="form-group">
+        <label for="planLimits">Limits (JSON)</label>
+        <textarea id="planLimits" name="limits" rows="4" placeholder='{"api_calls": 10000, "storage_gb": 10}'>${isEdit && plan.limits ? JSON.stringify(plan.limits, null, 2) : '{}'}</textarea>
+      </div>
+      <div class="form-group">
+        <label for="planMetering">Metering (JSON)</label>
+        <textarea id="planMetering" name="metering" rows="5" placeholder='{"api_calls": {"included": 10000, "overage": 100}}'>${isEdit && plan.metering ? JSON.stringify(plan.metering, null, 2) : '{}'}</textarea>
+        <div class="form-hint">Each metric: {included: number, overage: cents_per_unit}</div>
+      </div>
+    </form>
+  `;
+
+  const footer = `
+    <button class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+    ${!isEdit ? '' : `<button class="btn btn-danger" onclick="deletePlan('${escapeHtml(plan.key)}')">Delete</button>`}
+    <button class="btn btn-primary" onclick="savePlan('${isEdit ? escapeHtml(plan.key) : ''}')">${isEdit ? 'Update' : 'Create'}</button>
+  `;
+
+  const modal = AdminAPI.createModal(title, body, footer);
+  modal.id = 'planModal';
+}
+
+async function savePlan(key) {
+  const form = document.getElementById('planForm');
+  if (!validateForm(form)) return;
+
+  const data = serializeForm(form);
+  data.price_monthly = parseInt(data.price_monthly) || 0;
+  data.price_yearly = parseInt(data.price_yearly) || 0;
+  data.features = data.features ? data.features.split('\n').map(f => f.trim()).filter(Boolean) : [];
+  try { data.limits = JSON.parse(data.limits || '{}'); } catch { data.limits = {}; }
+  try { data.metering = JSON.parse(data.metering || '{}'); } catch { data.metering = {}; }
+
+  try {
+    const endpoint = key ? `/plans/${key}` : '/plans';
+    const method = key ? 'PUT' : 'POST';
+    await AdminAPI.apiRequest(endpoint, { method, body: JSON.stringify(data) });
+
+    showToast(key ? 'Plan updated' : 'Plan created', 'success');
+    closeModal(document.querySelector('#planModal .modal-close'));
+    await loadPlansData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function editPlan(key) {
+  try {
+    const response = await AdminAPI.apiRequest('/plans');
+    const plan = response.plans.find(p => p.key === key);
+    if (plan) openPlanModal(plan);
+  } catch (error) {
+    showToast('Failed to load plan', 'error');
+  }
+}
+
+async function deletePlan(key) {
+  if (!confirm('Delete this plan? This cannot be undone.')) return;
+
+  try {
+    await AdminAPI.apiRequest(`/plans/${key}`, { method: 'DELETE' });
+    showToast('Plan deleted', 'success');
+    await loadPlansData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'plans') loadPlansData();
+});
+
+window.refreshPlans = loadPlansData;
+</script>
+{% endblock %}

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Default & Lapsed Plans</h1>
+    <p class="page-subtitle">Configure default plans per account kind and the lapsed plan</p>
+  </div>
+</div>
+
+<!-- Default Plans per Account Kind -->
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Default Plans by Account Kind</h2>
+    <p class="card-subtitle">Plan assigned when an account of this kind is created (or no plan specified).</p>
+  </div>
+  <div class="card-body">
+    <form id="defaultPlansForm">
+      <div id="defaultPlansFields">
+        {% for kind_key, plan_key in default_plans.items() %}
+        <div class="form-row" style="margin-bottom: var(--space-3);">
+          <div class="form-group" style="flex: 1;">
+            <label>{{ kind_key }}</label>
+            <select name="default_plan[{{ kind_key }}]" class="form-select">
+              {% for plan in plans %}
+              <option value="{{ plan.key }}" {% if plan.key == plan_key %}selected{% endif %}>{{ plan.name }} ({{ plan.key }})</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save Default Plans</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Lapsed Plan -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Lapsed Plan</h2>
+    <p class="card-subtitle">Plan applied to accounts whose subscription has expired or been canceled.</p>
+  </div>
+  <div class="card-body">
+    <form id="lapsedPlanForm">
+      <div class="form-group">
+        <label for="lapsedPlan">Lapsed Plan <span class="required">*</span></label>
+        <select id="lapsedPlan" name="lapsed_plan" required>
+          {% for plan in plans %}
+          <option value="{{ plan.key }}" {% if plan.key == lapsed_plan %}selected{% endif %}>{{ plan.name }} ({{ plan.key }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save Lapsed Plan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+async function loadDefaultPlansData() {
+  try {
+    const [dpRes, plansRes] = await Promise.all([
+      AdminAPI.apiRequest('/default-plans'),
+      AdminAPI.apiRequest('/plans')
+    ]);
+    populateDefaultPlans(dpRes.default_plans || {}, plansRes.plans || []);
+    document.getElementById('lapsedPlan').value = dpRes.lapsed_plan || 'free';
+  } catch (error) {
+    console.error('Failed to load default plans:', error);
+    showToast('Failed to load default plans', 'error');
+  }
+}
+
+function populateDefaultPlans(defaultPlans, plans) {
+  const container = document.getElementById('defaultPlansFields');
+  if (!container) return;
+
+  const planOptions = plans.map(p => `<option value="${p.key}">${escapeHtml(p.name)} (${p.key})</option>`).join('');
+
+  container.innerHTML = Object.entries(defaultPlans).map(([kind, planKey]) => `
+    <div class="form-row" style="margin-bottom: var(--space-3);">
+      <div class="form-group" style="flex: 1;">
+        <label>${escapeHtml(kind)}</label>
+        <select name="default_plan[${escapeHtml(kind)}]" class="form-select">
+          ${planOptions}
+        </select>
+      </div>
+    </div>
+  `).join('');
+
+  // Set selected values
+  Object.entries(defaultPlans).forEach(([kind, planKey]) => {
+    const select = container.querySelector(`[name="default_plan[${kind}]"]`);
+    if (select) select.value = planKey;
+  });
+}
+
+document.getElementById('defaultPlansForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const data = serializeForm(form);
+  try {
+    await AdminAPI.apiRequest('/default-plans', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Default plans saved', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.getElementById('lapsedPlanForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const data = serializeForm(form);
+  try {
+    await AdminAPI.apiRequest('/default-plans/lapsed', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Lapsed plan saved', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'default-plans') loadDefaultPlansData();
+});
+
+window.refreshDefaultPlans = loadDefaultPlansData;
+</script>
+{% endblock %}

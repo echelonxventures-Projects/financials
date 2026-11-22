@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Special Role Assignments</h1>
+    <p class="page-subtitle">Configure system-reserved roles for creators, default members, and service keys</p>
+  </div>
+</div>
+
+<div class="grid grid-3">
+  <!-- Creator Role -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Creator Role</h2>
+    </div>
+    <div class="card-body">
+      <p class="text-muted" style="margin-bottom: var(--space-4); font-size: var(--text-sm);">Role assigned to the user who creates an account. The last holder cannot be removed.</p>
+      <form id="creatorRoleForm">
+        <div class="form-group">
+          <label for="creatorRole">Role <span class="required">*</span></label>
+          <select id="creatorRole" name="creator_role" required>
+            {% for role in roles %}
+            <option value="{{ role.key }}" {% if role.key == creator_role %}selected{% endif %}>{{ role.label or role.key }} ({{ role.key }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Default Member Role -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Default Member Role</h2>
+    </div>
+    <div class="card-body">
+      <p class="text-muted" style="margin-bottom: var(--space-4); font-size: var(--text-sm);">Role assigned to new members added to an account.</p>
+      <form id="defaultMemberRoleForm">
+        <div class="form-group">
+          <label for="defaultMemberRole">Role <span class="required">*</span></label>
+          <select id="defaultMemberRole" name="default_member_role" required>
+            {% for role in roles %}
+            <option value="{{ role.key }}" {% if role.key == default_member_role %}selected{% endif %}>{{ role.label or role.key }} ({{ role.key }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Service Key Role -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Service Key Role</h2>
+    </div>
+    <div class="card-body">
+      <p class="text-muted" style="margin-bottom: var(--space-4); font-size: var(--text-sm);">Role used for API keys not tied to a user (issued by operator).</p>
+      <form id="serviceKeyRoleForm">
+        <div class="form-group">
+          <label for="serviceKeyRole">Role <span class="required">*</span></label>
+          <select id="serviceKeyRole" name="service_key_role" required>
+            {% for role in roles %}
+            <option value="{{ role.key }}" {% if role.key == service_key_role %}selected{% endif %}>{{ role.label or role.key }} ({{ role.key }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Role Details Reference -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Current Role Definitions</h2>
+  </div>
+  <div class="card-body" style="padding: 0;">
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>Label</th>
+            <th>Rank</th>
+            <th>Permissions</th>
+            <th>Special</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for role in roles %}
+          <tr>
+            <td>
+              <div style="font-weight: 500;">{{ role.key }}</div>
+            </td>
+            <td>{{ role.label or role.key }}</td>
+            <td><span class="badge badge-info">{{ role.rank }}</span></td>
+            <td>
+              {% if role.permissions %}
+                <div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">
+                  {% for perm in role.permissions %}
+                  <span class="badge badge-neutral badge-sm">{{ perm }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">
+                {% if role.key == creator_role %}<span class="badge badge-info badge-sm">Creator</span>{% endif %}
+                {% if role.key == default_member_role %}<span class="badge badge-success badge-sm">Default Member</span>{% endif %}
+                {% if role.key == service_key_role %}<span class="badge badge-warning badge-sm">Service Key</span>{% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+async function loadSpecialRolesData() {
+  try {
+    const [srRes, rolesRes] = await Promise.all([
+      AdminAPI.apiRequest('/special-roles'),
+      AdminAPI.apiRequest('/roles')
+    ]);
+    populateSpecialRoles(srRes);
+  } catch (error) {
+    console.error('Failed to load special roles:', error);
+    showToast('Failed to load special roles', 'error');
+  }
+}
+
+function populateSpecialRoles(data) {
+  document.getElementById('creatorRole').value = data.creator_role || 'owner';
+  document.getElementById('defaultMemberRole').value = data.default_member_role || 'member';
+  document.getElementById('serviceKeyRole').value = data.service_key_role || 'member';
+}
+
+document.getElementById('creatorRoleForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = serializeForm(e.target);
+  try {
+    await AdminAPI.apiRequest('/special-roles/creator', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Creator role updated', 'success');
+    loadSpecialRolesData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.getElementById('defaultMemberRoleForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = serializeForm(e.target);
+  try {
+    await AdminAPI.apiRequest('/special-roles/default-member', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Default member role updated', 'success');
+    loadSpecialRolesData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.getElementById('serviceKeyRoleForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = serializeForm(e.target);
+  try {
+    await AdminAPI.apiRequest('/special-roles/service-key', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Service key role updated', 'success');
+    loadSpecialRolesData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'special-roles') loadSpecialRolesData();
+});
+
+window.refreshSpecialRoles = loadSpecialRolesData;
+</script>
+{% endblock %}

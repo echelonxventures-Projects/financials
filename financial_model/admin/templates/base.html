@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="claude:viewport-fit-sides" content="cover">
+  <title>{% block title %}Admin Portal - Financial Model Platform{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/admin/static/css/admin.css">
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+  <div class="admin-app">
+    <!-- Sidebar Overlay for Mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
+      <div class="sidebar-header">
+        <div class="sidebar-logo" aria-hidden="true">FM</div>
+        <span class="sidebar-title">Admin Portal</span>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Admin sections">
+        <div class="nav-section">
+          <div class="nav-section-title">Overview</div>
+          <button class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+            <span>Dashboard</span>
+          </button>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">Platform Configuration</div>
+          <button class="nav-item" data-page="legal" onclick="navigate('legal')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>
+            </svg>
+            <span>Legal Documents</span>
+          </button>
+          <button class="nav-item" data-page="email" onclick="navigate('email')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+            </svg>
+            <span>Email Templates</span>
+          </button>
+          <button class="nav-item" data-page="sso" onclick="navigate('sso')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="6" y1="19" x2="6.01" y2="19"/><line x1="10" y1="19" x2="10.01" y2="19"/><line x1="14" y1="19" x2="14.01" y2="19"/><line x1="18" y1="19" x2="18.01" y2="19"/>
+            </svg>
+            <span>SSO Providers</span>
+          </button>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">Billing & Plans</div>
+          <button class="nav-item" data-page="plans" onclick="navigate('plans')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/><line x1="6" y1="19" x2="6.01" y2="19"/><line x1="10" y1="19" x2="10.01" y2="19"/><line x1="14" y1="19" x2="14.01" y2="19"/><line x1="18" y1="19" x2="18.01" y2="19"/>
+            </svg>
+            <span>Plans & Pricing</span>
+          </button>
+          <button class="nav-item" data-page="billing" onclick="navigate('billing')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/><line x1="6" y1="19" x2="6.01" y2="19"/><line x1="10" y1="19" x2="10.01" y2="19"/><line x1="14" y1="19" x2="14.01" y2="19"/><line x1="18" y1="19" x2="18.01" y2="19"/>
+            </svg>
+            <span>Billing Settings</span>
+          </button>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">Access Control</div>
+          <button class="nav-item" data-page="roles" onclick="navigate('roles')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <span>Roles & Permissions</span>
+          </button>
+          <button class="nav-item" data-page="account-kinds" onclick="navigate('account-kinds')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
+            <span>Account Kinds</span>
+          </button>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">Catalog</div>
+          <button class="nav-item" data-page="metrics" onclick="navigate('metrics')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
+            </svg>
+            <span>Metrics & Metering</span>
+          </button>
+          <button class="nav-item" data-page="endpoints" onclick="navigate('endpoints')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+            <span>API Endpoints</span>
+          </button>
+          <button class="nav-item" data-page="messages" onclick="navigate('messages')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>Messages</span>
+          </button>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">System</div>
+          <button class="nav-item" data-page="settings" onclick="navigate('settings')">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span>Platform Settings</span>
+          </button>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div style="font-size: var(--text-xs); color: var(--color-fg-subtle); text-align: center;">
+          Financial Model Platform v1.0.0
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="admin-main" id="mainContent" role="main">
+      <header class="admin-header" role="banner">
+        <div class="header-left">
+          <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" aria-label="Toggle sidebar" aria-expanded="false">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
+          <nav class="breadcrumb" aria-label="Breadcrumb">
+            <span class="breadcrumb-current" id="breadcrumb">Dashboard</span>
+          </nav>
+        </div>
+        <div class="header-right">
+          <button class="header-action" onclick="refreshData()" title="Refresh data">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            <span>Refresh</span>
+          </button>
+          <div class="user-menu" id="userMenu">
+            <button class="user-button" onclick="toggleUserMenu()" aria-label="User menu" aria-expanded="false">
+              <div class="user-avatar" id="userAvatar">FM</div>
+              <span class="user-name" id="userName">Admin</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="user-dropdown" id="userDropdown" role="menu">
+              <div style="padding: var(--space-3); border-bottom: 1px solid var(--color-border); font-size: var(--text-sm);">
+                <div style="font-weight: var(--font-weight-medium);" id="dropdownUserName">Admin User</div>
+                <div style="color: var(--color-fg-muted);" id="dropdownUserEmail">admin@example.com</div>
+              </div>
+              <button class="dropdown-item" onclick="navigate('settings')" role="menuitem">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Settings
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item danger" onclick="logout()" role="menuitem">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="admin-content" id="adminContent">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Modals will be injected here -->
+  <div id="modalContainer"></div>
+
+  <script src="/admin/static/js/admin.js"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

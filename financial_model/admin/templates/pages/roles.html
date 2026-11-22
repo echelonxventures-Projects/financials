@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Roles & Permissions</h1>
+    <p class="page-subtitle">Define roles, permissions, and access control hierarchy</p>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-primary" onclick="openRoleModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Role
+    </button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Roles</h2>
+    <p class="card-subtitle">Higher rank = more permissions. Rank determines hierarchy.</p>
+  </div>
+  <div class="card-body" style="padding: 0;">
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>Label</th>
+            <th>Rank</th>
+            <th>Permissions</th>
+            <th>Special</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="rolesTableBody">
+          {% for role in roles %}
+          <tr>
+            <td>
+              <div style="font-weight: 500;">{{ role.key }}</div>
+            </td>
+            <td>{{ role.label }}</td>
+            <td><span class="badge badge-info">{{ role.rank }}</span></td>
+            <td>
+              {% if role.permissions %}
+                <div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">
+                  {% for perm in role.permissions %}
+                  <span class="badge badge-neutral badge-sm">{{ perm }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">
+                {% if role.is_default_member %}<span class="badge badge-success badge-sm">Default Member</span>{% endif %}
+                {% if role.is_creator %}<span class="badge badge-info badge-sm">Creator</span>{% endif %}
+                {% if role.is_service_key %}<span class="badge badge-warning badge-sm">Service Key</span>{% endif %}
+              </div>
+            </td>
+            <td>
+              <div class="btn-group">
+                <button class="btn btn-ghost btn-sm" onclick="editRole('{{ role.key }}')" title="Edit">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                {% if not role.is_default_member and not role.is_creator and not role.is_service_key %}
+                <button class="btn btn-ghost btn-sm danger" onclick="deleteRole('{{ role.key }}')" title="Delete">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Role Modal -->
+<div id="roleModalContainer"></div>
+
+<script>
+// Available permissions from catalog
+const ALL_PERMISSIONS = [
+  'manage_billing', 'view_billing', 'manage_team', 'view_team',
+  'manage_api_keys', 'view_analytics', 'manage_webhooks', 'view_webhooks',
+  'manage_subscriptions', 'view_subscriptions', 'manage_usage', 'view_usage',
+  'admin', 'owner'
+];
+
+async function loadRolesData() {
+  try {
+    const response = await AdminAPI.apiRequest('/roles');
+    renderRolesTable(response.roles || {});
+  } catch (error) {
+    console.error('Failed to load roles:', error);
+    showToast('Failed to load roles', 'error');
+  }
+}
+
+function renderRolesTable(roles) {
+  const tbody = document.getElementById('rolesTableBody');
+  if (!tbody) return;
+
+  if (!Object.keys(roles).length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: var(--space-8); color: var(--color-fg-muted);">No roles configured</td></tr>';
+    return;
+  }
+
+  // Sort by rank descending
+  const sortedRoles = Object.entries(roles)
+    .map(([key, role]) => ({ key, ...role }))
+    .sort((a, b) => b.rank - a.rank);
+
+  tbody.innerHTML = sortedRoles.map(role => `
+    <tr>
+      <td><div style="font-weight: 500;">${escapeHtml(role.key)}</div></td>
+      <td>${escapeHtml(role.label || role.key)}</td>
+      <td><span class="badge badge-info">${role.rank}</span></td>
+      <td>
+        ${role.permissions && role.permissions.length ? role.permissions.map(p => `<span class="badge badge-neutral badge-sm">${escapeHtml(p)}</span>`).join('') : '<span class="text-muted">—</span>'}
+      </td>
+      <td>
+        <div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">
+          ${role.is_default_member ? '<span class="badge badge-success badge-sm">Default Member</span>' : ''}
+          ${role.is_creator ? '<span class="badge badge-info badge-sm">Creator</span>' : ''}
+          ${role.is_service_key ? '<span class="badge badge-warning badge-sm">Service Key</span>' : ''}
+        </div>
+      </td>
+      <td>
+        <div class="btn-group">
+          <button class="btn btn-ghost btn-sm" onclick="editRole('${escapeHtml(role.key)}')" title="Edit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          ${!role.is_default_member && !role.is_creator && !role.is_service_key ? `<button class="btn btn-ghost btn-sm danger" onclick="deleteRole('${escapeHtml(role.key)}')" title="Delete"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openRoleModal(role = null) {
+  const isEdit = !!role;
+  const title = isEdit ? `Edit Role: ${role.key}` : 'Add Role';
+
+  const body = `
+    <form id="roleForm">
+      <input type="hidden" name="key" value="${isEdit ? escapeHtml(role.key) : ''}" ${isEdit ? 'readonly' : ''}>
+      <div class="form-group">
+        <label for="roleKey">Key <span class="required">*</span></label>
+        <input type="text" id="roleKey" name="key" placeholder="e.g., manager" required ${isEdit ? 'readonly' : ''} value="${isEdit ? escapeHtml(role.key) : ''}">
+        <div class="form-hint">Unique identifier (lowercase, underscores only)</div>
+      </div>
+      <div class="form-group">
+        <label for="roleLabel">Label <span class="required">*</span></label>
+        <input type="text" id="roleLabel" name="label" placeholder="Manager" required value="${isEdit ? escapeHtml(role.label) : ''}">
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="roleRank">Rank <span class="required">*</span></label>
+          <input type="number" id="roleRank" name="rank" min="0" max="100" required value="${isEdit ? role.rank : 10}" placeholder="10">
+          <div class="form-hint">Higher rank = more authority (0-100)</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Permissions</label>
+        <div id="permissionsList" style="display: flex; flex-wrap: wrap; gap: var(--space-2);">
+          ${ALL_PERMISSIONS.map(perm => `
+            <label class="checkbox-label" style="flex: 0 0 calc(33.333% - var(--space-2)); min-width: 180px;">
+              <input type="checkbox" name="permissions" value="${perm}" ${isEdit && role.permissions?.includes(perm) ? 'checked' : ''}>
+              <span>${perm}</span>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+    </form>
+  `;
+
+  const footer = `
+    <button class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+    ${!isEdit ? '' : `<button class="btn btn-danger" onclick="deleteRole('${escapeHtml(role.key)}')">Delete</button>`}
+    <button class="btn btn-primary" onclick="saveRole('${isEdit ? escapeHtml(role.key) : ''}')">${isEdit ? 'Update' : 'Create'}</button>
+  `;
+
+  const modal = AdminAPI.createModal(title, body, footer);
+  modal.id = 'roleModal';
+}
+
+async function saveRole(key) {
+  const form = document.getElementById('roleForm');
+  if (!validateForm(form)) return;
+
+  const data = serializeForm(form);
+  data.rank = parseInt(data.rank) || 0;
+  data.permissions = Array.from(form.querySelectorAll('[name="permissions"]:checked')).map(cb => cb.value);
+
+  try {
+    const endpoint = key ? `/roles/${key}` : '/roles';
+    const method = key ? 'PUT' : 'POST';
+    await AdminAPI.apiRequest(endpoint, { method, body: JSON.stringify(data) });
+
+    showToast(key ? 'Role updated' : 'Role created', 'success');
+    closeModal(document.querySelector('#roleModal .modal-close'));
+    await loadRolesData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function editRole(key) {
+  try {
+    const response = await AdminAPI.apiRequest('/roles');
+    const role = response.roles[key];
+    if (role) { role.key = key; openRoleModal(role); }
+  } catch (error) {
+    showToast('Failed to load role', 'error');
+  }
+}
+
+async function deleteRole(key) {
+  if (!confirm('Delete this role? This cannot be undone.')) return;
+
+  try {
+    await AdminAPI.apiRequest(`/roles/${key}`, { method: 'DELETE' });
+    showToast('Role deleted', 'success');
+    await loadRolesData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'roles') loadRolesData();
+});
+
+window.refreshRoles = loadRolesData;
+</script>
+{% endblock %}

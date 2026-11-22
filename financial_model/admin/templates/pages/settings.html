@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Platform Settings</h1>
+    <p class="page-subtitle">Configure core platform settings and feature flags</p>
+  </div>
+</div>
+
+<!-- Security Settings -->
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Security</h2>
+  </div>
+  <div class="card-body">
+    <form id="securityForm">
+      <div class="form-section-title">Authentication</div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="secretKey">Secret Key</label>
+          <div style="display: flex; gap: var(--space-2);">
+            <input type="password" id="secretKey" name="secret_key" placeholder="{{ '••••••••' if secret_key_set else 'Auto-generated' }}" readonly style="flex: 1;">
+            {% if not secret_key_set %}
+            <button type="button" class="btn btn-secondary" onclick="generateSecretKey()">Generate</button>
+            {% else %}
+            <span class="badge badge-success" style="align-self: center;">Configured</span>
+            {% endif %}
+          </div>
+          <div class="form-hint">Used for signing JWT tokens. Auto-generated on first run if not set.</div>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="tokenTtl">Token TTL (hours)</label>
+          <input type="number" id="tokenTtl" name="token_ttl_hours" min="1" max="8760" value="{{ token_ttl_hours }}" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="passwordMinLength">Password Min Length</label>
+          <input type="number" id="passwordMinLength" name="password_min_length" min="8" max="128" value="{{ password_min_length }}" required>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="passwordIterations">PBKDF2 Iterations</label>
+          <input type="number" id="passwordIterations" name="password_iterations" min="10000" max="1000000" step="10000" value="{{ password_iterations }}" required>
+          <div class="form-hint">Higher = more secure, slower. Minimum 100000 recommended.</div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="apiKeyPrefix">API Key Prefix</label>
+          <input type="text" id="apiKeyPrefix" name="api_key_prefix" value="{{ api_key_prefix }}" required>
+          <div class="form-hint">Prefix for generated API keys (e.g., fm_live_)</div>
+        </div>
+      </div>
+
+      <div class="form-section-title">Login Throttling</div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="loginWindow">Window (seconds)</label>
+          <input type="number" id="loginWindow" name="login_window" min="60" max="86400" value="{{ login_throttle.window_seconds }}" required>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="maxFailuresEmail">Max Failures per Email</label>
+          <input type="number" id="maxFailuresEmail" name="max_failures_email" min="1" max="100" value="{{ login_throttle.max_failures_per_email }}" required>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="maxFailuresAddress">Max Failures per IP</label>
+          <input type="number" id="maxFailuresAddress" name="max_failures_address" min="1" max="1000" value="{{ login_throttle.max_failures_per_address }}" required>
+        </div>
+      </div>
+
+      <div class="form-section-title">Signup</div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label class="checkbox-label">
+            <input type="checkbox" name="allow_signup" {{ allow_signup ? 'checked' : '' }}>
+            <span>Allow self-service signup</span>
+          </label>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label class="checkbox-label">
+            <input type="checkbox" name="require_secret_key" {{ require_secret_key ? 'checked' : '' }}>
+            <span>Require secret key for signup</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="secretKeyMinLength">Secret Key Min Length (if required)</label>
+        <input type="number" id="secretKeyMinLength" name="secret_key_min_length" min="16" max="128" value="{{ secret_key_min_length }}">
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="loadSettings()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Security Settings</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Feature Flags -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Feature Flags</h2>
+  </div>
+  <div class="card-body">
+    <form id="featuresForm">
+      <div class="form-group">
+        <label class="checkbox-label" style="flex-direction: row; align-items: center; gap: var(--space-3); padding: var(--space-4); background: var(--color-bg); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+          <input type="checkbox" name="legal" {{ features.legal ? 'checked' : '' }} style="width: 20px; height: 20px;">
+          <div>
+            <div style="font-weight: 500;">Legal Documents</div>
+            <div class="text-muted" style="font-size: var(--text-sm);">Terms of Service, Privacy Policy, DPA, custom documents with versioning and approval workflow</div>
+          </div>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label" style="flex-direction: row; align-items: center; gap: var(--space-3); padding: var(--space-4); background: var(--color-bg); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+          <input type="checkbox" name="email" {{ features.email ? 'checked' : '' }} style="width: 20px; height: 20px;">
+          <div>
+            <div style="font-weight: 500;">Email Templates</div>
+            <div class="text-muted" style="font-size: var(--text-sm);">Transactional emails with template variables, multiple providers (SMTP, SendGrid, Mailgun)</div>
+          </div>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label" style="flex-direction: row; align-items: center; gap: var(--space-3); padding: var(--space-4); background: var(--color-bg); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+          <input type="checkbox" name="sso" {{ features.sso ? 'checked' : '' }} style="width: 20px; height: 20px;">
+          <div>
+            <div style="font-weight: 500;">SSO Providers</div>
+            <div class="text-muted" style="font-size: var(--text-sm);">OpenID Connect, SAML, Custom OAuth2 with auto-provisioning</div>
+          </div>
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="loadSettings()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Feature Flags</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Storage Paths -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Storage Paths</h2>
+  </div>
+  <div class="card-body">
+    <form id="storageForm">
+      <div class="form-group">
+        <label for="dataDir">Data Directory</label>
+        <input type="text" id="dataDir" name="data_dir" value="{{ data_dir or './data' }}" required>
+      </div>
+      <div class="form-group">
+        <label for="templatesDir">Templates Directory</label>
+        <input type="text" id="templatesDir" name="templates_dir" value="{{ templates_dir or './templates' }}" required>
+      </div>
+      <div class="form-group">
+        <label for="catalogDir">Catalog Directory</label>
+        <input type="text" id="catalogDir" name="catalog_dir" value="{{ catalog_dir or './catalog' }}" required>
+      </div>
+      <div class="form-group">
+        <label for="providersDir">Providers Directory</label>
+        <input type="text" id="providersDir" name="providers_dir" value="{{ providers_dir or './providers' }}" required>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="loadSettings()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Storage Paths</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- System Info -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">System Information</h2>
+  </div>
+  <div class="card-body">
+    <div class="grid grid-2">
+      <div>
+        <h4 style="margin-bottom: var(--space-3);">Version Info</h4>
+        <dl class="dl-horizontal">
+          <dt>Platform Version</dt><dd>1.0.0</dd>
+          <dt>Python Version</dt><dd>{{ python_version }}</dd>
+          <dt>Database</dt><dd>SQLite ({{ db_path }})</dd>
+        </dl>
+      </div>
+      <div>
+        <h4 style="margin-bottom: var(--space-3);">Quick Stats</h4>
+        <dl class="dl-horizontal" id="systemStats">
+          <dt>Total Users</dt><dd>Loading...</dd>
+          <dt>Total Tenants</dt><dd>Loading...</dd>
+          <dt>Active Subscriptions</dt><dd>Loading...</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function loadSettings() {
+  try {
+    const response = await AdminAPI.apiRequest('/settings');
+    populateSettingsForm(response);
+    loadSystemStats();
+  } catch (error) {
+    console.error('Failed to load settings:', error);
+    showToast('Failed to load settings', 'error');
+  }
+}
+
+function populateSettingsForm(settings) {
+  // Security
+  document.getElementById('secretKey').placeholder = settings.secret_key_set ? '••••••••' : 'Auto-generated';
+  document.getElementById('tokenTtl').value = settings.token_ttl_hours;
+  document.getElementById('passwordMinLength').value = settings.password_min_length;
+  document.getElementById('passwordIterations').value = settings.password_iterations;
+  document.getElementById('apiKeyPrefix').value = settings.api_key_prefix;
+  document.getElementById('loginWindow').value = settings.login_throttle.window_seconds;
+  document.getElementById('maxFailuresEmail').value = settings.login_throttle.max_failures_per_email;
+  document.getElementById('maxFailuresAddress').value = settings.login_throttle.max_failures_per_address;
+  document.querySelector('[name="allow_signup"]').checked = settings.allow_signup;
+  document.querySelector('[name="require_secret_key"]').checked = settings.require_secret_key;
+  document.getElementById('secretKeyMinLength').value = settings.secret_key_min_length;
+
+  // Features
+  document.querySelector('[name="legal"]').checked = settings.features.legal;
+  document.querySelector('[name="email"]').checked = settings.features.email;
+  document.querySelector('[name="sso"]').checked = settings.features.sso;
+
+  // Update global feature flags for navigation
+  window.platformFeatures = settings.features;
+}
+
+async function loadSystemStats() {
+  try {
+    const service = await AdminAPI.platformRequest('/admin/stats');
+    document.getElementById('systemStats').innerHTML = `
+      <dt>Total Users</dt><dd>${service.total_users}</dd>
+      <dt>Total Tenants</dt><dd>${service.total_tenants}</dd>
+      <dt>Active Subscriptions</dt><dd>${service.active_subscriptions}</dd>
+    `;
+  } catch (error) {
+    console.error('Failed to load stats:', error);
+  }
+}
+
+async function generateSecretKey() {
+  if (!confirm('Generate a new secret key? This will invalidate all existing tokens.')) return;
+
+  try {
+    await AdminAPI.apiRequest('/settings/secret-key', { method: 'POST' });
+    showToast('New secret key generated', 'success');
+    loadSettings();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+document.getElementById('securityForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const data = serializeForm(form);
+  data.token_ttl_hours = parseInt(data.token_ttl_hours);
+  data.password_min_length = parseInt(data.password_min_length);
+  data.password_iterations = parseInt(data.password_iterations);
+  data.login_throttle = {
+    window_seconds: parseInt(data.login_window),
+    max_failures_per_email: parseInt(data.max_failures_email),
+    max_failures_per_address: parseInt(data.max_failures_address),
+  };
+  data.allow_signup = data.allow_signup === 'on';
+  data.require_secret_key = data.require_secret_key === 'on';
+  data.secret_key_min_length = parseInt(data.secret_key_min_length);
+
+  delete data.login_window;
+  delete data.max_failures_email;
+  delete data.max_failures_address;
+
+  try {
+    await AdminAPI.apiRequest('/settings/security', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Security settings saved', 'success');
+    loadSettings();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.getElementById('featuresForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const data = serializeForm(form);
+  data.legal = data.legal === 'on';
+  data.email = data.email === 'on';
+  data.sso = data.sso === 'on';
+
+  try {
+    await AdminAPI.apiRequest('/settings/features', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Feature flags saved. Restart required for changes to take effect.', 'success');
+    loadSettings();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.getElementById('storageForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const data = serializeForm(form);
+
+  try {
+    await AdminAPI.apiRequest('/settings/storage', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Storage paths saved. Restart required for changes to take effect.', 'success');
+    loadSettings();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'settings') loadSettings();
+});
+
+window.refreshSettings = loadSettings;
+</script>
+{% endblock %}

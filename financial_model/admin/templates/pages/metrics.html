@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Metrics & Metering</h1>
+    <p class="page-subtitle">Define billable metrics, units, and default pricing</p>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-primary" onclick="openMetricModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Metric
+    </button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Metrics</h2>
+    <p class="card-subtitle">Metrics define what can be measured and billed. Each metric has a unit and default overage pricing.</p>
+  </div>
+  <div class="card-body" style="padding: 0;">
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>Name</th>
+            <th>Unit</th>
+            <th>Description</th>
+            <th>Default Included</th>
+            <th>Default Overage</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="metricsTableBody">
+          {% for metric in metrics %}
+          <tr>
+            <td>
+              <div style="font-weight: 500; font-family: var(--font-mono);">{{ metric.key }}</div>
+            </td>
+            <td>{{ metric.name }}</td>
+            <td><span class="badge badge-neutral">{{ metric.unit }}</span></td>
+            <td class="text-muted" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ metric.description or '—' }}</td>
+            <td>{{ metric.default_included !== null && metric.default_included !== undefined ? metric.default_included : '<span class="text-muted">—</span>' | safe }}</td>
+            <td>{{ metric.default_overage !== null && metric.default_overage !== undefined ? '$' + (metric.default_overage / 100).toFixed(4) + '/unit' : '<span class="text-muted">—</span>' | safe }}</td>
+            <td>
+              <div class="btn-group">
+                <button class="btn btn-ghost btn-sm" onclick="editMetric('{{ metric.key }}')" title="Edit">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-sm danger" onclick="deleteMetric('{{ metric.key }}')" title="Delete">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Metering Rules by Plan -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Metering Rules by Plan</h2>
+  </div>
+  <div class="card-body">
+    <div id="meteringByPlan" class="text-muted">Loading...</div>
+  </div>
+</div>
+
+<!-- Metric Modal -->
+<div id="metricModalContainer"></div>
+
+<script>
+async function loadMetricsData() {
+  try {
+    const [metricsRes, meteringRes] = await Promise.all([
+      AdminAPI.apiRequest('/metrics'),
+      AdminAPI.apiRequest('/metering')
+    ]);
+    renderMetricsTable(metricsRes.metrics || {});
+    renderMeteringByPlan(meteringRes.metering || {});
+  } catch (error) {
+    console.error('Failed to load metrics:', error);
+    showToast('Failed to load metrics', 'error');
+  }
+}
+
+function renderMetricsTable(metrics) {
+  const tbody = document.getElementById('metricsTableBody');
+  if (!tbody) return;
+
+  if (!Object.keys(metrics).length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: var(--space-8); color: var(--color-fg-muted);">No metrics configured</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = Object.entries(metrics).map(([key, metric]) => `
+    <tr>
+      <td><div style="font-weight: 500; font-family: var(--font-mono);">${escapeHtml(key)}</div></td>
+      <td>${escapeHtml(metric.name || key)}</td>
+      <td><span class="badge badge-neutral">${escapeHtml(metric.unit || 'units')}</span></td>
+      <td class="text-muted" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(metric.description || '—')}</td>
+      <td>${metric.default_included !== null && metric.default_included !== undefined ? escapeHtml(String(metric.default_included)) : '<span class="text-muted">—</span>'}</td>
+      <td>${metric.default_overage !== null && metric.default_overage !== undefined ? '$' + (metric.default_overage / 100).toFixed(4) + '/unit' : '<span class="text-muted">—</span>'}</td>
+      <td>
+        <div class="btn-group">
+          <button class="btn btn-ghost btn-sm" onclick="editMetric('${escapeHtml(key)}')" title="Edit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="btn btn-ghost btn-sm danger" onclick="deleteMetric('${escapeHtml(key)}')" title="Delete">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderMeteringByPlan(metering) {
+  const container = document.getElementById('meteringByPlan');
+  if (!container) return;
+
+  if (!Object.keys(metering).length) {
+    container.innerHTML = '<p class="text-muted">No metering rules configured</p>';
+    return;
+  }
+
+  let html = '';
+  Object.entries(metering).forEach(([planKey, metrics]) => {
+    html += `
+      <div style="margin-bottom: var(--space-4);">
+        <h4 style="margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: 600; color: var(--color-fg);">${escapeHtml(planKey)}</h4>
+        <div class="table-container">
+          <table class="table">
+            <thead><tr><th>Metric</th><th>Included</th><th>Overage ($/unit)</th></tr></thead>
+            <tbody>
+    `;
+    Object.entries(metrics).forEach(([metric, config]) => {
+      html += `
+        <tr>
+          <td>${escapeHtml(metric)}</td>
+          <td>${config.included !== null && config.included !== undefined ? escapeHtml(String(config.included)) : '—'}</td>
+          <td>${config.overage !== null && config.overage !== undefined ? '$' + (config.overage / 100).toFixed(4) : '—'}</td>
+        </tr>
+      `;
+    });
+    html += '</tbody></table></div></div>';
+  });
+  container.innerHTML = html;
+}
+
+function openMetricModal(metric = null) {
+  const isEdit = !!metric;
+  const title = isEdit ? `Edit Metric: ${metric.key}` : 'Add Metric';
+
+  const body = `
+    <form id="metricForm">
+      <input type="hidden" name="key" value="${isEdit ? escapeHtml(metric.key) : ''}" ${isEdit ? 'readonly' : ''}>
+      <div class="form-group">
+        <label for="metricKey">Key <span class="required">*</span></label>
+        <input type="text" id="metricKey" name="key" placeholder="e.g., api_calls" required ${isEdit ? 'readonly' : ''} value="${isEdit ? escapeHtml(metric.key) : ''}">
+        <div class="form-hint">Unique identifier (lowercase, underscores only)</div>
+      </div>
+      <div class="form-group">
+        <label for="metricName">Name <span class="required">*</span></label>
+        <input type="text" id="metricName" name="name" placeholder="API Calls" required value="${isEdit ? escapeHtml(metric.name) : ''}">
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="metricUnit">Unit <span class="required">*</span></label>
+          <input type="text" id="metricUnit" name="unit" placeholder="requests" required value="${isEdit ? escapeHtml(metric.unit) : 'units'}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="metricDescription">Description</label>
+        <textarea id="metricDescription" name="description" rows="3" placeholder="What this metric measures...">${isEdit ? escapeHtml(metric.description || '') : ''}</textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="metricDefaultIncluded">Default Included</label>
+          <input type="number" id="metricDefaultIncluded" name="default_included" min="0" placeholder="Unlimited" value="${isEdit ? (metric.default_included || '') : ''}">
+          <div class="form-hint">Free units per period. Leave empty for unlimited.</div>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="metricDefaultOverage">Default Overage (cents/unit)</label>
+          <input type="number" id="metricDefaultOverage" name="default_overage" min="0" placeholder="0" value="${isEdit ? (metric.default_overage || '') : ''}">
+          <div class="form-hint">Price per unit over included amount. In cents.</div>
+        </div>
+      </div>
+    </form>
+  `;
+
+  const footer = `
+    <button class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+    ${!isEdit ? '' : `<button class="btn btn-danger" onclick="deleteMetric('${escapeHtml(metric.key)}')">Delete</button>`}
+    <button class="btn btn-primary" onclick="saveMetric('${isEdit ? escapeHtml(metric.key) : ''}')">${isEdit ? 'Update' : 'Create'}</button>
+  `;
+
+  const modal = AdminAPI.createModal(title, body, footer);
+  modal.id = 'metricModal';
+}
+
+async function saveMetric(key) {
+  const form = document.getElementById('metricForm');
+  if (!validateForm(form)) return;
+
+  const data = serializeForm(form);
+  data.default_included = data.default_included ? parseInt(data.default_included) : null;
+  data.default_overage = data.default_overage ? parseInt(data.default_overage) : null;
+
+  try {
+    const endpoint = key ? `/metrics/${key}` : '/metrics';
+    const method = key ? 'PUT' : 'POST';
+    await AdminAPI.apiRequest(endpoint, { method, body: JSON.stringify(data) });
+
+    showToast(key ? 'Metric updated' : 'Metric created', 'success');
+    closeModal(document.querySelector('#metricModal .modal-close'));
+    await loadMetricsData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function editMetric(key) {
+  try {
+    const response = await AdminAPI.apiRequest('/metrics');
+    const metric = response.metrics[key];
+    if (metric) { metric.key = key; openMetricModal(metric); }
+  } catch (error) {
+    showToast('Failed to load metric', 'error');
+  }
+}
+
+async function deleteMetric(key) {
+  if (!confirm('Delete this metric? This cannot be undone.')) return;
+
+  try {
+    await AdminAPI.apiRequest(`/metrics/${key}`, { method: 'DELETE' });
+    showToast('Metric deleted', 'success');
+    await loadMetricsData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'metrics') loadMetricsData();
+});
+
+window.refreshMetrics = loadMetricsData;
+</script>
+{% endblock %}

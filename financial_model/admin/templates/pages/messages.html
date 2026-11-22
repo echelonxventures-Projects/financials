@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Messages</h1>
+    <p class="page-subtitle">Manage system messages, error templates, and user-facing text</p>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-primary" onclick="openMessageModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Message
+    </button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Message Templates</h2>
+    <p class="card-subtitle">Messages are used throughout the platform for errors, confirmations, and notifications.</p>
+  </div>
+  <div class="card-body" style="padding: 0;">
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Key</th>
+            <th>Message</th>
+            <th>Category</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="messagesTableBody">
+          {% for key, message in messages.items() %}
+          <tr>
+            <td>
+              <div style="font-weight: 500; font-family: var(--font-mono);">{{ key }}</div>
+            </td>
+            <td class="text-muted" style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ message }}</td>
+            <td>
+              {% set category = key.split('.')[0] %}
+              <span class="badge badge-info badge-sm">{{ category }}</span>
+            </td>
+            <td>
+              <div class="btn-group">
+                <button class="btn btn-ghost btn-sm" onclick="editMessage('{{ key }}')" title="Edit">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-sm danger" onclick="deleteMessage('{{ key }}')" title="Delete">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Message Modal -->
+<div id="messageModalContainer"></div>
+
+<script>
+async function loadMessagesData() {
+  try {
+    const response = await AdminAPI.apiRequest('/messages');
+    renderMessagesTable(response.messages || {});
+  } catch (error) {
+    console.error('Failed to load messages:', error);
+    showToast('Failed to load messages', 'error');
+  }
+}
+
+function renderMessagesTable(messages) {
+  const tbody = document.getElementById('messagesTableBody');
+  if (!tbody) return;
+
+  if (!Object.keys(messages).length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: var(--space-8); color: var(--color-fg-muted);">No messages configured</td></tr>';
+    return;
+  }
+
+  // Group by category
+  const categories = {};
+  Object.entries(messages).forEach(([key, message]) => {
+    const category = key.split('.')[0] || 'general';
+    if (!categories[category]) categories[category] = [];
+    categories[category].push({ key, message });
+  });
+
+  let html = '';
+  Object.entries(categories).forEach(([category, msgs]) => {
+    html += `<tr style="background: var(--color-bg);"><td colspan="4" style="font-weight: 600; text-transform: uppercase; font-size: var(--text-xs); color: var(--color-fg-muted); padding: var(--space-3) var(--space-4);">${category}</td></tr>`;
+    msgs.forEach(({ key, message }) => {
+      html += `
+        <tr>
+          <td><div style="font-weight: 500; font-family: var(--font-mono);">${escapeHtml(key)}</div></td>
+          <td class="text-muted" style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(message)}</td>
+          <td><span class="badge badge-info badge-sm">${category}</span></td>
+          <td>
+            <div class="btn-group">
+              <button class="btn btn-ghost btn-sm" onclick="editMessage('${escapeHtml(key)}')" title="Edit">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button class="btn btn-ghost btn-sm danger" onclick="deleteMessage('${escapeHtml(key)}')" title="Delete">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+  });
+
+  tbody.innerHTML = html;
+}
+
+function openMessageModal(messageData = null) {
+  const isEdit = !!messageData;
+  const title = isEdit ? `Edit Message: ${messageData.key}` : 'Add Message';
+
+  const body = `
+    <form id="messageForm">
+      <input type="hidden" name="key" value="${isEdit ? escapeHtml(messageData.key) : ''}" ${isEdit ? 'readonly' : ''}>
+      <div class="form-group">
+        <label for="messageKey">Key <span class="required">*</span></label>
+        <input type="text" id="messageKey" name="key" placeholder="e.g., billing.payment_failed" required ${isEdit ? 'readonly' : ''} value="${isEdit ? escapeHtml(messageData.key) : ''}">
+        <div class="form-hint">Use dot notation for categories (e.g., billing.payment_failed)</div>
+      </div>
+      <div class="form-group">
+        <label for="messageText">Message <span class="required">*</span></label>
+        <textarea id="messageText" name="message" rows="4" required placeholder="Your payment could not be processed. Please try again.">${isEdit ? escapeHtml(messageData.message) : ''}</textarea>
+        <div class="form-hint">Supports {{variable}} placeholders for dynamic content</div>
+      </div>
+    </form>
+  `;
+
+  const footer = `
+    <button class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+    ${!isEdit ? '' : `<button class="btn btn-danger" onclick="deleteMessage('${escapeHtml(messageData.key)}')">Delete</button>`}
+    <button class="btn btn-primary" onclick="saveMessage('${isEdit ? escapeHtml(messageData.key) : ''}')">${isEdit ? 'Update' : 'Create'}</button>
+  `;
+
+  const modal = AdminAPI.createModal(title, body, footer);
+  modal.id = 'messageModal';
+}
+
+async function saveMessage(key) {
+  const form = document.getElementById('messageForm');
+  if (!validateForm(form)) return;
+
+  const data = serializeForm(form);
+
+  try {
+    const endpoint = key ? `/messages/${key}` : '/messages';
+    const method = key ? 'PUT' : 'POST';
+    await AdminAPI.apiRequest(endpoint, { method, body: JSON.stringify(data) });
+
+    showToast(key ? 'Message updated' : 'Message created', 'success');
+    closeModal(document.querySelector('#messageModal .modal-close'));
+    await loadMessagesData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function editMessage(key) {
+  try {
+    const response = await AdminAPI.apiRequest('/messages');
+    const message = response.messages[key];
+    if (message) { openMessageModal({ key, message }); }
+  } catch (error) {
+    showToast('Failed to load message', 'error');
+  }
+}
+
+async function deleteMessage(key) {
+  if (!confirm('Delete this message? This cannot be undone.')) return;
+
+  try {
+    await AdminAPI.apiRequest(`/messages/${key}`, { method: 'DELETE' });
+    showToast('Message deleted', 'success');
+    await loadMessagesData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'messages') loadMessagesData();
+});
+
+window.refreshMessages = loadMessagesData;
+</script>
+{% endblock %}

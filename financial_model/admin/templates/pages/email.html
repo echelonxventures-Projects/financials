@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Email Templates</h1>
+    <p class="page-subtitle">Manage transactional email templates and providers</p>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-primary" onclick="openEmailModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Template
+    </button>
+  </div>
+</div>
+
+{% if not enabled %}
+<div class="card">
+  <div class="card-body text-center" style="padding: var(--space-12);">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: var(--space-4); opacity: 0.5;">
+      <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+    </svg>
+    <h3 style="margin-bottom: var(--space-2);">Email Templates Disabled</h3>
+    <p style="color: var(--color-fg-muted); margin-bottom: var(--space-4);">Enable the email feature in Platform Settings to manage templates.</p>
+    <button class="btn btn-primary" onclick="navigate('settings')">Go to Settings</button>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Templates</h2>
+    <div class="card-actions">
+      <button class="btn btn-secondary btn-sm" onclick="sendTestEmail()">Send Test Email</button>
+    </div>
+  </div>
+  <div class="card-body" style="padding: 0;">
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Template</th>
+            <th>Subject</th>
+            <th>Required Variables</th>
+            <th>Type</th>
+            <th>HTML</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="emailTableBody">
+          {% for template in templates %}
+          <tr>
+            <td>
+              <div style="font-weight: 500;">{{ template.name }}</div>
+              <div class="text-muted" style="font-size: var(--text-xs);">{{ template.key }}</div>
+            </td>
+            <td>{{ template.subject }}</td>
+            <td>
+              {% if template.required_vars %}
+                <div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">
+                  {% for var in template.required_vars %}
+                  <span class="badge badge-neutral badge-sm">{{ var }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td><span class="badge {% if template.is_builtin %}badge-info{% else %}badge-neutral{% endif %}">{{ 'Built-in' if template.is_builtin else 'Custom' }}</span></td>
+            <td><span class="badge {% if template.has_html %}badge-success{% else %}badge-neutral{% endif %}">{{ 'Yes' if template.has_html else 'No' }}</span></td>
+            <td>
+              <div class="btn-group">
+                <button class="btn btn-ghost btn-sm" onclick="editEmail('{{ template.key }}')" title="Edit">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                {% if not template.is_builtin %}
+                <button class="btn btn-ghost btn-sm danger" onclick="deleteEmail('{{ template.key }}')" title="Delete">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Email Provider Configuration -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Email Provider</h2>
+  </div>
+  <div class="card-body">
+    <div class="form-group">
+      <label>Configured Provider</label>
+      <div id="emailProviderInfo" class="text-muted">Loading...</div>
+    </div>
+    <div class="form-group">
+      <button class="btn btn-secondary" onclick="navigate('settings')">Configure in Settings</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Email Template Modal -->
+<div id="emailModalContainer"></div>
+
+<script>
+async function loadEmailData() {
+  try {
+    const [templatesRes, providerRes] = await Promise.all([
+      AdminAPI.apiRequest('/email/templates'),
+      AdminAPI.platformRequest('/admin/email/provider')
+    ]);
+    renderEmailTable(templatesRes.templates || []);
+    updateProviderInfo(providerRes);
+  } catch (error) {
+    console.error('Failed to load email data:', error);
+    showToast('Failed to load email templates', 'error');
+  }
+}
+
+function renderEmailTable(templates) {
+  const tbody = document.getElementById('emailTableBody');
+  if (!tbody) return;
+
+  if (!templates.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align: center; padding: var(--space-8); color: var(--color-fg-muted);">
+          No email templates configured. Click "Add Template" to create one.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = templates.map(t => `
+    <tr>
+      <td>
+        <div style="font-weight: 500;">${escapeHtml(t.name)}</div>
+        <div class="text-muted" style="font-size: var(--text-xs);">${escapeHtml(t.key)}</div>
+      </td>
+      <td>${escapeHtml(t.subject)}</td>
+      <td>
+        ${t.required_vars && t.required_vars.length ? t.required_vars.map(v => `<span class="badge badge-neutral badge-sm">${escapeHtml(v)}</span>`).join('') : '<span class="text-muted">—</span>'}
+      </td>
+      <td><span class="badge ${t.is_builtin ? 'badge-info' : 'badge-neutral'}">${t.is_builtin ? 'Built-in' : 'Custom'}</span></td>
+      <td><span class="badge ${t.has_html ? 'badge-success' : 'badge-neutral'}">${t.has_html ? 'Yes' : 'No'}</span></td>
+      <td>
+        <div class="btn-group">
+          <button class="btn btn-ghost btn-sm" onclick="editEmail('${escapeHtml(t.key)}')" title="Edit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          ${!t.is_builtin ? `<button class="btn btn-ghost btn-sm danger" onclick="deleteEmail('${escapeHtml(t.key)}')" title="Delete"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function updateProviderInfo(provider) {
+  const el = document.getElementById('emailProviderInfo');
+  if (el) {
+    el.textContent = provider?.type ? `${provider.type} (${provider.from_email || 'no from email'})` : 'Not configured';
+  }
+}
+
+function openEmailModal(template = null) {
+  const isEdit = !!template;
+  const title = isEdit ? `Edit Template: ${template.name}` : 'Add Email Template';
+
+  const builtinKeys = ['verify_email', 'password_reset', 'invite_member', 'billing_receipt', 'usage_alert'];
+  const isBuiltin = isEdit && builtinKeys.includes(template.key);
+
+  const body = `
+    <form id="emailForm">
+      <input type="hidden" name="key" value="${isEdit ? escapeHtml(template.key) : ''}" ${isEdit ? 'readonly' : ''}>
+      <div class="form-group">
+        <label for="emailKey">Key <span class="required">*</span></label>
+        <input type="text" id="emailKey" name="key" placeholder="e.g., welcome_email" required ${isEdit ? 'readonly' : ''}>
+        <div class="form-hint">Unique identifier (lowercase, underscores only)</div>
+      </div>
+      <div class="form-group">
+        <label for="emailName">Name <span class="required">*</span></label>
+        <input type="text" id="emailName" name="name" placeholder="Welcome Email" required value="${isEdit ? escapeHtml(template.name) : ''}">
+      </div>
+      <div class="form-group">
+        <label for="emailSubject">Subject <span class="required">*</span></label>
+        <input type="text" id="emailSubject" name="subject" placeholder="Welcome to {{platform_name}}!" required value="${isEdit ? escapeHtml(template.subject) : ''}">
+        <div class="form-hint">Use {{variable}} for dynamic content</div>
+      </div>
+      <div class="form-group">
+        <label for="emailTextBody">Text Body <span class="required">*</span></label>
+        <textarea id="emailTextBody" name="text_body" rows="8" required placeholder="Plain text version...">${isEdit ? escapeHtml(template.text_body || '') : ''}</textarea>
+      </div>
+      <div class="form-group">
+        <label for="emailHtmlBody">HTML Body</label>
+        <textarea id="emailHtmlBody" name="html_body" rows="10" placeholder="HTML version (optional)...">${isEdit ? escapeHtml(template.html_body || '') : ''}</textarea>
+        <div class="form-hint">Optional. If not provided, text version will be used.</div>
+      </div>
+      <div class="form-group">
+        <label for="emailRequiredVars">Required Variables</label>
+        <input type="text" id="emailRequiredVars" name="required_vars" placeholder="variable1,variable2,..." value="${isEdit && template.required_vars ? template.required_vars.join(',') : ''}">
+        <div class="form-hint">Comma-separated list of required {{variable}} names</div>
+      </div>
+    </form>
+  `;
+
+  const footer = `
+    <button class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+    ${!isBuiltin ? `<button class="btn btn-danger" onclick="deleteEmail('${isEdit ? escapeHtml(template.key) : ''}')">Delete</button>` : ''}
+    <button class="btn btn-primary" onclick="saveEmail('${isEdit ? escapeHtml(template.key) : ''}')">${isEdit ? 'Update' : 'Create'}</button>
+  `;
+
+  const modal = AdminAPI.createModal(title, body, footer);
+  modal.id = 'emailModal';
+}
+
+async function saveEmail(key) {
+  const form = document.getElementById('emailForm');
+  if (!validateForm(form)) return;
+
+  const data = serializeForm(form);
+  data.required_vars = data.required_vars ? data.required_vars.split(',').map(v => v.trim()).filter(Boolean) : [];
+
+  try {
+    const endpoint = key ? `/email/templates/${key}` : '/email/templates';
+    const method = key ? 'PUT' : 'POST';
+    await AdminAPI.apiRequest(endpoint, { method, body: JSON.stringify(data) });
+
+    showToast(key ? 'Template updated' : 'Template created', 'success');
+    closeModal(document.querySelector('#emailModal .modal-close'));
+    await loadEmailData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function editEmail(key) {
+  try {
+    const template = await AdminAPI.apiRequest(`/email/templates/${key}`);
+    openEmailModal(template);
+  } catch (error) {
+    showToast('Failed to load template', 'error');
+  }
+}
+
+async function deleteEmail(key) {
+  if (!confirm('Delete this email template? This cannot be undone.')) return;
+
+  try {
+    await AdminAPI.apiRequest(`/email/templates/${key}`, { method: 'DELETE' });
+    showToast('Template deleted', 'success');
+    await loadEmailData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function sendTestEmail() {
+  const email = prompt('Enter email address to send test to:');
+  if (!email) return;
+
+  const template = prompt('Template key (default: verify_email):') || 'verify_email';
+
+  try {
+    await AdminAPI.apiRequest('/email/test', {
+      method: 'POST',
+      body: JSON.stringify({ to: email, template })
+    });
+    showToast('Test email sent', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'email') loadEmailData();
+});
+
+window.refreshEmail = loadEmailData;
+</script>
+{% endblock %}

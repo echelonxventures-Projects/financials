@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Billing Settings</h1>
+    <p class="page-subtitle">Configure billing provider and payment settings</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Billing Provider</h2>
+  </div>
+  <div class="card-body">
+    <form id="billingForm">
+      <div class="form-group">
+        <label for="billingProvider">Provider <span class="required">*</span></label>
+        <select id="billingProvider" name="provider" required onchange="toggleProviderFields(this.value)">
+          <option value="manual" {% if provider == 'manual' %}selected{% endif %}>Manual (Invoice-based)</option>
+          <option value="stripe" {% if provider == 'stripe' %}selected{% endif %}>Stripe</option>
+        </select>
+      </div>
+
+      <div id="stripeFields" style="display: {% if provider == 'stripe' %}block{% else %}none{% endif %};">
+        <div class="form-section-title">Stripe Configuration</div>
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label for="stripeSecretKey">Secret Key</label>
+            <input type="password" id="stripeSecretKey" name="stripe[secret_key]" placeholder="sk_live_..." autocomplete="off">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label for="stripePublishableKey">Publishable Key</label>
+            <input type="text" id="stripePublishableKey" name="stripe[publishable_key]" placeholder="pk_live_...">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label for="stripeWebhookSecret">Webhook Secret</label>
+            <input type="password" id="stripeWebhookSecret" name="stripe[webhook_secret]" placeholder="whsec_..." autocomplete="off">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label for="stripeApiBase">API Base (Optional)</label>
+            <input type="text" id="stripeApiBase" name="stripe[api_base]" placeholder="https://api.stripe.com">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label for="stripeSignatureTolerance">Signature Tolerance (seconds)</label>
+            <input type="number" id="stripeSignatureTolerance" name="stripe[signature_tolerance_seconds]" min="0" value="{{ stripe.signature_tolerance_seconds or 300 }}">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label for="stripeTimeout">Timeout (seconds)</label>
+            <input type="number" id="stripeTimeout" name="stripe[timeout_seconds]" min="1" value="{{ stripe.timeout_seconds or 30 }}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" name="stripe[capture_method]" value="manual" {% if stripe.capture_method == 'manual' %}checked{% endif %}>
+            <span>Manual capture (authorize only, capture later)</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="manualFields" style="display: {% if provider == 'manual' %}block{% else %}none{% endif %};">
+        <div class="form-section-title">Manual Billing Configuration</div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" name="manual[auto_invoice]" {% if manual.auto_invoice %}checked{% endif %}>
+            <span>Auto-generate invoices on subscription changes</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" name="manual[require_approval]" {% if manual.require_approval %}checked{% endif %}>
+            <span>Require admin approval for new subscriptions</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label for="manualInvoicePrefix">Invoice Prefix</label>
+          <input type="text" id="manualInvoicePrefix" name="manual[invoice_prefix]" value="{{ manual.invoice_prefix or 'INV' }}" placeholder="INV">
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="loadBillingData()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Configuration</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Stripe Webhook Info -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Stripe Webhook Configuration</h2>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-info">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12.01" y2="16"/><path d="M12 8v4"/></svg>
+      <div>
+        <strong>Webhook Endpoint:</strong> <code>{{ request.url_root.rstrip('/') }}/v1/billing/webhook</code>
+        <br>Configure this URL in your Stripe Dashboard → Developers → Webhooks
+        <br>Required events: <code>invoice.payment_succeeded</code>, <code>invoice.payment_failed</code>, <code>customer.subscription.updated</code>, <code>customer.subscription.deleted</code>, <code>checkout.session.completed</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Billing Events Log -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Recent Billing Events</h2>
+  </div>
+  <div class="card-body">
+    <div id="billingEvents" class="text-muted">Loading...</div>
+  </div>
+</div>
+
+<script>
+function toggleProviderFields(provider) {
+  document.getElementById('stripeFields').style.display = provider === 'stripe' ? 'block' : 'none';
+  document.getElementById('manualFields').style.display = provider === 'manual' ? 'block' : 'none';
+}
+
+async function loadBillingData() {
+  try {
+    const response = await AdminAPI.apiRequest('/billing');
+    const billing = response;
+    document.getElementById('billingProvider').value = billing.provider || 'manual';
+    toggleProviderFields(billing.provider || 'manual');
+
+    if (billing.stripe) {
+      Object.entries(billing.stripe).forEach(([key, value]) => {
+        const el = document.querySelector(`[name="stripe[${key}]"]`);
+        if (el) {
+          if (el.type === 'checkbox') el.checked = value;
+          else el.value = value || '';
+        }
+      });
+    }
+
+    if (billing.manual) {
+      Object.entries(billing.manual).forEach(([key, value]) => {
+        const el = document.querySelector(`[name="manual[${key}]"]`);
+        if (el) {
+          if (el.type === 'checkbox') el.checked = value;
+          else el.value = value || '';
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Failed to load billing config:', error);
+    showToast('Failed to load billing configuration', 'error');
+  }
+}
+
+document.getElementById('billingForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const data = serializeForm(form);
+
+  // Convert nested fields
+  const payload = { provider: data.provider };
+  if (data.provider === 'stripe') {
+    payload.stripe = {};
+    Object.keys(data).filter(k => k.startsWith('stripe[')).forEach(k => {
+      const key = k.match(/stripe\[(.+)\]/)[1];
+      payload.stripe[key] = data[k];
+    });
+  } else {
+    payload.manual = {};
+    Object.keys(data).filter(k => k.startsWith('manual[')).forEach(k => {
+      const key = k.match(/manual\[(.+)\]/)[1];
+      payload.manual[key] = data[k];
+    });
+  }
+
+  try {
+    await AdminAPI.apiRequest('/billing', { method: 'PUT', body: JSON.stringify(payload) });
+    showToast('Billing configuration saved', 'success');
+    await loadBillingData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+async function loadBillingEvents() {
+  try {
+    const events = await AdminAPI.apiRequest('/billing/events');
+    renderBillingEvents(events.events || []);
+  } catch (error) {
+    document.getElementById('billingEvents').innerHTML = '<p class="text-muted">Failed to load events</p>';
+  }
+}
+
+function renderBillingEvents(events) {
+  const container = document.getElementById('billingEvents');
+  if (!events.length) {
+    container.innerHTML = '<p class="text-muted">No billing events recorded</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="table-container">
+      <table class="table">
+        <thead><tr><th>Event</th><th>Tenant</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead>
+        <tbody>
+          ${events.map(e => `
+            <tr>
+              <td>${escapeHtml(e.type)}</td>
+              <td>${escapeHtml(e.tenant_name || e.tenant_id)}</td>
+              <td>${e.amount ? '$' + (e.amount / 100).toFixed(2) : '—'}</td>
+              <td><span class="badge ${e.status === 'succeeded' ? 'badge-success' : e.status === 'failed' ? 'badge-danger' : 'badge-warning'}">${escapeHtml(e.status)}</span></td>
+              <td>${formatDate(e.created_at)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'billing') {
+    loadBillingData();
+    loadBillingEvents();
+  }
+});
+
+window.refreshBilling = () => { loadBillingData(); loadBillingEvents(); };
+</script>
+{% endblock %}

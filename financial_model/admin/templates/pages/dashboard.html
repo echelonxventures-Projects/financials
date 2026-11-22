@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Dashboard</h1>
+  <p class="page-subtitle">Platform overview and key metrics</p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon stat-icon-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      </svg>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ stats.total_users }}</div>
+      <div class="stat-label">Total Users</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon stat-icon-success">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+      </svg>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ stats.total_tenants }}</div>
+      <div class="stat-label">Total Tenants</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon stat-icon-warning">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>
+      </svg>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ stats.total_api_keys }}</div>
+      <div class="stat-label">API Keys</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon stat-icon-info">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ stats.active_subscriptions }}</div>
+      <div class="stat-label">Active Subscriptions</div>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Recent Tenants</h2>
+    </div>
+    <div class="card-body">
+      {% if recent_tenants %}
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Kind</th>
+              <th>Plan</th>
+              <th>Status</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tenant in recent_tenants %}
+            <tr>
+              <td>{{ tenant.name }}</td>
+              <td><span class="badge badge-neutral">{{ tenant.kind }}</span></td>
+              <td>{{ tenant.plan }}</td>
+              <td><span class="badge {% if tenant.status == 'active' %}badge-success{% elif tenant.status == 'trialing' %}badge-warning{% else %}badge-neutral{% endif %}">{{ tenant.status }}</span></td>
+              <td>{{ tenant.created_at }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+        <div class="empty-state-title">No Tenants Yet</div>
+        <div class="empty-state-description">Tenants will appear here as they sign up</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Quick Actions</h2>
+    </div>
+    <div class="card-body">
+      <div class="action-grid">
+        <button class="action-card" onclick="navigate('plans')">
+          <div class="action-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </div>
+          <div class="action-label">Manage Plans</div>
+        </button>
+        <button class="action-card" onclick="navigate('legal')">
+          <div class="action-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          </div>
+          <div class="action-label">Legal Documents</div>
+        </button>
+        <button class="action-card" onclick="navigate('email')">
+          <div class="action-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+            </svg>
+          </div>
+          <div class="action-label">Email Templates</div>
+        </button>
+        <button class="action-card" onclick="navigate('sso')">
+          <div class="action-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="6" y1="19" x2="6.01" y2="19"/><line x1="10" y1="19" x2="10.01" y2="19"/><line x1="14" y1="19" x2="14.01" y2="19"/>
+            </svg>
+          </div>
+          <div class="action-label">SSO Providers</div>
+        </button>
+        <button class="action-card" onclick="navigate('roles')">
+          <div class="action-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="action-label">Roles & Permissions</div>
+        </button>
+        <button class="action-card" onclick="navigate('settings')">
+          <div class="action-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </div>
+          <div class="action-label">Platform Settings</div>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

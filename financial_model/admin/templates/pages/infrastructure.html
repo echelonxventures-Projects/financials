@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Infrastructure</h1>
+    <p class="page-subtitle">Configure database, catalog sources, and storage paths</p>
+  </div>
+</div>
+
+<!-- Database Configuration -->
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Database Configuration</h2>
+  </div>
+  <div class="card-body">
+    <form id="databaseForm">
+      <div class="form-group">
+        <label for="databaseUrl">Database URL <span class="required">*</span></label>
+        <input type="text" id="databaseUrl" name="database_url" required placeholder="sqlite:///financial_platform.db" value="{{ database_url or 'sqlite:///financial_platform.db' }}">
+        <div class="form-hint">Supported: sqlite:///relative.db, sqlite:////absolute.db, sqlite:///:memory:, postgresql://..., mysql://...</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label for="dbPoolSize">Pool Size</label>
+          <input type="number" id="dbPoolSize" name="pool_size" min="1" max="100" value="{{ pool_size or 5 }}">
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="dbMaxOverflow">Max Overflow</label>
+          <input type="number" id="dbMaxOverflow" name="max_overflow" min="0" max="100" value="{{ max_overflow or 10 }}">
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label for="dbPoolTimeout">Pool Timeout (s)</label>
+          <input type="number" id="dbPoolTimeout" name="pool_timeout" min="1" max="300" value="{{ pool_timeout or 30 }}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" name="dbEcho" {{ db_echo ? 'checked' : '' }}>
+          <span>Echo SQL (debug logging)</span>
+        </label>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save Database Config</button>
+        <button type="button" class="btn btn-secondary" onclick="testDatabaseConnection()">Test Connection</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Catalog Sources -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Catalog Sources</h2>
+    <p class="card-subtitle">Catalog files merged in order. "builtin" = shipped catalog.yaml. Later files override earlier.</p>
+  </div>
+  <div class="card-body">
+    <form id="catalogForm">
+      <div id="catalogSourcesList">
+        {% for source in catalog_sources %}
+        <div class="catalog-source-row" style="display: flex; gap: var(--space-3); margin-bottom: var(--space-3); align-items: center;">
+          <input type="text" name="catalog_sources[]" value="{{ source }}" placeholder="builtin or ./path/to/catalog.yaml" style="flex: 1;" required>
+          <button type="button" class="btn btn-ghost btn-sm danger" onclick="this.closest('.catalog-source-row').remove()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="addCatalogSource()">+ Add Catalog Source</button>
+      <div class="form-actions" style="margin-top: var(--space-4);">
+        <button type="submit" class="btn btn-primary">Save Catalog Sources</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Storage Paths -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">Storage Paths</h2>
+    <p class="card-subtitle">Directories for versioned configuration files managed by Admin API</p>
+  </div>
+  <div class="card-body">
+    <form id="storageForm">
+      <div class="form-group">
+        <label for="legalPath">Legal Documents Path</label>
+        <input type="text" id="legalPath" name="legal_path" value="{{ storage.legal_path or './legal_documents' }}">
+      </div>
+      <div class="form-group">
+        <label for="emailTemplatesPath">Email Templates Path</label>
+        <input type="text" id="emailTemplatesPath" name="email_templates_path" value="{{ storage.email_templates_path or './email_templates' }}">
+      </div>
+      <div class="form-group">
+        <label for="ssoProvidersPath">SSO Providers Path</label>
+        <input type="text" id="ssoProvidersPath" name="sso_providers_path" value="{{ storage.sso_providers_path or './sso_providers' }}">
+      </div>
+      <div class="form-group">
+        <label for="catalogOverridePath">Catalog Override Path</label>
+        <input type="text" id="catalogOverridePath" name="catalog_override_path" value="{{ storage.catalog_override_path or './catalog_override.yaml' }}">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save Storage Paths</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- System Info -->
+<div class="card mt-6">
+  <div class="card-header">
+    <h2 class="card-title">System Information</h2>
+  </div>
+  <div class="card-body">
+    <div class="grid grid-2">
+      <div>
+        <h4 style="margin-bottom: var(--space-3);">Runtime</h4>
+        <dl class="dl-horizontal">
+          <dt>Python</dt><dd>{{ python_version }}</dd>
+          <dt>Platform</dt><dd>{{ platform }}</dd>
+          <dt>Database</dt><dd>{{ db_type }}</dd>
+        </dl>
+      </div>
+      <div>
+        <h4 style="margin-bottom: var(--space-3);">Storage</h4>
+        <dl class="dl-horizontal" id="storageInfo">
+          <dt>Legal Docs</dt><dd>Loading...</dd>
+          <dt>Email Templates</dt><dd>Loading...</dd>
+          <dt>SSO Providers</dt><dd>Loading...</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function loadInfrastructureData() {
+  try {
+    const [dbRes, catRes, storageRes, sysRes] = await Promise.all([
+      AdminAPI.apiRequest('/infrastructure/database'),
+      AdminAPI.apiRequest('/infrastructure/catalog'),
+      AdminAPI.apiRequest('/infrastructure/storage'),
+      AdminAPI.apiRequest('/infrastructure/system')
+    ]);
+    populateDatabaseForm(dbRes);
+    populateCatalogForm(catRes);
+    populateStorageForm(storageRes);
+    populateSystemInfo(sysRes);
+  } catch (error) {
+    console.error('Failed to load infrastructure data:', error);
+    showToast('Failed to load infrastructure data', 'error');
+  }
+}
+
+function populateDatabaseForm(data) {
+  document.getElementById('databaseUrl').value = data.database_url || 'sqlite:///financial_platform.db';
+  document.getElementById('dbPoolSize').value = data.pool_size || 5;
+  document.getElementById('dbMaxOverflow').value = data.max_overflow || 10;
+  document.getElementById('dbPoolTimeout').value = data.pool_timeout || 30;
+  document.querySelector('[name="dbEcho"]').checked = data.echo || false;
+}
+
+function populateCatalogForm(data) {
+  const container = document.getElementById('catalogSourcesList');
+  if (!container) return;
+  container.innerHTML = (data.sources || ['builtin']).map(src => `
+    <div class="catalog-source-row" style="display: flex; gap: var(--space-3); margin-bottom: var(--space-3); align-items: center;">
+      <input type="text" name="catalog_sources[]" value="${escapeHtml(src)}" placeholder="builtin or ./path/to/catalog.yaml" style="flex: 1;" required>
+      <button type="button" class="btn btn-ghost btn-sm danger" onclick="this.closest('.catalog-source-row').remove()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+    </div>
+  `).join('');
+}
+
+function addCatalogSource() {
+  const container = document.getElementById('catalogSourcesList');
+  const div = document.createElement('div');
+  div.className = 'catalog-source-row';
+  div.style.cssText = 'display: flex; gap: var(--space-3); margin-bottom: var(--space-3); align-items: center;';
+  div.innerHTML = `
+    <input type="text" name="catalog_sources[]" value="" placeholder="builtin or ./path/to/catalog.yaml" style="flex: 1;" required>
+    <button type="button" class="btn btn-ghost btn-sm danger" onclick="this.closest('.catalog-source-row').remove()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    </button>
+  `;
+  container.appendChild(div);
+}
+
+function populateStorageForm(data) {
+  document.getElementById('legalPath').value = data.legal_path || './legal_documents';
+  document.getElementById('emailTemplatesPath').value = data.email_templates_path || './email_templates';
+  document.getElementById('ssoProvidersPath').value = data.sso_providers_path || './sso_providers';
+  document.getElementById('catalogOverridePath').value = data.catalog_override_path || './catalog_override.yaml';
+}
+
+function populateSystemInfo(data) {
+  const container = document.getElementById('storageInfo');
+  if (!container) return;
+  container.innerHTML = `
+    <dt>Legal Docs</dt><dd>${data.legal_count || 0} documents</dd>
+    <dt>Email Templates</dt><dd>${data.email_count || 0} templates</dd>
+    <dt>SSO Providers</dt><dd>${data.sso_count || 0} providers</dd>
+  `;
+}
+
+document.getElementById('databaseForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = serializeForm(e.target);
+  data.pool_size = parseInt(data.pool_size) || 5;
+  data.max_overflow = parseInt(data.max_overflow) || 10;
+  data.pool_timeout = parseInt(data.pool_timeout) || 30;
+  data.echo = data.dbEcho === 'on';
+  delete data.dbEcho;
+  try {
+    await AdminAPI.apiRequest('/infrastructure/database', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Database config saved. Restart required.', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+async function testDatabaseConnection() {
+  try {
+    await AdminAPI.apiRequest('/infrastructure/database/test', { method: 'POST' });
+    showToast('Database connection successful', 'success');
+  } catch (error) {
+    showToast('Connection failed: ' + error.message, 'error');
+  }
+}
+
+document.getElementById('catalogForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const sources = Array.from(form.querySelectorAll('[name="catalog_sources[]"]')).map(i => i.value).filter(Boolean);
+  try {
+    await AdminAPI.apiRequest('/infrastructure/catalog', { method: 'PUT', body: JSON.stringify({ sources }) });
+    showToast('Catalog sources saved. Restart required.', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.getElementById('storageForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = serializeForm(e.target);
+  try {
+    await AdminAPI.apiRequest('/infrastructure/storage', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Storage paths saved. Restart required.', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'infrastructure') loadInfrastructureData();
+});
+
+window.refreshInfrastructure = loadInfrastructureData;
+</script>
+{% endblock %}

@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Legal Documents</h1>
+    <p class="page-subtitle">Manage legal documents, versions, and approval workflows</p>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-primary" onclick="openLegalModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Document
+    </button>
+  </div>
+</div>
+
+{% if not enabled %}
+<div class="card">
+  <div class="card-body text-center" style="padding: var(--space-12);">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: var(--space-4); opacity: 0.5;">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+    </svg>
+    <h3 style="margin-bottom: var(--space-2);">Legal Documents Disabled</h3>
+    <p style="color: var(--color-fg-muted); margin-bottom: var(--space-4);">Enable the legal feature in Platform Settings to manage documents.</p>
+    <button class="btn btn-primary" onclick="navigate('settings')">Go to Settings</button>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Document</th>
+            <th>Required</th>
+            <th>Approved Version</th>
+            <th>Latest Version</th>
+            <th>Versions</th>
+            <th>Last Updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="legalTableBody">
+          {% for doc in documents %}
+          <tr>
+            <td>
+              <div style="font-weight: 500;">{{ doc.name }}</div>
+              <div class="text-muted" style="font-size: var(--text-xs);">{{ doc.key }}</div>
+            </td>
+            <td><span class="badge {% if doc.required %}badge-warning{% else %}badge-neutral{% endif %}">{{ 'Yes' if doc.required else 'No' }}</span></td>
+            <td>{{ doc.approved_version or '<span class="text-muted">—</span>' | safe }}</td>
+            <td>{{ doc.latest_version or '<span class="text-muted">—</span>' | safe }}</td>
+            <td>{{ doc.versions_count }}</td>
+            <td>{{ doc.updated_at }}</td>
+            <td>
+              <div class="btn-group">
+                <button class="btn btn-ghost btn-sm" onclick="editLegal('{{ doc.key }}')" title="Edit">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-sm" onclick="viewLegal('{{ doc.key }}')" title="View">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Legal Document Modal -->
+<div id="legalModalContainer"></div>
+
+<script>
+async function loadLegalData() {
+  try {
+    const response = await AdminAPI.apiRequest('/legal');
+    const documents = response.documents || [];
+    renderLegalTable(documents);
+  } catch (error) {
+    console.error('Failed to load legal documents:', error);
+    showToast('Failed to load legal documents', 'error');
+  }
+}
+
+function renderLegalTable(documents) {
+  const tbody = document.getElementById('legalTableBody');
+  if (!tbody) return;
+
+  if (!documents.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align: center; padding: var(--space-8); color: var(--color-fg-muted);">
+          No legal documents configured. Click "Add Document" to create one.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = documents.map(doc => `
+    <tr>
+      <td>
+        <div style="font-weight: 500;">${escapeHtml(doc.name)}</div>
+        <div class="text-muted" style="font-size: var(--text-xs);">${escapeHtml(doc.key)}</div>
+      </td>
+      <td><span class="badge ${doc.required ? 'badge-warning' : 'badge-neutral'}">${doc.required ? 'Yes' : 'No'}</span></td>
+      <td>${doc.approved_version ? escapeHtml(doc.approved_version) : '<span class="text-muted">—</span>'}</td>
+      <td>${doc.latest_version ? escapeHtml(doc.latest_version) : '<span class="text-muted">—</span>'}</td>
+      <td>${doc.versions_count}</td>
+      <td>${doc.updated_at ? formatDate(doc.updated_at) : '—'}</td>
+      <td>
+        <div class="btn-group">
+          <button class="btn btn-ghost btn-sm" onclick="editLegal('${escapeHtml(doc.key)}')" title="Edit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="viewLegal('${escapeHtml(doc.key)}')" title="View">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openLegalModal(doc = null) {
+  const isEdit = !!doc;
+  const title = isEdit ? `Edit Document: ${doc.name}` : 'Add Legal Document';
+
+  const body = `
+    <form id="legalForm">
+      <input type="hidden" name="key" value="${isEdit ? escapeHtml(doc.key) : ''}" ${isEdit ? 'readonly' : ''}>
+      <div class="form-group">
+        <label for="legalKey">Key <span class="required">*</span></label>
+        <input type="text" id="legalKey" name="key" placeholder="e.g., terms_of_service" required ${isEdit ? 'readonly' : ''}>
+        <div class="form-hint">Unique identifier (lowercase, underscores only)</div>
+      </div>
+      <div class="form-group">
+        <label for="legalName">Name <span class="required">*</span></label>
+        <input type="text" id="legalName" name="name" placeholder="Terms of Service" required value="${isEdit ? escapeHtml(doc.name) : ''}">
+      </div>
+      <div class="form-group">
+        <label for="legalVersion">Version</label>
+        <input type="text" id="legalVersion" name="version" placeholder="1.0.0" value="${isEdit ? '' : '1.0.0'}">
+        <div class="form-hint">Semantic version. Leave empty for auto-increment.</div>
+      </div>
+      <div class="form-group">
+        <label for="legalContent">Content (Markdown) <span class="required">*</span></label>
+        <textarea id="legalContent" name="content" rows="15" required placeholder="Enter legal document content in Markdown. Use {{variable}} for placeholders.">${isEdit ? escapeHtml(doc.content || '') : ''}</textarea>
+        <div class="form-hint">Supports {{variable}} substitution. Required variables will be validated.</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label class="checkbox-label">
+            <input type="checkbox" name="required" ${doc?.required ? 'checked' : 'checked'}>
+            <span>Required for account creation</span>
+          </label>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label class="checkbox-label">
+            <input type="checkbox" name="auto_approve" ${!isEdit ? 'checked' : ''}>
+            <span>Auto-approve this version</span>
+          </label>
+        </div>
+      </div>
+    </form>
+  `;
+
+  const footer = `
+    <button class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+    <button class="btn btn-primary" onclick="saveLegal('${isEdit ? escapeHtml(doc.key) : ''}')">${isEdit ? 'Update' : 'Create'}</button>
+  `;
+
+  const modal = AdminAPI.createModal(title, body, footer);
+  modal.id = 'legalModal';
+}
+
+async function saveLegal(key) {
+  const form = document.getElementById('legalForm');
+  if (!validateForm(form)) return;
+
+  const data = serializeForm(form);
+  data.required = data.required === 'on';
+  data.auto_approve = data.auto_approve === 'on';
+
+  try {
+    const endpoint = key ? `/legal/${key}` : '/legal';
+    const method = key ? 'PUT' : 'POST';
+    await AdminAPI.apiRequest(endpoint, { method, body: JSON.stringify(data) });
+
+    showToast(key ? 'Document updated' : 'Document created', 'success');
+    closeModal(document.querySelector('#legalModal .modal-close'));
+    await loadLegalData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function editLegal(key) {
+  try {
+    const doc = await AdminAPI.apiRequest(`/legal/${key}`);
+    openLegalModal(doc);
+  } catch (error) {
+    showToast('Failed to load document', 'error');
+  }
+}
+
+async function viewLegal(key) {
+  try {
+    const doc = await AdminAPI.apiRequest(`/legal/${key}`);
+    const body = `
+      <div style="max-height: 60vh; overflow: auto;">
+        <div style="margin-bottom: var(--space-4); padding: var(--space-4); background: var(--color-bg); border-radius: var(--radius-md);">
+          <div style="display: flex; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3);">
+            <span class="badge ${doc.required ? 'badge-warning' : 'badge-neutral'}">${doc.required ? 'Required' : 'Optional'}</span>
+            <span class="badge badge-info">v${doc.version}</span>
+            <span class="badge ${doc.approved ? 'badge-success' : 'badge-neutral'}">${doc.approved ? 'Approved' : 'Draft'}</span>
+          </div>
+          <div style="font-size: var(--text-sm); color: var(--color-fg-muted);">
+            SHA-256: <code>${doc.sha256 || '—'}</code>
+          </div>
+        </div>
+        <div class="prose" style="white-space: pre-wrap; font-family: inherit;">${escapeHtml(doc.content)}</div>
+      </div>
+    `;
+    AdminAPI.createModal(`Document: ${doc.name}`, body, '<button class="btn btn-secondary" onclick="closeModal(this)">Close</button>');
+  } catch (error) {
+    showToast('Failed to load document', 'error');
+  }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+  if (currentPage === 'legal') loadLegalData();
+});
+
+window.refreshLegal = loadLegalData;
+</script>
+{% endblock %}

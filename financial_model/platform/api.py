@@ -546,3 +546,7 @@ def install_platform(application: FastAPI, model_router: APIRouter, service: Pla
     application.state.platform = service
     application.include_router(v1, dependencies=[Depends(guard)])
     application.include_router(model_router, dependencies=[Depends(guard)])
+
+    # Install admin portal
+    from financial_model.admin import install_admin_portal
+    install_admin_portal(application)
