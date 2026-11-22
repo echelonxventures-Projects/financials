@@ -375,7 +375,10 @@ class TestConfigFromStatements:
 # --------------------------------------------------------------------------- #
 @pytest.fixture
 def client():
-    return TestClient(create_app(config_loader.get_config(builtin=config_loader._BUILTIN_DEFAULTS)))
+    # Disable platform mode for agnostic API tests
+    cfg = config_loader.get_config(builtin=config_loader._BUILTIN_DEFAULTS)
+    cfg.setdefault("platform", {})["enabled"] = False
+    return TestClient(create_app(cfg))
 
 
 class TestAPI:

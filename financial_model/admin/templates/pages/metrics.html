@@ -42,8 +42,8 @@
             <td>{{ metric.name }}</td>
             <td><span class="badge badge-neutral">{{ metric.unit }}</span></td>
             <td class="text-muted" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ metric.description or '—' }}</td>
-            <td>{{ metric.default_included !== null && metric.default_included !== undefined ? metric.default_included : '<span class="text-muted">—</span>' | safe }}</td>
-            <td>{{ metric.default_overage !== null && metric.default_overage !== undefined ? '$' + (metric.default_overage / 100).toFixed(4) + '/unit' : '<span class="text-muted">—</span>' | safe }}</td>
+            <td>{% if metric.default_included is not none and metric.default_included is defined %}{{ metric.default_included }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td>{% if metric.default_overage is not none and metric.default_overage is defined %}${{ '%.4f'|format(metric.default_overage / 100) }}/unit{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td>
               <div class="btn-group">
                 <button class="btn btn-ghost btn-sm" onclick="editMetric('{{ metric.key }}')" title="Edit">

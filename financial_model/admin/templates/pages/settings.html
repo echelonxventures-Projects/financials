@@ -73,13 +73,13 @@
       <div class="form-row">
         <div class="form-group" style="flex: 1;">
           <label class="checkbox-label">
-            <input type="checkbox" name="allow_signup" {{ allow_signup ? 'checked' : '' }}>
+            <input type="checkbox" name="allow_signup" {% if allow_signup %}checked{% endif %}>
             <span>Allow self-service signup</span>
           </label>
         </div>
         <div class="form-group" style="flex: 1;">
           <label class="checkbox-label">
-            <input type="checkbox" name="require_secret_key" {{ require_secret_key ? 'checked' : '' }}>
+            <input type="checkbox" name="require_secret_key" {% if require_secret_key %}checked{% endif %}>
             <span>Require secret key for signup</span>
           </label>
         </div>
@@ -106,7 +106,7 @@
     <form id="featuresForm">
       <div class="form-group">
         <label class="checkbox-label" style="flex-direction: row; align-items: center; gap: var(--space-3); padding: var(--space-4); background: var(--color-bg); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-          <input type="checkbox" name="legal" {{ features.legal ? 'checked' : '' }} style="width: 20px; height: 20px;">
+          <input type="checkbox" name="legal" {% if features.legal %}checked{% endif %} style="width: 20px; height: 20px;">
           <div>
             <div style="font-weight: 500;">Legal Documents</div>
             <div class="text-muted" style="font-size: var(--text-sm);">Terms of Service, Privacy Policy, DPA, custom documents with versioning and approval workflow</div>
@@ -115,7 +115,7 @@
       </div>
       <div class="form-group">
         <label class="checkbox-label" style="flex-direction: row; align-items: center; gap: var(--space-3); padding: var(--space-4); background: var(--color-bg); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-          <input type="checkbox" name="email" {{ features.email ? 'checked' : '' }} style="width: 20px; height: 20px;">
+          <input type="checkbox" name="email" {% if features.email %}checked{% endif %} style="width: 20px; height: 20px;">
           <div>
             <div style="font-weight: 500;">Email Templates</div>
             <div class="text-muted" style="font-size: var(--text-sm);">Transactional emails with template variables, multiple providers (SMTP, SendGrid, Mailgun)</div>
@@ -124,7 +124,7 @@
       </div>
       <div class="form-group">
         <label class="checkbox-label" style="flex-direction: row; align-items: center; gap: var(--space-3); padding: var(--space-4); background: var(--color-bg); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-          <input type="checkbox" name="sso" {{ features.sso ? 'checked' : '' }} style="width: 20px; height: 20px;">
+          <input type="checkbox" name="sso" {% if features.sso %}checked{% endif %} style="width: 20px; height: 20px;">
           <div>
             <div style="font-weight: 500;">SSO Providers</div>
             <div class="text-muted" style="font-size: var(--text-sm);">OpenID Connect, SAML, Custom OAuth2 with auto-provisioning</div>

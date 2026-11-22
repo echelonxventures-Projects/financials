@@ -36,7 +36,7 @@
       </div>
       <div class="form-group">
         <label class="checkbox-label">
-          <input type="checkbox" name="dbEcho" {{ db_echo ? 'checked' : '' }}>
+          <input type="checkbox" name="dbEcho" {% if db_echo %}checked{% endif %}>
           <span>Echo SQL (debug logging)</span>
         </label>
       </div>

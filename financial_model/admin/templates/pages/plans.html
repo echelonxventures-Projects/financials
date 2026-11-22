@@ -30,22 +30,22 @@
     </div>
 
     <div class="plan-price">
-      {% if plan.price_monthly > 0 %}
+      {% if plan.price_monthly and plan.price_monthly > 0 %}
       <div class="price-row">
         <span class="price-amount">{{ currency }}{{ '%.2f'|format(plan.price_monthly / 100) }}</span>
         <span class="price-period">/month</span>
       </div>
       {% endif %}
-      {% if plan.price_yearly > 0 %}
+      {% if plan.price_yearly and plan.price_yearly > 0 %}
       <div class="price-row">
         <span class="price-amount">{{ currency }}{{ '%.2f'|format(plan.price_yearly / 100) }}</span>
         <span class="price-period">/year</span>
-        {% if plan.price_monthly > 0 %}
+        {% if plan.price_monthly and plan.price_monthly > 0 %}
         <span class="price-save">({{ '%.0f'|format((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100) }}% off)</span>
         {% endif %}
       </div>
       {% endif %}
-      {% if plan.price_monthly == 0 and plan.price_yearly == 0 %}
+      {% if (not plan.price_monthly or plan.price_monthly == 0) and (not plan.price_yearly or plan.price_yearly == 0) %}
       <div class="price-row"><span class="price-amount">Free</span></div>
       {% endif %}
     </div>
@@ -83,7 +83,15 @@
           {% for metric, config in plan.metering.items() %}
           <li>
             <span class="metric-name">{{ metric }}</span>
-            <span class="metric-config">Included: {{ config.included or '∞' }}, Overage: {{ currency }}{{ '%.4f'|format(config.overage or 0) }}/unit</span>
+            <span class="metric-config">
+              Included: {{ config.included or '∞' }},
+              Overage:
+              {% if config.overage in ['block', 'bill'] %}
+                {{ config.overage }}
+              {% else %}
+                {{ currency }}{{ '%.4f'|format(config.overage or 0) }}/unit
+              {% endif %}
+            </span>
           </li>
           {% endfor %}
         </ul>

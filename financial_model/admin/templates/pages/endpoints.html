@@ -113,7 +113,7 @@
       </div>
       <div class="form-group">
         <label class="checkbox-label">
-          <input type="checkbox" name="public" {{ default_endpoint.public ? 'checked' : '' }}>
+          <input type="checkbox" name="public" {% if default_endpoint.public %}checked{% endif %}>
           <span>Public by default (no auth required)</span>
         </label>
       </div>

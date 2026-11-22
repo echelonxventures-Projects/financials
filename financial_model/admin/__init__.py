@@ -450,7 +450,7 @@ async def create_plan(request: Request, service: PlatformService = Depends(get_a
         "limits": data.get("limits", {}),
         "metering": data.get("metering", {}),
     }
-    service.catalog._data["plans"][key] = plan_data
+    service.catalog.data["plans"][key] = plan_data
     service.catalog.save()
     return {"created": True, "key": key}
 
@@ -461,7 +461,7 @@ async def update_plan(key: str, request: Request, service: PlatformService = Dep
     if key not in service.catalog.plans:
         raise HTTPException(status_code=404, detail="Plan not found")
     data = await request.json()
-    plan_data = service.catalog._data["plans"][key]
+    plan_data = service.catalog.data["plans"][key]
     for field in ["name", "description", "price_monthly", "price_yearly", "audience", "features", "limits", "metering"]:
         if field in data:
             plan_data[field] = data[field]
@@ -478,7 +478,7 @@ async def delete_plan(key: str, service: PlatformService = Depends(get_admin_ser
     for tenant in service.store.tenants.values():
         if tenant.plan == key:
             raise HTTPException(status_code=400, detail=f"Plan in use by tenant {tenant.name}")
-    del service.catalog._data["plans"][key]
+    del service.catalog.data["plans"][key]
     service.catalog.save()
     return {"deleted": True}
 
@@ -503,7 +503,7 @@ async def create_role(request: Request, service: PlatformService = Depends(get_a
         raise HTTPException(status_code=400, detail="key and label are required")
     if key in (service.catalog.get("roles") or {}):
         raise HTTPException(status_code=409, detail="Role already exists")
-    roles = service.catalog._data.setdefault("roles", {})
+    roles = service.catalog.data.setdefault("roles", {})
     roles[key] = {"label": label, "rank": rank, "permissions": permissions}
     service.catalog.save()
     return {"created": True, "key": key}
@@ -557,7 +557,7 @@ async def create_account_kind(request: Request, service: PlatformService = Depen
     label = data.get("label")
     if not key or not label:
         raise HTTPException(status_code=400, detail="key and label are required")
-    kinds = service.catalog._data.setdefault("account_kinds", {})
+    kinds = service.catalog.data.setdefault("account_kinds", {})
     if key in kinds:
         raise HTTPException(status_code=409, detail="Account kind already exists")
     kinds[key] = {
@@ -622,7 +622,7 @@ async def create_metric(request: Request, service: PlatformService = Depends(get
     unit = data.get("unit", "units")
     if not key or not name:
         raise HTTPException(status_code=400, detail="key and name are required")
-    metrics = service.catalog._data.setdefault("metrics", {})
+    metrics = service.catalog.data.setdefault("metrics", {})
     if key in metrics:
         raise HTTPException(status_code=409, detail="Metric already exists")
     metrics[key] = {
@@ -630,7 +630,7 @@ async def create_metric(request: Request, service: PlatformService = Depends(get
         "unit": unit,
         "description": data.get("description", ""),
     }
-    default_metering = service.catalog._data.setdefault("default_metering", {})
+    default_metering = service.catalog.data.setdefault("default_metering", {})
     if "default_included" in data or "default_overage" in data:
         default_metering[key] = {
             "included": data.get("default_included"),
@@ -650,7 +650,7 @@ async def update_metric(key: str, request: Request, service: PlatformService = D
     for field in ["name", "unit", "description"]:
         if field in data:
             metrics[key][field] = data[field]
-    default_metering = service.catalog._data.setdefault("default_metering", {})
+    default_metering = service.catalog.data.setdefault("default_metering", {})
     if "default_included" in data or "default_overage" in data:
         default_metering[key] = {
             "included": data.get("default_included", default_metering.get(key, {}).get("included")),
@@ -702,7 +702,7 @@ async def update_metering_rule(plan_key: str, metric_key: str, request: Request,
     if "overage" in data:
         metering.overage = data["overage"]
     # Save via catalog
-    plan_data = service.catalog._data["plans"][plan_key]
+    plan_data = service.catalog.data["plans"][plan_key]
     plan_data.setdefault("metering", {})[metric_key] = {
         "included": metering.included,
         "overage": metering.overage,
@@ -727,7 +727,7 @@ async def create_endpoint(request: Request, service: PlatformService = Depends(g
     pattern = data.get("pattern")
     if not pattern:
         raise HTTPException(status_code=400, detail="pattern is required")
-    endpoints = service.catalog._data.setdefault("endpoints", {})
+    endpoints = service.catalog.data.setdefault("endpoints", {})
     if pattern in endpoints:
         raise HTTPException(status_code=409, detail="Endpoint pattern already exists")
     endpoints[pattern] = {
@@ -772,7 +772,7 @@ async def delete_endpoint(pattern: str, service: PlatformService = Depends(get_a
 async def update_default_endpoint(request: Request, service: PlatformService = Depends(get_admin_service)):
     """Update default endpoint configuration."""
     data = await request.json()
-    default_endpoint = service.catalog._data.setdefault("default_endpoint", {})
+    default_endpoint = service.catalog.data.setdefault("default_endpoint", {})
     for field in ["permission", "features", "metric", "quantity", "model_type", "periods_from", "public"]:
         if field in data:
             default_endpoint[field] = data[field]
@@ -796,7 +796,7 @@ async def create_message(request: Request, service: PlatformService = Depends(ge
     message = data.get("message")
     if not key or not message:
         raise HTTPException(status_code=400, detail="key and message are required")
-    messages = service.catalog._data.setdefault("messages", {})
+    messages = service.catalog.data.setdefault("messages", {})
     if key in messages:
         raise HTTPException(status_code=409, detail="Message already exists")
     messages[key] = message
@@ -933,7 +933,7 @@ async def get_billing_settings(service: PlatformService = Depends(get_admin_serv
 async def update_billing_settings(request: Request, service: PlatformService = Depends(get_admin_service)):
     """Update billing configuration."""
     data = await request.json()
-    billing_cfg = service.catalog._data.setdefault("billing", {})
+    billing_cfg = service.catalog.data.setdefault("billing", {})
     billing_cfg["provider"] = data.get("provider", "manual")
     if "stripe" in data:
         billing_cfg["stripe"] = data["stripe"]
@@ -994,19 +994,22 @@ async def get_settings(service: PlatformService = Depends(get_admin_service)):
 async def get_dashboard_context(service: PlatformService, principal: Principal) -> dict[str, Any]:
     """Build dashboard context."""
     # Get stats
-    total_users = len(service.store.users)
-    total_tenants = len(service.store.tenants)
-    total_api_keys = sum(len(service.store.list_keys(t.id)) for t in service.store.tenants.values())
+    tenants = service.store.list_tenants()
+    total_tenants = len(tenants)
+    total_api_keys = sum(len(service.store.list_keys(t.id)) for t in tenants)
+    total_users = 0
+    for t in tenants:
+        total_users += len(service.store.members(t.id))
 
     # Recent activity (simplified)
-    recent_tenants = sorted(service.store.tenants.values(), key=lambda t: t.created_at, reverse=True)[:5]
+    recent_tenants = sorted(tenants, key=lambda t: t.created_at, reverse=True)[:5]
 
     return {
         "stats": {
             "total_users": total_users,
             "total_tenants": total_tenants,
             "total_api_keys": total_api_keys,
-            "active_subscriptions": sum(1 for t in service.store.tenants.values() if t.status == "active"),
+            "active_subscriptions": sum(1 for t in tenants if t.status == "active"),
         },
         "recent_tenants": [
             {
@@ -1051,7 +1054,7 @@ async def get_email_context(service: PlatformService) -> dict[str, Any]:
         return {"templates": [], "enabled": False}
 
     templates = []
-    for key, template in service.email.templates.templates.items():
+    for key, template in service.email.templates._cache.items():
         templates.append({
             "key": key,
             "name": template.name,
@@ -1093,7 +1096,7 @@ async def get_plans_context(service: PlatformService) -> dict[str, Any]:
         plans.append({
             "key": key,
             "name": plan.name,
-            "description": plan.description,
+            "description": plan.raw.get("description", plan.display.get("description", "")),
             "price_monthly": plan.price_monthly,
             "price_yearly": plan.price_yearly,
             "currency": service.catalog.currency,
@@ -1112,6 +1115,7 @@ async def get_billing_context(service: PlatformService) -> dict[str, Any]:
     return {
         "provider": billing_cfg.get("provider", "manual"),
         "stripe": billing_cfg.get("stripe", {}),
+        "manual": billing_cfg.get("manual", {}),
     }
 
 
@@ -1344,8 +1348,10 @@ async def get_infrastructure_context(service: PlatformService) -> dict[str, Any]
     import sys
     import platform
 
-    # Get database info
-    db_url = str(service.store.db_path) if service.store.db_path else "unknown"
+    # Get database info from settings
+    from financial_model import config_loader
+    cfg = config_loader.get_config()
+    db_url = cfg.get("platform", {}).get("database", "sqlite:///financial_platform.db")
     db_type = "sqlite" if "sqlite" in db_url else "postgresql" if "postgresql" in db_url else "mysql" if "mysql" in db_url else "unknown"
 
     return {
@@ -1354,7 +1360,7 @@ async def get_infrastructure_context(service: PlatformService) -> dict[str, Any]
         "max_overflow": 10,
         "pool_timeout": 30,
         "db_echo": False,
-        "catalog_sources": service.catalog._data.get("catalog", ["builtin"]),
+        "catalog_sources": service.catalog.data.get("catalog", ["builtin"]),
         "storage": {
             "legal_path": "./legal_documents",
             "email_templates_path": "./email_templates",
@@ -1388,7 +1394,7 @@ async def get_currency(service: PlatformService = Depends(get_admin_service)):
 @admin_router.put("/api/currency")
 async def update_currency(request: Request, service: PlatformService = Depends(get_admin_service)):
     data = await request.json()
-    currency_cfg = service.catalog._data.setdefault("currency", {})
+    currency_cfg = service.catalog.data.setdefault("currency", {})
     for field in ["code", "display_format", "decimal_places", "thousands_separator", "decimal_separator"]:
         if field in data:
             currency_cfg[field] = data[field]
@@ -1405,7 +1411,7 @@ async def create_country(request: Request, service: PlatformService = Depends(ge
     code = data.get("code", "").upper()
     if not code or len(code) != 2:
         raise HTTPException(status_code=400, detail="code must be 2-letter country code")
-    countries = service.catalog._data.setdefault("countries", [])
+    countries = service.catalog.data.setdefault("countries", [])
     if any(c["code"] == code for c in countries):
         raise HTTPException(status_code=409, detail="Country already exists")
     countries.append({
@@ -1452,9 +1458,9 @@ async def get_timezone(service: PlatformService = Depends(get_admin_service)):
 async def update_timezone(request: Request, service: PlatformService = Depends(get_admin_service)):
     data = await request.json()
     if "default_timezone" in data:
-        service.catalog._data["default_timezone"] = data["default_timezone"]
+        service.catalog.data["default_timezone"] = data["default_timezone"]
     if "use_user_timezone" in data:
-        service.catalog._data["use_user_timezone"] = data["use_user_timezone"]
+        service.catalog.data["use_user_timezone"] = data["use_user_timezone"]
     service.catalog.save()
     return {"updated": True}
 
@@ -1481,7 +1487,7 @@ async def create_account_status(request: Request, service: PlatformService = Dep
     key = data.get("key")
     if not key:
         raise HTTPException(status_code=400, detail="key is required")
-    statuses = service.catalog._data.setdefault("account_statuses", {})
+    statuses = service.catalog.data.setdefault("account_statuses", {})
     if key in statuses:
         raise HTTPException(status_code=409, detail="Status already exists")
     statuses[key] = {
@@ -1490,7 +1496,7 @@ async def create_account_status(request: Request, service: PlatformService = Dep
         "message": data.get("message"),
     }
     if data.get("is_initial"):
-        service.catalog._data["initial_status"] = key
+        service.catalog.data["initial_status"] = key
     service.catalog.save()
     return {"created": True, "key": key}
 
@@ -1504,7 +1510,7 @@ async def update_account_status(key: str, request: Request, service: PlatformSer
         if field in data:
             statuses[key][field] = data[field]
     if data.get("is_initial"):
-        service.catalog._data["initial_status"] = key
+        service.catalog.data["initial_status"] = key
     service.catalog.save()
     return {"updated": True}
 
@@ -1528,7 +1534,7 @@ async def set_initial_status(request: Request, service: PlatformService = Depend
     statuses = service.catalog.get("account_statuses") or {}
     if status not in statuses:
         raise HTTPException(status_code=404, detail="Status not found")
-    service.catalog._data["initial_status"] = status
+    service.catalog.data["initial_status"] = status
     service.catalog.save()
     return {"updated": True}
 
@@ -1545,7 +1551,7 @@ async def get_default_plans(service: PlatformService = Depends(get_admin_service
 async def update_default_plans(request: Request, service: PlatformService = Depends(get_admin_service)):
     data = await request.json()
     if "default_plan" in data:
-        service.catalog._data["default_plan"] = data["default_plan"]
+        service.catalog.data["default_plan"] = data["default_plan"]
     service.catalog.save()
     return {"updated": True}
 
@@ -1557,7 +1563,7 @@ async def update_lapsed_plan(request: Request, service: PlatformService = Depend
         raise HTTPException(status_code=400, detail="lapsed_plan is required")
     if plan not in service.catalog.plans:
         raise HTTPException(status_code=404, detail="Plan not found")
-    service.catalog._data["lapsed_plan"] = plan
+    service.catalog.data["lapsed_plan"] = plan
     service.catalog.save()
     return {"updated": True}
 
@@ -1579,7 +1585,7 @@ async def update_creator_role(request: Request, service: PlatformService = Depen
         raise HTTPException(status_code=400, detail="creator_role is required")
     if role not in service.catalog.get("roles", {}):
         raise HTTPException(status_code=404, detail="Role not found")
-    service.catalog._data["creator_role"] = role
+    service.catalog.data["creator_role"] = role
     service.catalog.save()
     return {"updated": True}
 
@@ -1591,7 +1597,7 @@ async def update_default_member_role(request: Request, service: PlatformService 
         raise HTTPException(status_code=400, detail="default_member_role is required")
     if role not in service.catalog.get("roles", {}):
         raise HTTPException(status_code=404, detail="Role not found")
-    service.catalog._data["default_member_role"] = role
+    service.catalog.data["default_member_role"] = role
     service.catalog.save()
     return {"updated": True}
 
@@ -1603,7 +1609,7 @@ async def update_service_key_role(request: Request, service: PlatformService = D
         raise HTTPException(status_code=400, detail="service_key_role is required")
     if role not in service.catalog.get("roles", {}):
         raise HTTPException(status_code=404, detail="Role not found")
-    service.catalog._data["service_key_role"] = role
+    service.catalog.data["service_key_role"] = role
     service.catalog.save()
     return {"updated": True}
 
@@ -1629,7 +1635,7 @@ async def get_default_metering(service: PlatformService = Depends(get_admin_serv
 @admin_router.put("/api/default-metering")
 async def update_default_metering(request: Request, service: PlatformService = Depends(get_admin_service)):
     data = await request.json()
-    default_metering = service.catalog._data.setdefault("default_metering", {})
+    default_metering = service.catalog.data.setdefault("default_metering", {})
     if "default_metering" in data:
         for key, config in data["default_metering"].items():
             if key in service.catalog.get("metrics", {}):
@@ -1666,13 +1672,13 @@ async def test_database_connection(service: PlatformService = Depends(get_admin_
 
 @admin_router.get("/api/infrastructure/catalog")
 async def get_catalog_sources(service: PlatformService = Depends(get_admin_service)):
-    return {"sources": service.catalog._data.get("catalog", ["builtin"])}
+    return {"sources": service.catalog.data.get("catalog", ["builtin"])}
 
 @admin_router.put("/api/infrastructure/catalog")
 async def update_catalog_sources(request: Request, service: PlatformService = Depends(get_admin_service)):
     data = await request.json()
     sources = data.get("sources", ["builtin"])
-    service.catalog._data["catalog"] = sources
+    service.catalog.data["catalog"] = sources
     service.catalog.save()
     return {"updated": True, "note": "Requires restart"}
 

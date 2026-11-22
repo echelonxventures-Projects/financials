@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pandas as pd
 from fastapi.testclient import TestClient
 
+from financial_model import config_loader
 from financial_model.api.main import (
     AssumptionsConfig,
     DriverConfig,
@@ -19,13 +20,16 @@ from financial_model.api.main import (
     _config_to_lbo_model,
     _config_to_model,
     _result_to_dict,
-    app,
+    create_app,
 )
 from financial_model.core.balancer import BalanceResult
 from financial_model.core.model import ModelResult
 from financial_model.core.period import Period, PeriodIndex, PeriodType
 
-client = TestClient(app)
+# Create app with platform disabled for non-platform API tests
+cfg = config_loader.get_config(builtin=config_loader._BUILTIN_DEFAULTS)
+cfg.setdefault("platform", {})["enabled"] = False
+client = TestClient(create_app(cfg))
 
 
 class TestAPIExceptionHandlersFinal:

@@ -327,6 +327,7 @@ class TestCLI:
 
 def _settings(**api) -> dict:
     cfg = config_loader.get_config(builtin=config_loader._BUILTIN_DEFAULTS)
+    cfg.setdefault("platform", {})["enabled"] = False
     cfg["api"].update(api)
     return cfg
 

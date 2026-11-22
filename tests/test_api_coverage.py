@@ -8,9 +8,13 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from financial_model.api.main import app
+from financial_model import config_loader
+from financial_model.api.main import create_app
 
-client = TestClient(app)
+# Create app with platform disabled for non-platform API tests
+cfg = config_loader.get_config(builtin=config_loader._BUILTIN_DEFAULTS)
+cfg.setdefault("platform", {})["enabled"] = False
+client = TestClient(create_app(cfg))
 
 
 class TestAPIExceptionHandlers:

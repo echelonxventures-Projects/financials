@@ -35,7 +35,7 @@
             </td>
             <td><span class="badge badge-neutral">{{ metric.unit }}</span></td>
             <td>
-              {% if metric.included !== null and metric.included !== undefined %}
+              {% if metric.included is not none and metric.included is defined %}
               <input type="number" class="form-input form-input-sm" name="included[{{ metric.key }}]" value="{{ metric.included }}" min="0" style="width: 100px;">
               {% else %}
               <input type="number" class="form-input form-input-sm" name="included[{{ metric.key }}]" placeholder="Unlimited" min="0" style="width: 100px;">

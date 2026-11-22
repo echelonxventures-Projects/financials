@@ -14,15 +14,19 @@ import typer
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from financial_model.api.main import app
+from financial_model import config_loader
+from financial_model.api.main import create_app
 from financial_model.cli.main import _export_csv, _export_json, _print_summary
 from financial_model.cli.main import app as cli_app
 from financial_model.core.balancer import BalanceResult
+
+# Create app with platform disabled for non-platform API tests
+cfg = config_loader.get_config(builtin=config_loader._BUILTIN_DEFAULTS)
+cfg.setdefault("platform", {})["enabled"] = False
+client = TestClient(create_app(cfg))
+click_app = cli_app
 from financial_model.core.model import ModelResult
 from financial_model.core.period import Period, PeriodIndex, PeriodType
-
-client = TestClient(app)
-click_app = cli_app
 
 
 class TestAPIExceptionHandlers:

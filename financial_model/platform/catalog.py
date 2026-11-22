@@ -148,6 +148,16 @@ class MeterRule:
             return None if self.cap is None else max(self.cap - used, 0.0)
         return max((self.included or 0) - used, 0.0)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API serialization."""
+        return {
+            "metric": self.metric,
+            "included": self.included,
+            "overage": self.overage,
+            "tiers": [{"up_to": t.up_to, "unit_price": t.unit_price} for t in self.tiers],
+            "cap": self.cap,
+        }
+
 
 # --------------------------------------------------------------------------- #
 # Plans

@@ -3,7 +3,7 @@
 # ALL business configuration (plans, prices, legal docs, email, SSO, billing) is managed
 # via the Admin Portal API and stored in versioned YAML files in the data directories.
 
-enabled: false
+enabled: true
 # sqlite:///relative.db, sqlite:////absolute.db, sqlite:///:memory:, or a plugin scheme.
 database: sqlite:///financial_platform.db
 # Catalogue files merged in order; `builtin` = the shipped catalog.yaml.

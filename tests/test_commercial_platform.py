@@ -107,10 +107,12 @@ class TestNothingCommercialInCode:
         # billing config is now managed via Admin Portal, not in builtin settings
         # assert get_config(builtin=None)["platform"]["billing"]["stripe"]["status_map"] == builtin_settings()["billing"]["stripe"]["status_map"]
 
-    def test_platform_off_by_default(self):
+    def test_platform_on_by_default(self):
         c = TestClient(create_app(get_config(builtin=None)))
-        assert c.post("/v1/signup", json={}).status_code == 404
-        assert c.post("/calculate", json={"config": business_template("paas", years=2)}).status_code == 200
+        # Platform is now enabled by default, so /v1/signup exists (returns 422 for invalid input, not 404)
+        assert c.post("/v1/signup", json={}).status_code == 422
+        # Platform endpoints require auth
+        assert c.post("/calculate", json={"config": business_template("paas", years=2)}).status_code == 401
 
 
 class TestB2C:
