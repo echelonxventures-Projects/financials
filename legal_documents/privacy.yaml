@@ -1,0 +1,37 @@
+versions:
+- key: privacy
+  name: Privacy Policy
+  version: '2026-11-22'
+  content_hash: f7a3de29987d8c2e4c36f3b0f775e841fbaf2b5a562f44a7996df1a94a4c3710
+  required: true
+  approved: true
+  approved_by: system
+  approved_at: 1795346130.048787
+  created_at: 1795346130.048772
+  updated_at: 1795346130.048787
+  metadata: {}
+  content: "# Privacy Policy\n\n**Effective Date:** \n\n## 1. Information We Collect\n\
+    \n### 1.1 Account Information\n- Email address, name, password hash\n- Organization\
+    \ name (for B2B accounts)\n- Billing information (processed by payment provider)\n\
+    \n### 1.2 Usage Data\n- Model configurations and assumptions\n- Calculation results\
+    \ and exports\n- API requests and timestamps\n- Feature usage metrics\n\n### 1.3\
+    \ Technical Data\n- IP address, browser/device info\n- Request logs for security\
+    \ and debugging\n\n## 2. How We Use Your Information\n\n- Provide and improve\
+    \ the Platform\n- Process billing and subscriptions\n- Send service communications\
+    \ (security, billing, legal)\n- Analyze usage to improve features\n- Comply with\
+    \ legal obligations\n\n## 3. Data Sharing\n\nWe do not sell your data. We share\
+    \ only:\n- With payment processors (Stripe) for billing\n- With subprocessors\
+    \ listed in our DPA\n- When required by law or to protect rights\n\n## 4. Data\
+    \ Retention\n\n- Account data: retained while account is active\n- Usage logs:\
+    \ 13 months for analytics\n- Billing records: 7 years for tax compliance\n- Deleted\
+    \ on account closure (except legal holds)\n\n## 5. Your Rights\n\nDepending on\
+    \ jurisdiction, you may have rights to:\n- Access, correct, or delete your data\n\
+    - Export your data (we provide JSON/Excel export)\n- Restrict or object to processing\n\
+    - Withdraw consent (where applicable)\n\n## 6. Security\n\n- TLS encryption in\
+    \ transit\n- Encrypted storage for sensitive data\n- Regular security assessments\n\
+    - Incident response procedures\n\n## 7. International Transfers\n\nData may be\
+    \ processed in countries with adequate protection or under appropriate safeguards.\n\
+    \n## 8. Children's Privacy\n\nThe Platform is not directed to children under 16.\n\
+    \n## 9. Changes\n\nWe will notify you of material changes via email or in-platform\
+    \ notice.\n\n## 10. Contact\n\nData Protection Officer: dpo@your-domain.com\n\
+    General: privacy@your-domain.com\n"

@@ -1,0 +1,19 @@
+key: github
+name: GitHub
+type: oidc
+enabled: true
+config:
+  issuer: https://github.com/login/oauth
+  client_id: ''
+  client_secret: ''
+  scopes:
+  - read:user
+  - user:email
+auto_provision: true
+default_role: member
+default_account_kind: organization
+default_plan: free
+domain_hints: []
+created_at: 1795346130.059795
+updated_at: 1795346130.059795
+metadata: {}

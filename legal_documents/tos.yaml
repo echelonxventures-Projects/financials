@@ -1,0 +1,45 @@
+versions:
+- key: tos
+  name: Terms of Service
+  version: '2026-11-22'
+  content_hash: 7f4afd73403b359274f9623083da2a40d06da5b369f280229ac5d4f32ce42506
+  required: true
+  approved: true
+  approved_by: system
+  approved_at: 1795346130.047565
+  created_at: 1795346130.047349
+  updated_at: 1795346130.047565
+  metadata: {}
+  content: "# Terms of Service\n\n**Effective Date:** \n\n## 1. Acceptance of Terms\n\
+    \nBy accessing or using the Financial Model Platform (\"Platform\"), you agree\
+    \ to be bound by these Terms of Service (\"Terms\"). If you do not agree to these\
+    \ Terms, do not use the Platform.\n\n## 2. Description of Service\n\nThe Platform\
+    \ provides financial modeling tools including three-statement models, DCF valuations,\
+    \ LBO analyses, M&A accretion/dilution, and budgeting models. Results are projections\
+    \ based on assumptions you provide.\n\n## 3. User Accounts\n\n### 3.1 Registration\n\
+    You must provide accurate information and maintain the security of your credentials.\
+    \ You are responsible for all activity under your account.\n\n### 3.2 Account\
+    \ Types\n- **Individual**: Single user, personal use\n- **Organization**: Multiple\
+    \ users, shared workspace with roles\n\n### 3.3 Subscription Plans\nPlans, pricing,\
+    \ and features are described on the pricing page. We may change plans with 30\
+    \ days' notice.\n\n## 4. Acceptable Use\n\nYou agree not to:\n- Use the Platform\
+    \ for illegal activities\n- Attempt to gain unauthorized access\n- Interfere with\
+    \ the Platform's operation\n- Reverse engineer or extract source code\n- Use outputs\
+    \ for regulated financial advice without proper licensing\n\n## 5. Intellectual\
+    \ Property\n\n### 5.1 Our IP\nThe Platform, its code, algorithms, and documentation\
+    \ are our proprietary property.\n\n### 5.2 Your Data\nYou retain ownership of\
+    \ your input data and generated models. We do not claim rights to your financial\
+    \ data.\n\n## 6. Disclaimer of Warranties\n\nTHE PLATFORM IS PROVIDED \"AS IS\"\
+    \ WITHOUT WARRANTIES OF ANY KIND. WE DO NOT WARRANT THAT:\n- The Platform will\
+    \ be uninterrupted or error-free\n- Results are accurate, complete, or suitable\
+    \ for any purpose\n- Financial projections will be achieved\n\n## 7. Limitation\
+    \ of Liability\n\nTO THE MAXIMUM EXTENT PERMITTED BY LAW, WE SHALL NOT BE LIABLE\
+    \ FOR:\n- Indirect, incidental, or consequential damages\n- Loss of profits, data,\
+    \ or business opportunities\n- Any financial decisions made based on Platform\
+    \ outputs\n\n## 8. Indemnification\n\nYou agree to indemnify us from claims arising\
+    \ from your use of the Platform or violation of these Terms.\n\n## 9. Termination\n\
+    \nWe may suspend or terminate your access for breach of these Terms. You may cancel\
+    \ at any time.\n\n## 10. Governing Law\n\nThese Terms are governed by the laws\
+    \ of [Jurisdiction], without regard to conflict of laws.\n\n## 11. Changes to\
+    \ Terms\n\nWe may update these Terms. Continued use after changes constitutes\
+    \ acceptance.\n\n## 12. Contact\n\nFor questions: legal@your-domain.com\n"

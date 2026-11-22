@@ -1,0 +1,54 @@
+versions:
+- key: dpa
+  name: Data Processing Agreement
+  version: '2026-11-22'
+  content_hash: f165f5a9d6e21d75a781e1f992e1e044b7d6ed0cc65d112f0203694f7963611b
+  required: false
+  approved: true
+  approved_by: system
+  approved_at: 1795346130.049593
+  created_at: 1795346130.049583
+  updated_at: 1795346130.049593
+  metadata: {}
+  content: "# Data Processing Agreement (DPA)\n\n**Effective Date:** \n\nThis DPA\
+    \ forms part of the Terms of Service between Customer (\"Controller\") and Platform\
+    \ Provider (\"Processor\").\n\n## 1. Definitions\n\nTerms defined in GDPR Article\
+    \ 4 apply. \"Personal Data\", \"Processing\", \"Data Subject\", \"Supervisory\
+    \ Authority\" have their GDPR meanings.\n\n## 2. Scope and Nature of Processing\n\
+    \n### 2.1 Categories of Data Subjects\n- Controller's employees, contractors,\
+    \ and authorized users\n- Controller's customers and prospects (if financial data\
+    \ uploaded)\n\n### 2.2 Categories of Personal Data\n- Contact information (name,\
+    \ email)\n- Authentication credentials (hashed)\n- Financial modeling inputs and\
+    \ outputs\n- Usage analytics and logs\n\n### 2.3 Purpose of Processing\n- Providing\
+    \ the Financial Model Platform\n- Billing and subscription management\n- Security\
+    \ monitoring and fraud prevention\n- Service improvement and analytics\n\n###\
+    \ 2.4 Duration\nProcessing continues for the term of the agreement and 30 days\
+    \ post-termination for data export.\n\n## 3. Processor Obligations\n\n### 3.1\
+    \ Processing Only on Instructions\nProcessor processes Personal Data only on Controller's\
+    \ documented instructions.\n\n### 3.2 Confidentiality\nProcessor ensures personnel\
+    \ are bound by confidentiality obligations.\n\n### 3.3 Security Measures\nProcessor\
+    \ implements appropriate technical and organizational measures:\n- Encryption\
+    \ in transit (TLS 1.2+) and at rest (AES-256)\n- Access controls and authentication\n\
+    - Regular vulnerability assessments\n- Incident response procedures\n\n### 3.4\
+    \ Subprocessors\nCurrent subprocessors:\n- **Stripe** (payment processing) - PCI\
+    \ DSS Level 1\n- **Cloud hosting provider** (infrastructure) - SOC 2 Type II\n\
+    - List maintained at: https://your-domain.com/subprocessors\n\nController may\
+    \ object to new subprocessors within 14 days of notice.\n\n### 3.5 Data Subject\
+    \ Rights\nProcessor assists Controller in fulfilling data subject requests within\
+    \ 14 days.\n\n### 3.6 Breach Notification\nProcessor notifies Controller within\
+    \ 72 hours of discovering a Personal Data breach.\n\n### 3.7 Data Deletion/Return\n\
+    On termination, Processor deletes or returns all Personal Data per Controller's\
+    \ instructions.\n\n### 3.8 Audits\nController may audit Processor's compliance\
+    \ annually with 30 days' notice.\n\n## 4. International Transfers\n\nTransfers\
+    \ outside EEA/UK rely on:\n- Adequacy decisions\n- Standard Contractual Clauses\
+    \ (SCCs)\n- Binding Corporate Rules\n\n## 5. General Provisions\n\n### 5.1 Liability\n\
+    Each party's liability is per the Terms of Service.\n\n### 5.2 Governing Law\n\
+    Same as the Terms of Service.\n\n### 5.3 Amendments\nThis DPA may be amended in\
+    \ writing by both parties.\n\n## 6. Signatures\n\n**Controller:** Customer Name\n\
+    By: _________________________ Date: ___________\n\n**Processor:** Platform Provider\
+    \ Name\nBy: _________________________ Date: ___________\n\n## Annex 1: Technical\
+    \ and Organizational Measures\n\n1. Access control: role-based, least privilege\n\
+    2. Encryption: TLS 1.2+, AES-256 at rest\n3. Availability: 99.9% SLA (Enterprise),\
+    \ backups daily\n4. Integrity: checksums, audit logs\n5. Personnel: background\
+    \ checks, security training\n6. Incident response: <4 hour detection, <24 hour\
+    \ notification\n"

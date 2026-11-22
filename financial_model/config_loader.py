@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import copy
 import os
+import secrets
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -172,6 +173,44 @@ def default(key: str) -> Any:
     return value
 
 
+def _maybe_generate_secret_key(config: dict[str, Any], config_path: Path | None) -> dict[str, Any]:
+    """Auto-generate platform.secret_key if missing and enabled."""
+    platform_cfg = config.get("platform", {})
+    if not platform_cfg.get("enabled"):
+        return config
+
+    if platform_cfg.get("secret_key"):
+        return config
+
+    if not platform_cfg.get("require_secret_key", True):
+        # Generate ephemeral key for this process
+        ephemeral_key = secrets.token_urlsafe(32)
+        config.setdefault("platform", {})["secret_key"] = ephemeral_key
+        return config
+
+    if not platform_cfg.get("auto_generate_secret_key", True):
+        # Will fail later in serve with a clear error
+        return config
+
+    # Generate and persist if we have a writable config path
+    generated_key = secrets.token_urlsafe(32)
+    config.setdefault("platform", {})["secret_key"] = generated_key
+
+    if config_path and config_path.exists():
+        try:
+            # Read current file, update secret_key, write back
+            with config_path.open(encoding="utf-8") as f:
+                file_data = yaml.safe_load(f) or {}
+            file_data.setdefault("platform", {})["secret_key"] = generated_key
+            with config_path.open("w", encoding="utf-8") as f:
+                yaml.dump(file_data, f, sort_keys=False, default_flow_style=False)
+        except Exception:
+            # If we can't write, at least use it for this run
+            pass
+
+    return config
+
+
 def get_config(
     yaml_paths: str | Path | list[str] | list[Path] | list[str | Path] | None = None,
     builtin: dict[str, Any] | None = None,
@@ -189,18 +228,29 @@ def get_config(
     config = copy.deepcopy(_BUILTIN_DEFAULTS if builtin is None else builtin)
 
     paths: list[str | Path]
+    resolved_config_path: Path | None = None
     if yaml_paths is None:
         env_path = os.environ.get("FIN_CONFIG_PATH")
-        paths = [env_path] if env_path else [p for p in _DEFAULT_SETTINGS_FILES if p.exists()]
+        if env_path:
+            paths = [env_path]
+            resolved_config_path = Path(env_path)
+        else:
+            paths = [p for p in _DEFAULT_SETTINGS_FILES if p.exists()]
+            resolved_config_path = paths[0] if paths else None
     elif isinstance(yaml_paths, (str, Path)):
         paths = [yaml_paths]
+        resolved_config_path = Path(yaml_paths)
     else:
         paths = list(yaml_paths)
+        resolved_config_path = Path(paths[0]) if paths else None
 
     for p in paths:
         config = _deep_merge(config, _load_yaml(p))
 
     config = _apply_env_overrides(config)
+
+    # Auto-generate secret key if needed
+    config = _maybe_generate_secret_key(config, resolved_config_path)
 
     if default_call:
         _CACHED_CONFIG = copy.deepcopy(config)

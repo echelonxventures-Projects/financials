@@ -1,0 +1,23 @@
+key: microsoft
+name: Microsoft / Azure AD
+type: oidc
+enabled: true
+config:
+  issuer: https://login.microsoftonline.com/{tenant_id}/v2.0
+  client_id: ''
+  client_secret: ''
+  scopes:
+  - openid
+  - email
+  - profile
+auto_provision: true
+default_role: member
+default_account_kind: organization
+default_plan: free
+domain_hints:
+- outlook.com
+- hotmail.com
+- live.com
+created_at: 1795346130.058826
+updated_at: 1795346130.058826
+metadata: {}

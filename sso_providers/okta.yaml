@@ -1,0 +1,21 @@
+key: okta
+name: Okta
+type: oidc
+enabled: true
+config:
+  issuer: https://{domain}.okta.com/oauth2/default
+  client_id: ''
+  client_secret: ''
+  scopes:
+  - openid
+  - email
+  - profile
+  - groups
+auto_provision: true
+default_role: member
+default_account_kind: organization
+default_plan: free
+domain_hints: []
+created_at: 1795346130.059163
+updated_at: 1795346130.059163
+metadata: {}

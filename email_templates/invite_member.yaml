@@ -1,0 +1,50 @@
+key: invite_member
+name: Team Invitation
+version: '2026-11-22'
+subject: You're invited to join {{account_name}} on {{platform_name}}
+text_body: 'Hi there,
+
+
+  {{inviter_name}} invited you to join "{{account_name}}" on {{platform_name}} as
+  a {{role}}.
+
+
+  Accept the invitation by clicking the link below:
+
+
+  {{invite_url}}
+
+
+  This invitation expires in 7 days.
+
+
+  Thanks,
+
+  The {{platform_name}} Team
+
+  '
+html_body: "<!DOCTYPE html>\n<html>\n<body style=\"font-family: system-ui, sans-serif;\
+  \ line-height: 1.6; color: #1f2937; max-width: 600px; margin: 0 auto; padding: 20px;\"\
+  >\n    <div style=\"background: linear-gradient(135deg, #16a34a, #15803d); padding:\
+  \ 30px; border-radius: 12px 12px 0 0;\">\n        <h1 style=\"color: white; margin:\
+  \ 0; font-size: 24px;\">{{platform_name}}</h1>\n    </div>\n    <div style=\"background:\
+  \ #f8fafc; padding: 30px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0;\
+  \ border-top: none;\">\n        <p><strong>{{inviter_name}}</strong> invited you\
+  \ to join <strong>\"{{account_name}}\"</strong> on {{platform_name}} as a <strong>{{role}}</strong>.</p>\n\
+  \        <p style=\"text-align: center; margin: 30px 0;\">\n            <a href=\"\
+  {{invite_url}}\" style=\"background: #16a34a; color: white; padding: 14px 28px;\
+  \ border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;\"\
+  >Accept Invitation</a>\n        </p>\n        <p style=\"color: #64748b; font-size:\
+  \ 14px;\">This invitation expires in 7 days.</p>\n        <hr style=\"border: none;\
+  \ border-top: 1px solid #e2e8f0; margin: 20px 0;\">\n        <p style=\"color: #64748b;\
+  \ font-size: 13px;\">Thanks,<br>The {{platform_name}} Team</p>\n    </div>\n</body>\n\
+  </html>"
+required_vars:
+- invite_url
+- platform_name
+- account_name
+- inviter_name
+- role
+created_at: 1795346130.056053
+updated_at: 1795346130.056053
+metadata: {}

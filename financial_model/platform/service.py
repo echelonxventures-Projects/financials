@@ -24,7 +24,10 @@ from typing import Any
 
 from financial_model.platform.billing import BillingEvent, BillingProvider, billing_provider
 from financial_model.platform.catalog import Catalog, Plan, builtin_settings
+from financial_model.platform.email import EmailService, EmailTemplateStore, email_provider
+from financial_model.platform.legal import LegalDocument, LegalStore, validate_legal_content
 from financial_model.platform.security import KeyFormat, hash_password, sign_token, verify_password, verify_token
+from financial_model.platform.sso import SSOService, SSOStore, sso_settings_from_config, build_sso_provider
 from financial_model.platform.store import ApiKey, Store, Tenant, User, new_id, open_store
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -119,8 +122,14 @@ class PlatformService:
         require_secret_key: bool | None = None,
         secret_key_min_length: int | None = None,
         login_throttle: dict[str, Any] | None = None,
+        # Config dict (merged platform settings) - overrides builtin_settings()
+        config: dict[str, Any] | None = None,
+        # New platform features (injected for testing)
+        legal_store: LegalStore | None = None,
+        email_service: EmailService | None = None,
+        sso_service: SSOService | None = None,
     ):
-        base = builtin_settings()
+        base = config or builtin_settings()
 
         def pick(value: Any, key: str) -> Any:
             return base[key] if value is None else value
@@ -147,6 +156,57 @@ class PlatformService:
             "address": int(throttle.get("max_failures_per_address") or 0),
         }
         self._dummy_hash: str | None = None
+
+        # Read feature flags and storage paths from new minimal settings
+        features = base.get("features", {})
+        storage = base.get("storage", {})
+
+        # --- Legal documents ---
+        self.legal_enabled = bool(features.get("legal", True))
+        if self.legal_enabled:
+            self.legal = legal_store or LegalStore(storage.get("legal_path", "./legal_documents"))
+            # Template vars now managed via Admin API - use defaults for builtins
+            template_vars = {
+                "effective_date": "",
+                "domain": "your-domain.com",
+                "controller": "Customer",
+                "processor": "Platform Provider",
+                "controller_name": "Customer Name",
+                "processor_name": "Platform Provider Name",
+                "subprocessor_url": "https://your-domain.com/subprocessors",
+            }
+            self.legal.ensure_builtins(template_vars, auto_approve=True)
+            self.legal_require_acceptance = True
+        else:
+            self.legal = None
+            self.legal_require_acceptance = False
+
+        # --- Email service ---
+        self.email_enabled = bool(features.get("email", True))
+        if self.email_enabled:
+            # Provider settings are now managed via Admin API
+            # Use console as default, can be overridden via Admin Portal
+            provider = email_provider({"provider": "console"})
+            templates = EmailTemplateStore(storage.get("email_templates_path", "./email_templates"))
+            templates.ensure_builtins()
+            self.email = EmailService(
+                provider=provider,
+                templates=templates,
+                default_from_email="noreply@your-domain.com",
+                default_from_name="Platform",
+                platform_name="Platform",
+            )
+        else:
+            self.email = None
+
+        # --- SSO service ---
+        self.sso_enabled = bool(features.get("sso", False))
+        if self.sso_enabled:
+            sso_store = SSOStore(storage.get("sso_providers_path", "./sso_providers"))
+            sso_store.ensure_builtins()
+            self.sso = SSOService(sso_store, self)
+        else:
+            self.sso = None
 
     def check_serving_config(self) -> None:
         """Raise :class:`ConfigurationError` if these settings are unsafe to serve the platform with."""
@@ -176,6 +236,7 @@ class PlatformService:
             require_secret_key=bool(cfg["require_secret_key"]),
             secret_key_min_length=int(cfg["secret_key_min_length"]),
             login_throttle=dict(cfg.get("login_throttle") or {}),
+            config=cfg,  # Pass merged config for feature flags and storage paths
         )
 
     # ------------------------------------------------------------------ #
@@ -339,6 +400,9 @@ class PlatformService:
         chosen = next((t for t, _ in tenants if t.id == tenant_id), None) if tenant_id else tenants[0][0]
         if chosen is None:
             raise Forbidden(self.catalog.message("not_member"))
+        # Check legal acceptance
+        principal = self._principal(chosen, user, self.store.get_role(chosen.id, user.id) or "member", "token")
+        self.check_legal_acceptance(principal)
         token, expires = sign_token({"uid": user.id, "tid": chosen.id}, self.secret_key, self.token_ttl)
         return token, expires, chosen
 
@@ -347,7 +411,7 @@ class PlatformService:
     ) -> Principal:
         return Principal(tenant, self.plan_for(tenant), user, role, via, self.catalog, key_id)
 
-    def authenticate(self, api_key: str | None = None, bearer: str | None = None) -> Principal:
+    def authenticate(self, api_key: str | None = None, bearer: str | None = None, skip_legal_check: bool = False) -> Principal:
         if api_key:
             prefix = self.keys.prefix_of(api_key)
             record = self.store.get_key_by_prefix(prefix) if prefix else None
@@ -363,7 +427,10 @@ class PlatformService:
                 self.catalog.get("service_key_role")
             )
             self.store.touch_key(record.id)
-            return self._principal(tenant, user, role, "api_key", record.id)
+            principal = self._principal(tenant, user, role, "api_key", record.id)
+            if not skip_legal_check:
+                self.check_legal_acceptance(principal)
+            return principal
         if bearer:
             claims = verify_token(bearer, self.secret_key)
             if claims is None:
@@ -373,7 +440,10 @@ class PlatformService:
             member_role = self.store.get_role(tenant.id, user.id) if user else None
             if user is None or member_role is None:
                 raise AuthError(self.catalog.message("token_member_removed"))
-            return self._principal(tenant, user, member_role, "token")
+            principal = self._principal(tenant, user, member_role, "token")
+            if not skip_legal_check:
+                self.check_legal_acceptance(principal)
+            return principal
         raise AuthError(self.catalog.message("no_credentials"))
 
     # ------------------------------------------------------------------ #
@@ -533,3 +603,180 @@ class PlatformService:
                     self.store.add_usage(tenant.id, period, REPORTED + metric, delta)
                     sent.append({"account": tenant.id, "metric": metric, "quantity": delta})
         return sent
+
+    # ------------------------------------------------------------------ #
+    # Legal document acceptance
+    # ------------------------------------------------------------------ #
+    def get_legal_status(self, tenant_id: str | None = None) -> dict[str, Any]:
+        """Get legal acceptance status for a tenant (or default for signup)."""
+        if not self.legal_enabled or not self.legal:
+            return {"all_accepted": True, "documents": []}
+        kind = "organization" if tenant_id else "individual"
+        if tenant_id:
+            tenant = self._tenant(tenant_id)
+            kind = tenant.kind
+        accepted = {}
+        if tenant_id:
+            tenant = self._tenant(tenant_id)
+            accepted = tenant.metadata.get("legal_accepted", {}) if tenant.metadata else {}
+        return self.legal.get_acceptance_status(kind, accepted)
+
+    def accept_legal(self, tenant_id: str, accepted: dict[str, str]) -> dict[str, Any]:
+        """Record legal document acceptance for a tenant."""
+        if not self.legal_enabled or not self.legal:
+            return {"all_accepted": True, "documents": []}
+        tenant = self._tenant(tenant_id)
+        metadata = dict(tenant.metadata or {})
+        current = metadata.get("legal_accepted", {})
+        current.update(accepted)
+        metadata["legal_accepted"] = current
+        self.store.update_tenant(tenant_id, metadata=metadata)
+        return self.get_legal_status(tenant_id)
+
+    def check_legal_acceptance(self, principal: Principal) -> None:
+        """Raise if tenant hasn't accepted required legal documents."""
+        if not self.legal_require_acceptance:
+            return
+        if not self.legal_enabled or not self.legal:
+            return
+        status = self.get_legal_status(principal.tenant.id)
+        if not status["all_accepted"]:
+            missing = [d["name"] for d in status["documents"] if not d["accepted"]]
+            raise Forbidden(self.catalog.message("legal_not_accepted", documents=", ".join(missing)))
+
+    def get_legal_document(self, key: str) -> LegalDocument | None:
+        """Get the latest approved version of a legal document."""
+        if not self.legal_enabled or not self.legal:
+            return None
+        return self.legal.get_approved(key)
+
+    def list_legal_documents(self) -> list[dict[str, Any]]:
+        """List all legal documents with their status."""
+        if not self.legal_enabled or not self.legal:
+            return []
+        result = []
+        for key in ["tos", "privacy", "dpa", "financial_disclaimer"]:
+            doc = self.legal.get_approved(key)
+            latest = self.legal.get_latest(key)
+            result.append({
+                "key": key,
+                "name": doc.name if doc else (latest.name if latest else key),
+                "required": key in self.legal.REQUIRED_KEYS or (key in self.legal.B2B_REQUIRED_KEYS),
+                "has_approved": doc is not None,
+                "approved_version": doc.version if doc else None,
+                "latest_version": latest.version if latest else None,
+            })
+        return result
+
+    # ------------------------------------------------------------------ #
+    # Email
+    # ------------------------------------------------------------------ #
+    def send_email_template(self, to: str, template_key: str, variables: dict[str, Any],
+                            from_email: str | None = None, from_name: str | None = None) -> bool:
+        """Send an email using a template."""
+        if not self.email_enabled or not self.email:
+            raise PlatformError(self.catalog.message("email_disabled"))
+        return self.email.send_template(to, template_key, variables, from_email, from_name)
+
+    def send_verification_email(self, to: str, user_name: str, verification_url: str) -> bool:
+        """Send email verification."""
+        if not self.email_enabled or not self.email:
+            return False
+        return self.email.send_verification(to, user_name, verification_url)
+
+    def send_password_reset_email(self, to: str, user_name: str, reset_url: str) -> bool:
+        """Send password reset email."""
+        if not self.email_enabled or not self.email:
+            return False
+        return self.email.send_password_reset(to, user_name, reset_url)
+
+    def send_invite_email(self, to: str, account_name: str, inviter_name: str, role: str, invite_url: str) -> bool:
+        """Send team invitation email."""
+        if not self.email_enabled or not self.email:
+            return False
+        return self.email.send_invite(to, account_name, inviter_name, role, invite_url)
+
+    def send_billing_receipt_email(self, to: str, amount: str, currency: str, plan_name: str,
+                                    period: str, receipt_url: str) -> bool:
+        """Send billing receipt email."""
+        if not self.email_enabled or not self.email:
+            return False
+        return self.email.send_billing_receipt(to, amount, currency, plan_name, period, receipt_url)
+
+    def send_usage_alert_email(self, to: str, account_name: str, metric: str, used: float,
+                                limit: float, percent: float) -> bool:
+        """Send usage alert email."""
+        if not self.email_enabled or not self.email:
+            return False
+        return self.email.send_usage_alert(to, account_name, metric, used, limit, percent)
+
+    def list_email_templates(self) -> list[dict[str, Any]]:
+        """List all email templates."""
+        if not self.email_enabled or not self.email:
+            return []
+        return [t.to_dict() for t in self.email.templates.get_all().values()]
+
+    # ------------------------------------------------------------------ #
+    # SSO
+    # ------------------------------------------------------------------ #
+    def get_sso_providers(self) -> list[dict[str, Any]]:
+        """Get list of enabled SSO providers for login page."""
+        if not self.sso_enabled or not self.sso:
+            return []
+        return self.sso.get_login_options()
+
+    def initiate_sso_login(self, provider_key: str, redirect_uri: str) -> tuple[str, str]:
+        """Start SSO login flow. Returns (auth_url, state)."""
+        if not self.sso_enabled or not self.sso:
+            raise PlatformError(self.catalog.message("sso_disabled"))
+        return self.sso.initiate_login(provider_key, redirect_uri)
+
+    def handle_sso_callback(self, code: str, state: str) -> tuple[str, str | None]:
+        """Handle SSO callback. Returns (token, tenant_id)."""
+        if not self.sso_enabled or not self.sso:
+            raise PlatformError(self.catalog.message("sso_disabled"))
+        return self.sso.handle_callback(code, state)
+
+    def initiate_sso_logout(self, provider_key: str, redirect_uri: str | None = None) -> str | None:
+        """Initiate SSO logout."""
+        if not self.sso_enabled or not self.sso:
+            return None
+        return self.sso.initiate_logout(provider_key, redirect_uri)
+
+    def list_sso_providers_admin(self) -> list[dict[str, Any]]:
+        """List all SSO providers (admin view)."""
+        if not self.sso_enabled or not self.sso:
+            return []
+        return [
+            {
+                "key": p.key,
+                "name": p.name,
+                "type": p.type,
+                "enabled": p.enabled,
+                "auto_provision": p.auto_provision,
+                "default_role": p.default_role,
+                "default_account_kind": p.default_account_kind,
+                "default_plan": p.default_plan,
+                "domain_hints": p.domain_hints,
+            }
+            for p in self.sso.store.get_all().values()
+        ]
+
+    def create_or_update_sso_provider(self, key: str, name: str, type_: str, config: dict[str, Any],
+                                       enabled: bool = True, auto_provision: bool = True,
+                                       default_role: str = "member", default_account_kind: str = "organization",
+                                       default_plan: str = "free", domain_hints: list[str] | None = None) -> dict[str, Any]:
+        """Create or update an SSO provider (admin)."""
+        if not self.sso_enabled or not self.sso:
+            raise PlatformError(self.catalog.message("sso_disabled"))
+        provider = self.sso.store.create_or_update(
+            key, name, type_, config, enabled, auto_provision,
+            default_role, default_account_kind, default_plan, domain_hints
+        )
+        return provider.to_dict()
+
+    def delete_sso_provider(self, key: str) -> bool:
+        """Delete an SSO provider (admin)."""
+        if not self.sso_enabled or not self.sso:
+            raise PlatformError(self.catalog.message("sso_disabled"))
+        return self.sso.store.delete(key)

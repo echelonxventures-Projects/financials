@@ -1,0 +1,11 @@
+key: custom_email
+name: Custom Email
+version: '2026-11-22'
+subject: Hello {{user_name}}
+text_body: Hi {{user_name}}
+html_body: null
+required_vars:
+- user_name
+created_at: 1795346130.186537
+updated_at: 1795346130.186537
+metadata: {}

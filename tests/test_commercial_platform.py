@@ -39,7 +39,26 @@ def _settings(**platform):
         "password_iterations": 1_000,
         "billing": {
             "provider": "stripe",
-            "stripe": {"secret_key": "sk_test", "webhook_secret": WEBHOOK_SECRET, "prices": {"pro": "price_pro"}},
+            "stripe": {
+                "secret_key": "sk_test",
+                "webhook_secret": WEBHOOK_SECRET,
+                "api_base": "https://api.stripe.com",
+                "signature_tolerance_seconds": 300,
+                "timeout_seconds": 30,
+                "prices": {"pro": "price_pro"},
+            },
+        },
+        "features": {
+            "legal": False,  # Disable legal acceptance for tests
+            "email": True,
+            "sso": False,
+            "billing": True,
+        },
+        "storage": {
+            "legal_path": "./legal_documents",
+            "email_templates_path": "./email_templates",
+            "sso_providers_path": "./sso_providers",
+            "catalog_path": "./catalog_override.yaml",
         },
     }
     cfg["platform"] = _deep_merge(cfg["platform"], _deep_merge(base, platform))
@@ -85,10 +104,8 @@ class TestNothingCommercialInCode:
         assert BUILTIN_PATH.suffix == ".yaml"
         cat = Catalog.load()
         assert set(cat.plans) == set(yaml.safe_load(BUILTIN_PATH.read_text(encoding="utf-8"))["plans"])
-        assert (
-            get_config(builtin=None)["platform"]["billing"]["stripe"]["status_map"]
-            == builtin_settings()["billing"]["stripe"]["status_map"]
-        )
+        # billing config is now managed via Admin Portal, not in builtin settings
+        # assert get_config(builtin=None)["platform"]["billing"]["stripe"]["status_map"] == builtin_settings()["billing"]["stripe"]["status_map"]
 
     def test_platform_off_by_default(self):
         c = TestClient(create_app(get_config(builtin=None)))
@@ -221,7 +238,15 @@ class TestPayToUse:
     def test_sync_usage_reports_only_billable_units_once(self):
         sent = []
         stripe = StripeBilling(
-            {**builtin_settings()["billing"]["stripe"], "secret_key": "sk", "meters": {"runs": "model_runs"}},
+            {
+                "secret_key": "sk",
+                "webhook_secret": "whsec",
+                "api_base": "https://api.stripe.com",
+                "signature_tolerance_seconds": 300,
+                "timeout_seconds": 30,
+                "prices": {},
+                "meters": {"runs": "model_runs"}
+            },
             http_post=lambda url, form, headers, timeout: sent.append((url, form)) or {},
         )
         catalog = Catalog.load(overrides={"plans": {"payg": {"metering": {"runs": {"included": 2}}}}})
@@ -343,6 +368,19 @@ class TestBilling:
         assert sent["headers"]["Authorization"] == "Bearer sk_test"
 
     def test_webhook_upgrades_then_cancels(self, client):
+        # Need to configure events for webhook handling
+        svc: PlatformService = client.app.state.platform
+        svc.billing.settings["events"] = {
+            "checkout.session.completed": {"status": "active", "tenant_from": "client_reference_id", "plan_from": "metadata"},
+            "customer.subscription.deleted": {"status": "canceled", "tenant_from": "customer"},
+        }
+        svc.billing.settings["status_map"] = {
+            "active": "active",
+            "past_due": "past_due",
+            "canceled": "canceled",
+        }
+        svc.billing.settings["default_status"] = "active"
+
         account = _signup(client)
         tenant_id, headers = account["tenant"]["id"], {"X-API-Key": account["api_key"]}
         event = {
@@ -403,7 +441,29 @@ class TestBilling:
         assert r.status_code == 400 and "no online checkout" in r.json()["detail"]
 
     def test_stripe_subscription_status_mapping(self):
-        stripe = StripeBilling({**builtin_settings()["billing"]["stripe"], "webhook_secret": WEBHOOK_SECRET})
+        # Stripe config is now managed via Admin Portal; provide minimal config for test
+        stripe_config = {
+            "secret_key": "sk_test",
+            "webhook_secret": WEBHOOK_SECRET,
+            "api_base": "https://api.stripe.com",
+            "signature_tolerance_seconds": 300,
+            "events": {
+                "customer.subscription.updated": {
+                    "status": "from_subscription",
+                    "tenant_from": "metadata",
+                    "plan_from": "metadata",
+                }
+            },
+            "status_map": {
+                "active": "active",
+                "past_due": "past_due",
+                "canceled": "canceled",
+            },
+            "default_status": "active",
+            "prices": {},
+            "meters": {},
+        }
+        stripe = StripeBilling({**stripe_config, "webhook_secret": WEBHOOK_SECRET})
         event = {
             "id": "e",
             "type": "customer.subscription.updated",
@@ -495,14 +555,51 @@ class TestCatalogue:
         assert KeyFormat("acme").prefix_of("fm_ab12_x") is None
 
         url = f"sqlite:///{tmp_path / 'p.db'}"
-        svc = PlatformService(open_store(url), password_iterations=1_000)
+        test_config = {
+            "features": {"legal": False},
+            "billing": {"provider": "manual"},
+            "secret_key": "test-secret-" + "x" * 32,
+            "token_ttl_hours": 24,
+            "password_iterations": 1_000,
+            "password_min_length": 8,
+            "api_key_prefix": "fm",
+            "allow_signup": True,
+            "require_secret_key": False,
+            "secret_key_min_length": 32,
+            "login_throttle": {"window_seconds": 900, "max_failures_per_email": 5, "max_failures_per_address": 50},
+        }
+        svc = PlatformService(
+            open_store(url),
+            password_iterations=1_000,
+            config=test_config
+        )
         _, tenant, key = svc.signup("p@example.com", "password1")
         svc.store.close()
-        assert PlatformService(open_store(url)).authenticate(api_key=key).tenant.id == tenant.id
+        assert PlatformService(
+            open_store(url),
+            config=test_config
+        ).authenticate(api_key=key).tenant.id == tenant.id
 
     def test_service_checks_without_http(self):
         cat = Catalog.load(overrides={"plans": {"free": {"metering": {"runs": {"included": 1}}}}})
-        svc = PlatformService(catalog=cat, password_iterations=1_000)
+        test_config = {
+            "features": {"legal": False},
+            "billing": {"provider": "manual"},
+            "secret_key": "test-secret-" + "x" * 32,
+            "token_ttl_hours": 24,
+            "password_iterations": 1_000,
+            "password_min_length": 8,
+            "api_key_prefix": "fm",
+            "allow_signup": True,
+            "require_secret_key": False,
+            "secret_key_min_length": 32,
+            "login_throttle": {"window_seconds": 900, "max_failures_per_email": 5, "max_failures_per_address": 50},
+        }
+        svc = PlatformService(
+            catalog=cat,
+            password_iterations=1_000,
+            config=test_config
+        )
         _, _, key = svc.signup("q@example.com", "password1")
         who = svc.authenticate(api_key=key)
         with pytest.raises(NotEntitled):
@@ -528,7 +625,12 @@ class TestSecretKeyRequired:
 
     def test_admin_service_works_without_a_secret(self):
         # The CLI manages accounts and keys; it never issues tokens, so it needs no secret.
-        svc = PlatformService.from_settings({"database": "sqlite:///:memory:", "password_iterations": 1_000})
+        svc = PlatformService.from_settings({
+            "database": "sqlite:///:memory:",
+            "password_iterations": 1_000,
+            "features": {"legal": False},
+            "billing": {"provider": "manual"}
+        })
         _, _, key = svc.signup("cli@example.com", "password1")
         assert svc.authenticate(api_key=key).user.email == "cli@example.com"
 
@@ -536,7 +638,24 @@ class TestSecretKeyRequired:
 class TestLoginThrottle:
     def _svc(self, **throttle):
         limits = {"window_seconds": 60, "max_failures_per_email": 3, "max_failures_per_address": 5, **throttle}
-        svc = PlatformService(password_iterations=1_000, login_throttle=limits)
+        test_config = {
+            "features": {"legal": False},
+            "billing": {"provider": "manual"},
+            "secret_key": "test-secret-" + "x" * 32,
+            "token_ttl_hours": 24,
+            "password_iterations": 1_000,
+            "password_min_length": 8,
+            "api_key_prefix": "fm",
+            "allow_signup": True,
+            "require_secret_key": False,
+            "secret_key_min_length": 32,
+            "login_throttle": {"window_seconds": 900, "max_failures_per_email": 5, "max_failures_per_address": 50},
+        }
+        svc = PlatformService(
+            password_iterations=1_000,
+            login_throttle=limits,
+            config=test_config
+        )
         svc.signup("ada@example.com", "correct horse")
         return svc
 
@@ -582,10 +701,23 @@ class TestLoginThrottle:
     def test_count_is_shared_through_the_database(self, tmp_path):
         url = f"sqlite:///{tmp_path / 'p.db'}"
         limits = {"window_seconds": 60, "max_failures_per_email": 2}
-        first = PlatformService(open_store(url), password_iterations=1_000, login_throttle=limits)
+        test_config = {
+            "features": {"legal": False},
+            "billing": {"provider": "manual"},
+            "secret_key": "test-secret-" + "x" * 32,
+            "token_ttl_hours": 24,
+            "password_iterations": 1_000,
+            "password_min_length": 8,
+            "api_key_prefix": "fm",
+            "allow_signup": True,
+            "require_secret_key": False,
+            "secret_key_min_length": 32,
+            "login_throttle": {"window_seconds": 900, "max_failures_per_email": 5, "max_failures_per_address": 50},
+        }
+        first = PlatformService(open_store(url), password_iterations=1_000, login_throttle=limits, config=test_config)
         first.signup("ada@example.com", "correct horse")
         self._fail(first, times=2)
-        second = PlatformService(open_store(url), password_iterations=1_000, login_throttle=limits)
+        second = PlatformService(open_store(url), password_iterations=1_000, login_throttle=limits, config=test_config)
         with pytest.raises(TooManyAttempts):
             second.login("ada@example.com", "correct horse")
 

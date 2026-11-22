@@ -1,0 +1,20 @@
+key: auth0
+name: Auth0
+type: oidc
+enabled: true
+config:
+  issuer: https://{domain}.auth0.com
+  client_id: ''
+  client_secret: ''
+  scopes:
+  - openid
+  - email
+  - profile
+auto_provision: true
+default_role: member
+default_account_kind: organization
+default_plan: free
+domain_hints: []
+created_at: 1795346130.05947
+updated_at: 1795346130.05947
+metadata: {}

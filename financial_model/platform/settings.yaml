@@ -1,6 +1,7 @@
 # Built-in runtime settings of the commercial platform (the `platform:` section of the
-# settings file). Every key can be overridden in financial.yaml or as FIN_PLATFORM_<KEY>.
-# Prices, plans, quotas, roles and endpoint rules are in the catalogue (catalog.yaml).
+# settings file). This file contains ONLY bootstrap/runtime settings.
+# ALL business configuration (plans, prices, legal docs, email, SSO, billing) is managed
+# via the Admin Portal API and stored in versioned YAML files in the data directories.
 
 enabled: false
 # sqlite:///relative.db, sqlite:////absolute.db, sqlite:///:memory:, or a plugin scheme.
@@ -8,62 +9,75 @@ database: sqlite:///financial_platform.db
 # Catalogue files merged in order; `builtin` = the shipped catalog.yaml.
 catalog: [builtin]
 
+# ------------------------------------------------------------------
+# Secret key management (auto-generated if not provided in production)
+# ------------------------------------------------------------------
 # Signs login tokens. Required to serve the platform: tokens must survive restarts and
 # every replica must agree. Generate one with:
 #   python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+# If empty and require_secret_key is true, serve will auto-generate one and save it
+# to the settings file (for file-based settings) or require env var.
 secret_key: ""
 # `serve` refuses to start without a secret_key of at least this many characters.
 # Set require_secret_key: false only for local experiments (a random per-process secret
 # is used, so every restart signs everyone out).
 require_secret_key: true
 secret_key_min_length: 32
+# Auto-generate and persist secret_key if missing (writes to FIN_CONFIG_PATH or ./financial.yaml).
+# Only works when settings file is writable. In containers, prefer setting FIN_PLATFORM_SECRET_KEY.
+auto_generate_secret_key: true
 token_ttl_hours: 24
 password_iterations: 600000
 password_min_length: 8
 api_key_prefix: fm
 allow_signup: true
 
-# Failed sign-ins are counted in the platform database (so all workers and replicas
-# share the count) over a sliding window. Past a limit, /v1/login answers 429 until
-# older failures leave the window. 0 disables a limit. Behind a proxy, run the server
-# with the client address forwarded (uvicorn --proxy-headers / FORWARDED_ALLOW_IPS) or
-# every caller shares the proxy's address.
+# ------------------------------------------------------------------
+# Login throttling (runtime only - not business config)
+# ------------------------------------------------------------------
 login_throttle:
   window_seconds: 900
   max_failures_per_email: 5
   max_failures_per_address: 50
 
+# ------------------------------------------------------------------
+# Feature flags (enable/disable subsystems)
+# Detailed config for each is managed via Admin Portal API
+# ------------------------------------------------------------------
+features:
+  legal: true
+  email: true
+  sso: false
+  billing: true
+
+# ------------------------------------------------------------------
+# Storage paths for versioned configuration files (managed by Admin API)
+# ------------------------------------------------------------------
+storage:
+  legal_path: "./legal_documents"
+  email_templates_path: "./email_templates"
+  sso_providers_path: "./sso_providers"
+  catalog_path: "./catalog_override.yaml"
+
+# ------------------------------------------------------------------
+# Billing provider selection only (detailed config via Admin API)
+# ------------------------------------------------------------------
 billing:
-  # manual | stripe | a plugin provider name. Each provider reads the block named after it.
   provider: manual
-  manual: {}
-  stripe:
-    api_base: https://api.stripe.com/v1
-    timeout_seconds: 20
-    secret_key: ""
-    webhook_secret: ""
-    signature_tolerance_seconds: 300
-    # plan key -> Stripe price id (fixed fees)
-    prices: {}
-    # metric -> Stripe billing meter event name (pay-to-use overage); see `platform sync-usage`
-    meters: {}
-    # Extra form fields sent when creating a Checkout session.
-    checkout: {mode: subscription}
-    # Stripe subscription status -> account status (a key of catalogue account_statuses).
-    status_map:
-      active: active
-      trialing: active
-      past_due: past_due
-      unpaid: past_due
-      canceled: canceled
-      incomplete_expired: canceled
-    default_status: canceled
-    # Webhook event type -> how to apply it.
-    #   status: an account status, or `from_subscription` (use status_map)
-    #   plan_from: metadata | none      tenant_from: client_reference_id | metadata | customer
-    events:
-      checkout.session.completed: {status: active, plan_from: metadata, tenant_from: client_reference_id}
-      customer.subscription.created: {status: from_subscription, plan_from: metadata, tenant_from: metadata}
-      customer.subscription.updated: {status: from_subscription, plan_from: metadata, tenant_from: metadata}
-      customer.subscription.deleted: {status: canceled, plan_from: none, tenant_from: metadata}
-      invoice.payment_failed: {status: past_due, plan_from: none, tenant_from: customer}
+
+# ------------------------------------------------------------------
+# API endpoints (catalogue-driven, these are the built-in routes)
+# ------------------------------------------------------------------
+endpoints:
+  # Legal acceptance
+  "POST /v1/legal/accept": {permission: view, features: []}
+  "GET /v1/legal/status": {permission: view, features: []}
+  "GET /v1/legal/document/{key}": {permission: view, features: []}
+  # SSO
+  "GET /v1/sso/providers": {public: true}
+  "POST /v1/sso/login": {public: true}
+  "GET /v1/sso/callback": {public: true}
+  "POST /v1/sso/logout": {permission: view}
+  # Email (admin only)
+  "POST /v1/admin/email/send": {permission: manage_billing, features: []}
+  "POST /v1/admin/email/test": {permission: manage_billing, features: []}

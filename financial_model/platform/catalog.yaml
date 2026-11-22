@@ -92,6 +92,21 @@ endpoints:
   "GET /v1/usage": {permission: view}
   "GET /v1/invoice": {permission: view}
   "POST /v1/billing/checkout": {permission: manage_billing}
+  "GET /v1/legal/status": {permission: view}
+  "POST /v1/legal/accept": {permission: view}
+  "GET /v1/legal/document/{key}": {permission: view}
+  "GET /v1/legal/documents": {permission: manage_billing}
+  "GET /v1/sso/providers": {public: true}
+  "POST /v1/sso/login": {public: true}
+  "GET /v1/sso/callback": {public: true}
+  "POST /v1/sso/logout": {permission: view}
+  "POST /v1/admin/email/send": {permission: manage_billing}
+  "POST /v1/admin/email/test": {permission: manage_billing}
+  "GET /v1/admin/email/templates": {permission: manage_billing}
+  "POST /v1/admin/email/templates": {permission: manage_billing}
+  "GET /v1/admin/sso/providers": {permission: manage_billing}
+  "POST /v1/admin/sso/providers": {permission: manage_billing}
+  "DELETE /v1/admin/sso/providers/{key}": {permission: manage_billing}
 
 # ---------------------------------------------------------------- plans
 # audience: account kinds that may hold the plan.
@@ -230,3 +245,6 @@ messages:
   grant_above_rank: "you cannot grant a role above your own ({role})"
   no_such_key: "no such active key"
   key_shown_once: "Store this API key now; it is not shown again."
+  legal_not_accepted: "you must accept the following documents before continuing: {documents}"
+  email_disabled: "email service is not enabled"
+  sso_disabled: "SSO is not enabled on this platform"

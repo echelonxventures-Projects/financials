@@ -34,6 +34,7 @@ class Tenant:
     status: str  # a catalogue account status
     billing_customer_id: str | None = None
     created_at: float = 0.0
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -148,7 +149,8 @@ class Store:  # pragma: no cover - interface only
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS tenants (
     id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, plan TEXT NOT NULL,
-    status TEXT NOT NULL, billing_customer_id TEXT, created_at REAL NOT NULL
+    status TEXT NOT NULL, billing_customer_id TEXT, created_at REAL NOT NULL,
+    metadata TEXT
 );
 CREATE INDEX IF NOT EXISTS tenants_customer ON tenants(billing_customer_id);
 CREATE TABLE IF NOT EXISTS users (
@@ -213,8 +215,10 @@ class SQLiteStore(Store):
 
     # tenants -------------------------------------------------------------
     def add_tenant(self, tenant: Tenant) -> None:
+        import json
+        metadata_json = json.dumps(tenant.metadata) if tenant.metadata else None
         self._exec(
-            "INSERT INTO tenants (id, kind, name, plan, status, billing_customer_id, created_at) VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO tenants (id, kind, name, plan, status, billing_customer_id, created_at, metadata) VALUES (?,?,?,?,?,?,?,?)",
             (
                 tenant.id,
                 tenant.kind,
@@ -223,26 +227,51 @@ class SQLiteStore(Store):
                 tenant.status,
                 tenant.billing_customer_id,
                 tenant.created_at,
+                metadata_json,
             ),
         )
 
     def get_tenant(self, tenant_id: str) -> Tenant | None:
         row = self._one("SELECT * FROM tenants WHERE id = ?", (tenant_id,))
-        return Tenant(**dict(row)) if row else None
+        if not row:
+            return None
+        data = dict(row)
+        import json
+        if data.get("metadata"):
+            data["metadata"] = json.loads(data["metadata"])
+        return Tenant(**data)
 
     def update_tenant(self, tenant_id: str, **fields: Any) -> None:
-        allowed = {"name", "plan", "status", "billing_customer_id"}
+        import json
+        allowed = {"name", "plan", "status", "billing_customer_id", "metadata"}
         if not fields or set(fields) - allowed:
             raise ValueError(f"can only update {sorted(allowed)}")
+        # Serialize metadata if present
+        if "metadata" in fields and fields["metadata"] is not None:
+            fields["metadata"] = json.dumps(fields["metadata"])
         cols = ", ".join(f"{k} = ?" for k in fields)
         self._exec(f"UPDATE tenants SET {cols} WHERE id = ?", (*fields.values(), tenant_id))  # noqa: S608
 
     def find_tenant_by_customer(self, customer_id: str) -> Tenant | None:
         row = self._one("SELECT * FROM tenants WHERE billing_customer_id = ?", (customer_id,))
-        return Tenant(**dict(row)) if row else None
+        if not row:
+            return None
+        data = dict(row)
+        import json
+        if data.get("metadata"):
+            data["metadata"] = json.loads(data["metadata"])
+        return Tenant(**data)
 
     def list_tenants(self) -> list[Tenant]:
-        return [Tenant(**dict(r)) for r in self._all("SELECT * FROM tenants ORDER BY created_at")]
+        rows = self._all("SELECT * FROM tenants ORDER BY created_at")
+        import json
+        result = []
+        for r in rows:
+            data = dict(r)
+            if data.get("metadata"):
+                data["metadata"] = json.loads(data["metadata"])
+            result.append(Tenant(**data))
+        return result
 
     # users ---------------------------------------------------------------
     def add_user(self, user: User) -> None:

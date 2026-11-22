@@ -1,0 +1,22 @@
+key: google
+name: Google
+type: oidc
+enabled: true
+config:
+  issuer: https://accounts.google.com
+  client_id: ''
+  client_secret: ''
+  scopes:
+  - openid
+  - email
+  - profile
+auto_provision: true
+default_role: member
+default_account_kind: organization
+default_plan: free
+domain_hints:
+- gmail.com
+- googlemail.com
+created_at: 1795346130.058473
+updated_at: 1795346130.058473
+metadata: {}

@@ -43,7 +43,7 @@ def _route_key(request: Request) -> tuple[str, str]:
     return request.method, str(getattr(route, "path", request.url.path))
 
 
-def principal(request: Request) -> Principal:
+def principal(request: Request, skip_legal_check: bool = False) -> Principal:
     """Authenticate the caller from ``X-API-Key`` or ``Authorization: Bearer``."""
     cached = getattr(request.state, "principal", None)
     if cached is not None:
@@ -51,7 +51,11 @@ def principal(request: Request) -> Principal:
     auth = request.headers.get("authorization", "")
     bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else None
     try:
-        who = _service(request).authenticate(api_key=request.headers.get("x-api-key") or None, bearer=bearer)
+        who = _service(request).authenticate(
+            api_key=request.headers.get("x-api-key") or None,
+            bearer=bearer,
+            skip_legal_check=skip_legal_check,
+        )
     except PlatformError as exc:
         raise _http(exc) from exc
     request.state.principal = who
@@ -80,7 +84,12 @@ async def guard(request: Request) -> AsyncIterator[Principal | None]:
     if spec.get("public"):
         yield None
         return
-    who = principal(request)
+
+    # Legal acceptance endpoints should be accessible without prior acceptance
+    method, path = _route_key(request)
+    is_legal_accept = path.startswith("/v1/legal/accept") or path.startswith("/v1/legal/status")
+
+    who = principal(request, skip_legal_check=is_legal_accept)
     metric = spec.get("metric")
     check: dict[str, Any] = {
         "permission": spec.get("permission"),
@@ -147,6 +156,54 @@ class CheckoutRequest(BaseModel):
     plan: str
     success_url: str
     cancel_url: str
+
+
+# Legal acceptance
+class LegalAcceptRequest(BaseModel):
+    accepted: dict[str, str]  # key -> version
+
+
+# SSO
+class SSOLoginRequest(BaseModel):
+    provider: str
+    redirect_uri: str
+
+
+class SSOCallbackRequest(BaseModel):
+    code: str
+    state: str
+
+
+# Email admin
+class EmailSendRequest(BaseModel):
+    to: str
+    template: str
+    variables: dict[str, Any]
+    from_email: str | None = None
+    from_name: str | None = None
+
+
+class EmailTemplateCreateRequest(BaseModel):
+    key: str
+    name: str
+    subject: str
+    text_body: str
+    html_body: str | None = None
+    required_vars: list[str] = []
+
+
+# SSO admin
+class SSOProviderCreateRequest(BaseModel):
+    key: str
+    name: str
+    type: str
+    config: dict[str, Any]
+    enabled: bool = True
+    auto_provision: bool = True
+    default_role: str = "member"
+    default_account_kind: str = "organization"
+    default_plan: str = "free"
+    domain_hints: list[str] = []
 
 
 def _call(fn: Any, *args: Any, **kwargs: Any) -> Any:
@@ -306,6 +363,182 @@ async def billing_webhook(request: Request) -> dict[str, Any]:
     service = _service(request)
     events = _call(service.billing.parse_webhook, await request.body(), dict(request.headers))
     return {"received": len(events), "updated": service.apply_billing_events(events)}
+
+
+# ------------------------------------------------------------------ #
+# Legal acceptance endpoints
+# ------------------------------------------------------------------ #
+@v1.get("/legal/status")
+async def legal_status(request: Request) -> dict[str, Any]:
+    """Get legal acceptance status for the current tenant."""
+    service = _service(request)
+    who = principal(request)
+    return _call(service.get_legal_status, who.tenant.id)
+
+
+@v1.post("/legal/accept")
+async def legal_accept(body: LegalAcceptRequest, request: Request) -> dict[str, Any]:
+    """Accept required legal documents."""
+    service = _service(request)
+    who = principal(request)
+    return _call(service.accept_legal, who.tenant.id, body.accepted)
+
+
+@v1.get("/legal/document/{key}")
+async def legal_document(key: str, request: Request) -> dict[str, Any]:
+    """Get a legal document (approved version)."""
+    service = _service(request)
+    doc = _call(service.get_legal_document, key)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found or not approved")
+    return doc.to_dict()
+
+
+@v1.get("/legal/documents")
+async def list_legal_documents(request: Request) -> dict[str, Any]:
+    """List all legal documents (admin)."""
+    service = _service(request)
+    who = principal(request)
+    who.require("manage_billing")
+    return {"documents": _call(service.list_legal_documents)}
+
+
+# ------------------------------------------------------------------ #
+# SSO endpoints
+# ------------------------------------------------------------------ #
+@v1.get("/sso/providers")
+async def sso_providers(request: Request) -> dict[str, Any]:
+    """Get list of enabled SSO providers for login page (public)."""
+    service = _service(request)
+    return {"providers": _call(service.get_sso_providers)}
+
+
+@v1.post("/sso/login")
+async def sso_login(body: SSOLoginRequest, request: Request) -> dict[str, Any]:
+    """Initiate SSO login flow."""
+    service = _service(request)
+    auth_url, state = _call(service.initiate_sso_login, body.provider, body.redirect_uri)
+    return {"authorization_url": auth_url, "state": state}
+
+
+@v1.get("/sso/callback")
+async def sso_callback(code: str, state: str, request: Request) -> dict[str, Any]:
+    """Handle SSO callback from identity provider."""
+    service = _service(request)
+    token, tenant_id = _call(service.handle_sso_callback, code, state)
+    return {"token": token, "token_type": "bearer", "tenant_id": tenant_id}
+
+
+@v1.post("/sso/logout")
+async def sso_logout(request: Request) -> dict[str, Any]:
+    """Initiate SSO logout."""
+    service = _service(request)
+    who = principal(request)
+    # Get provider from query params or use first enabled
+    provider_key = request.query_params.get("provider")
+    redirect_uri = request.query_params.get("redirect_uri")
+    if not provider_key:
+        providers = _call(service.get_sso_providers)
+        if not providers:
+            return {"logout_url": None}
+        provider_key = providers[0]["key"]
+    logout_url = _call(service.initiate_sso_logout, provider_key, redirect_uri)
+    return {"logout_url": logout_url}
+
+
+# ------------------------------------------------------------------ #
+# Email admin endpoints
+# ------------------------------------------------------------------ #
+@v1.post("/admin/email/send")
+async def admin_email_send(body: EmailSendRequest, request: Request) -> dict[str, Any]:
+    """Send an email using a template (admin only)."""
+    service = _service(request)
+    who = principal(request)
+    who.require("manage_billing")
+    success = _call(
+        service.send_email_template,
+        body.to, body.template, body.variables, body.from_email, body.from_name
+    )
+    return {"sent": success}
+
+
+@v1.post("/admin/email/test")
+async def admin_email_test(request: Request) -> dict[str, Any]:
+    """Send a test email to the caller (admin only)."""
+    service = _service(request)
+    who = principal(request)
+    who.require("manage_billing")
+    if not who.user:
+        raise HTTPException(status_code=400, detail="Test email requires user account")
+    success = _call(service.send_email_template, who.user.email, "verify_email", {
+        "user_name": who.user.name,
+        "verification_url": "https://example.com/verify?test=1",
+    })
+    return {"sent": success}
+
+
+@v1.get("/admin/email/templates")
+async def admin_email_templates(request: Request) -> dict[str, Any]:
+    """List all email templates (admin only)."""
+    service = _service(request)
+    who = principal(request)
+    who.require("manage_billing")
+    return {"templates": _call(service.list_email_templates)}
+
+
+@v1.post("/admin/email/templates")
+async def admin_email_create_template(body: EmailTemplateCreateRequest, request: Request) -> dict[str, Any]:
+    """Create or update an email template (admin only)."""
+    service = _service(request)
+    who = principal(request)
+    who.require("manage_billing")
+    if not service.email_enabled or not service.email:
+        raise HTTPException(status_code=400, detail="Email not enabled")
+    template = service.email.templates.create_or_update(
+        key=body.key,
+        name=body.name,
+        subject=body.subject,
+        text_body=body.text_body,
+        html_body=body.html_body,
+        required_vars=body.required_vars,
+    )
+    return template.to_dict()
+
+
+# ------------------------------------------------------------------ #
+# SSO admin endpoints
+# ------------------------------------------------------------------ #
+@v1.get("/admin/sso/providers")
+async def admin_sso_providers(request: Request) -> dict[str, Any]:
+    """List all SSO providers (admin only)."""
+    service = _service(request)
+    who = principal(request)
+    who.require("manage_billing")
+    return {"providers": _call(service.list_sso_providers_admin)}
+
+
+@v1.post("/admin/sso/providers")
+async def admin_sso_create_provider(body: SSOProviderCreateRequest, request: Request) -> dict[str, Any]:
+    """Create or update an SSO provider (admin only)."""
+    service = _service(request)
+    who = principal(request)
+    who.require("manage_billing")
+    return _call(
+        service.create_or_update_sso_provider,
+        body.key, body.name, body.type, body.config,
+        body.enabled, body.auto_provision, body.default_role,
+        body.default_account_kind, body.default_plan, body.domain_hints
+    )
+
+
+@v1.delete("/admin/sso/providers/{key}")
+async def admin_sso_delete_provider(key: str, request: Request) -> dict[str, Any]:
+    """Delete an SSO provider (admin only)."""
+    service = _service(request)
+    who = principal(request)
+    who.require("manage_billing")
+    deleted = _call(service.delete_sso_provider, key)
+    return {"deleted": deleted}
 
 
 def install_platform(application: FastAPI, model_router: APIRouter, service: PlatformService) -> None:

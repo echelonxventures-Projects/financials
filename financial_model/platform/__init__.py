@@ -16,6 +16,9 @@ from __future__ import annotations
 
 from financial_model.platform.billing import BillingEvent, BillingProvider, register_billing_provider
 from financial_model.platform.catalog import Catalog, CatalogError, MeterRule, Plan, builtin_settings
+from financial_model.platform.email import EmailProvider, EmailService, EmailTemplate, EmailTemplateStore, email_provider, register_email_provider
+from financial_model.platform.legal import LegalDocument, LegalStore, validate_legal_content
+from financial_model.platform.sso import SSOProvider, SSOService, SSOStore, SSOUserInfo, SSOProviderBase, build_sso_provider, register_sso_provider_type
 from financial_model.platform.service import PlatformService, Principal
 from financial_model.platform.store import SQLiteStore, Store, open_store, register_store
 
@@ -34,4 +37,20 @@ __all__ = [
     "open_store",
     "register_billing_provider",
     "register_store",
+    "EmailProvider",
+    "EmailService",
+    "EmailTemplate",
+    "EmailTemplateStore",
+    "email_provider",
+    "register_email_provider",
+    "LegalDocument",
+    "LegalStore",
+    "validate_legal_content",
+    "SSOProvider",
+    "SSOService",
+    "SSOStore",
+    "SSOUserInfo",
+    "SSOProviderBase",
+    "build_sso_provider",
+    "register_sso_provider_type",
 ]
